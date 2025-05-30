@@ -22,6 +22,7 @@ export interface ElectronAPI {
   error: (message: any) => void
   warn: (message: any) => void
 
+  getKubeConfigPath: () => Promise<string>
   loadKubeConfig: () => Promise<string>
   setKubeContext: (contextName: string) => Promise<boolean>
 
@@ -38,4 +39,7 @@ export interface ElectronAPI {
     created: Date
     modified: Date
   }>
+
+  // K8s related operations
+  setKubeConfigPath: (path: string) => Promise<{ success: boolean }>
 }

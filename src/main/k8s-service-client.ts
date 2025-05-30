@@ -3,6 +3,8 @@ import * as fs from "fs"
 import * as os from "os"
 import * as path from "path"
 import { ipcMain } from "electron"
+import yaml from "js-yaml"
+import Store from 'electron-store';
 
 // Path to kubeconfig file
 const KUBECONFIG_PATH = process.env.KUBECONFIG || path.join(os.homedir(), ".kube", "config")
@@ -48,10 +50,14 @@ class KubernetesService {
     currentContext: null,
   }
 
-  constructor() {
-    this.kc = new k8s.KubeConfig()
-    this.loadKubeConfig()
-  }
+  private configPaths: {
+    default: string;  // ~/.kube/config
+    userSelected: string | null; // Custom path from UI
+    active: string;   // Currently used path
+  };
+
+  // 1. Add config path management
+  private configPath?: string;
 
   // Load the kubeconfig file (doesn't require connection)
   private loadKubeConfig(): void {
@@ -261,11 +267,159 @@ class KubernetesService {
     const diffMinutes = Math.floor(diffMs / (1000 * 60))
     return `${diffMinutes}m`
   }
+
+  constructor(initialPath?: string) {
+    this.kc = new k8s.KubeConfig();
+    this.configPaths = {
+      default: path.join(os.homedir(), ".kube", "config"),
+      userSelected: initialPath || null,
+      active: initialPath || path.join(os.homedir(), ".kube", "config")
+    };
+    this.loadConfig();
+  }
+
+  private loadConfig(): void {
+    // Priority: 1. User selected 2. Default
+    this.configPaths.active = this.configPaths.userSelected || this.configPaths.default;
+
+    try {
+      if (fs.existsSync(this.configPaths.active)) {
+        this.kc.loadFromFile(this.configPaths.active);
+        console.log(`Loaded config from ${this.configPaths.active}`);
+      } else {
+        console.warn(`Kubeconfig not found at ${this.configPaths.active}`);
+      }
+    } catch (error) {
+      console.error("Error loading kubeconfig:", error);
+    }
+  }
+
+  public debugConfigState() {
+    console.log('Current config state:', {
+      activePath: this.configPaths.active,
+      exists: fs.existsSync(this.configPaths.active),
+      contexts: this.kc.getContexts().map(c => c.name),
+      currentContext: this.kc.getCurrentContext()
+    });
+  }
+
+  // public setUserConfigPath(path: string): boolean {
+  //   if (!fs.existsSync(path)) return false;
+
+  //   this.configPaths.userSelected = path;
+  //   this.loadConfig(); // Reload with new path
+  //   return true;
+  // }
+
+  // public setUserConfigPath(path: string): boolean {
+  //   if (!this.validateConfigPath(path)) return false;
+
+  //   this.configPaths.userSelected = path;
+  //   this.configPaths.active = path;
+
+  //   // Complete reload cycle
+  //   this.kc = new k8s.KubeConfig();
+  //   this.loadConfig();
+
+  //   // Reset connection
+  //   this.connectionStatus = {
+  //     connected: false,
+  //     currentContext: null
+  //   };
+  //   this.k8sCoreApi = null;
+
+  //   return true;
+  // }
+
+  public setUserConfigPath(rawPath: string): boolean {
+    const normalizedPath = rawPath; //this.normalizePath(rawPath);
+
+    if (!this.validateConfigPath(normalizedPath)) {
+      return false;
+    }
+
+    this.configPaths.userSelected = normalizedPath;
+    this.configPaths.active = normalizedPath;
+
+    // Complete reload
+    this.kc = new k8s.KubeConfig();
+    try {
+      this.kc.loadFromFile(normalizedPath);
+      console.log(`Successfully loaded config from ${normalizedPath}`);
+      return true;
+    } catch (error) {
+      console.error(`Failed to load config from ${normalizedPath}:`, error);
+      return false;
+    }
+  }
+
+  public getActiveConfigPath(): string {
+    return this.configPaths.active;
+  }
+
+  public getAvailableConfigs(): { default: string; userSelected: string | null } {
+    return { ...this.configPaths };
+  }
+
+  // 2. Add method to reload config
+  reloadConfig(newPath?: string): void {
+    if (newPath) {
+      this.configPath = newPath
+    }
+    this.loadKubeConfig()
+  }
+
+  // validateConfigPath(path: string): boolean {
+  //   try {
+  //     if (!fs.existsSync(path)) {
+  //       throw new Error(`Config file not found at ${path}`)
+  //     }
+  //     // Try to parse the file to validate it's a proper kubeconfig
+  //     const config = fs.readFileSync(path, 'utf-8')
+  //     const parsed = yaml.load(config)
+  //     if (!parsed || typeof parsed !== 'object') {
+  //       throw new Error('Invalid kubeconfig format')
+  //     }
+  //     return true
+  //   } catch (error) {
+  //     console.error('Invalid kubeconfig:', error)
+  //     return false
+  //   }
+  // }
+
+  validateConfigPath(rawPath: string): boolean {
+    try {
+      const normalizedPath =  rawPath; //this.normalizePath(rawPath);
+      if (!fs.existsSync(normalizedPath)) {
+        console.error(`Config file not found at ${normalizedPath}`);
+        return false;
+      }
+
+      const config = fs.readFileSync(normalizedPath, 'utf-8');
+      const parsed = yaml.load(config);
+      if (!parsed || typeof parsed !== 'object') {
+        throw new Error('Invalid kubeconfig format');
+      }
+      return true;
+    } catch (error) {
+      console.error('Invalid kubeconfig:', error);
+      return false;
+    }
+  }
+
+  normalizePath(rawPath: string): string {
+    // Handle UNC paths (Windows network paths)
+    if (rawPath.startsWith('\\\\')) {
+      return rawPath.replace(/\\/g, '\\\\');
+    }
+    return path.normalize(rawPath);
+  }
+
 }
 
 // Initialize Kubernetes service
-export function initK8sService() {
-  const k8sService = new KubernetesService()
+export function initK8sService(initialConfigPath?: string) {
+  const k8sService = new KubernetesService(initialConfigPath);
 
   // Log available contexts (doesn't require connection)
   const contexts = k8sService.getContexts()
@@ -311,5 +465,55 @@ export function initK8sService() {
     return await k8sService.getPods(namespace)
   })
 
+  ipcMain.handle("k8s:setConfigPath", async (_, path) => {
+    if (!k8sService.validateConfigPath(path)) {
+      return { success: false, error: 'Invalid kubeconfig file' }
+    }
+    k8sService.reloadConfig(path)
+    return { success: true }
+  })
+
+  // ipcMain.handle("k8s:setUserConfigPath", (_, path) => {
+  //   return k8sService.setUserConfigPath(path);
+  // });
+
+  ipcMain.handle("k8s:setUserConfigPath", (_, path) => {
+    const success = k8sService.setUserConfigPath(path);
+    k8sService.debugConfigState();
+    if (success) {
+      new Store().set('kubeConfigPath', path);
+    }
+    return success;
+  });
+
+  // ipcMain.handle("k8s:setUserConfigPath", (_, rawPath) => {
+  //   console.log(`Received path request: ${rawPath}`); // Debug original
+  //   const normalizedPath = k8sService.normalizePath(rawPath);
+  //   console.log(`Normalized path: ${normalizedPath}`); // Debug normalized
+
+  //   const success = k8sService.setUserConfigPath(normalizedPath);
+  //   if (success) {
+  //     new Store().set('kubeConfigPath', normalizedPath);
+  //     console.log(`Successfully set config path to: ${normalizedPath}`);
+  //   } else {
+  //     console.error(`Failed to set config path to: ${normalizedPath}`);
+  //   }
+
+  //   // Debug output
+  //   console.log('Current active path:', k8sService.getActiveConfigPath());
+  //   console.log('Available contexts:', k8sService.getContexts().map(c => c.name));
+
+  //   return success;
+  // });
+
+  ipcMain.handle("k8s:getActiveConfigPath", () => {
+    return k8sService.getActiveConfigPath();
+  });
+
+  ipcMain.handle("k8s:getAvailableConfigs", () => {
+    return k8sService.getAvailableConfigs();
+  });
+
   console.log("Kubernetes client service initialized")
 }
+

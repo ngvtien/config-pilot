@@ -1,17 +1,19 @@
 "use client"
 
-import type React from "react"
 import { useState, useEffect, useRef } from "react"
 import { AlertTriangle, Loader2 } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/renderer/components/ui/select"
 import { Alert, AlertDescription } from "@/renderer/components/ui/alert"
 import { Label } from "@/renderer/components/ui/label"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/renderer/components/ui/tooltip"
-import {
-  kubernetesConfigService,
-  type KubernetesContext,
-  type KubernetesConfig,
-} from "@/renderer/services/kubernetes-config.service"
+
+interface KubernetesContext {
+  name: string
+  cluster: string
+  user: string
+  namespace?: string
+  active?: boolean
+}
 
 interface KubernetesContextSelectorProps {
   onContextChange: (contextName: string) => void
@@ -35,20 +37,35 @@ const KubernetesContextSelector: React.FC<KubernetesContextSelectorProps> = ({
   const textRef = useRef<HTMLSpanElement>(null)
 
   useEffect(() => {
-    // Subscribe to config changes
-    const unsubscribe = kubernetesConfigService.subscribe((config: KubernetesConfig) => {
-      setContexts(config.contexts)
-      setCurrentContext(config.currentContext)
-      setIsLoading(false)
-    })
+    const loadContexts = async () => {
+      try {
+        setIsLoading(true)
+        setError(null)
+        
+        if (window.electronAPI) {
+          const contexts = await window.electronAPI.invoke('k8s:getContexts')
+          const currentContext = await window.electronAPI.invoke('k8s:getCurrentContext')
+          
+          setContexts(contexts)
+          setCurrentContext(currentContext || '')
+          setIsSimulated(false)
+        } else {
+          // Fallback for web environment
+          setContexts([
+            { name: "docker-desktop", cluster: "docker-desktop", user: "docker-desktop" },
+            { name: "minikube", cluster: "minikube", user: "minikube" }
+          ])
+          setCurrentContext("docker-desktop")
+          setIsSimulated(true)
+        }
+      } catch (err) {
+        setError("Failed to load Kubernetes contexts")
+      } finally {
+        setIsLoading(false)
+      }
+    }
 
-    // Initial load
     loadContexts()
-
-    // Check if we're in simulation mode
-    setIsSimulated(!window.electronAPI)
-
-    return unsubscribe
   }, [])
 
   useEffect(() => {
@@ -57,12 +74,10 @@ const KubernetesContextSelector: React.FC<KubernetesContextSelectorProps> = ({
     }
   }, [initialContext, isLoading])
 
-  // Check if text is truncated
   useEffect(() => {
     const checkTruncation = () => {
       if (textRef.current) {
-        const isOverflowing = textRef.current.scrollWidth > textRef.current.clientWidth
-        setIsTextTruncated(isOverflowing)
+        setIsTextTruncated(textRef.current.scrollWidth > textRef.current.clientWidth)
       }
     }
 
@@ -75,29 +90,23 @@ const KubernetesContextSelector: React.FC<KubernetesContextSelectorProps> = ({
     }
   }, [currentContext])
 
-  const loadContexts = async () => {
-    try {
-      setIsLoading(true)
-      setError(null)
-
-      await kubernetesConfigService.loadContexts()
-      // The subscription will handle updating the state
-    } catch (err) {
-      setError("Failed to load Kubernetes contexts")
-      setIsLoading(false)
-    }
-  }
-
   const handleContextChange = async (contextName: string) => {
     try {
-      const success = await kubernetesConfigService.setCurrentContext(contextName)
-      if (success) {
-        onContextChange(contextName)
+      if (window.electronAPI) {
+        const success = await window.electronAPI.invoke('k8s:switchContext', contextName)
+        if (success) {
+          setCurrentContext(contextName)
+          onContextChange(contextName)
+        } else {
+          setError(`Failed to switch to context ${contextName}`)
+        }
       } else {
-        setError(`Failed to set context to ${contextName}`)
+        // Simulate success in web environment
+        setCurrentContext(contextName)
+        onContextChange(contextName)
       }
     } catch (err) {
-      setError(`Failed to set context to ${contextName}`)
+      setError(`Failed to switch to context ${contextName}`)
     }
   }
 
@@ -171,5 +180,4 @@ const KubernetesContextSelector: React.FC<KubernetesContextSelectorProps> = ({
   )
 }
 
-export { KubernetesContextSelector }
 export default KubernetesContextSelector

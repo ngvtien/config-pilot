@@ -182,14 +182,37 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
       const existingRepo = localSettings.gitRepositories[index]
       return existingRepo
         ? {
-            ...existingRepo,
-            permissions: envRepo.permissions,
-          }
+          ...existingRepo,
+          permissions: envRepo.permissions,
+        }
         : envRepo
     })
 
     handleSettingChange("gitRepositories", updatedRepos)
   }, [context.environment])
+
+
+  const [kubeConfigState, setKubeConfigState] = useState<{
+    active: string;
+    available: { default: string; userSelected: string | null };
+  }>({
+    active: "",
+    available: { default: "", userSelected: null }
+  });
+
+
+  // Load initial state
+  useEffect(() => {
+    const loadConfigs = async () => {
+      if (window.electronAPI) {
+        const available = await window.electronAPI.getAvailableConfigs();
+        const active = await window.electronAPI.getActiveConfigPath();
+        setKubeConfigState({ active, available });
+        handleSettingChange('kubeConfigPath', active); // Sync with settings
+      }
+    };
+    loadConfigs();
+  }, []);
 
   const handleSettingChange = (key: keyof SettingsData, value: any) => {
     const updatedSettings = { ...localSettings, [key]: value }
@@ -248,10 +271,10 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
       const finalRepos = localSettings.gitRepositories.map((r) =>
         r.id === repoId
           ? {
-              ...r,
-              authStatus: authResult,
-              lastAuthCheck: new Date().toISOString(),
-            }
+            ...r,
+            authStatus: authResult,
+            lastAuthCheck: new Date().toISOString(),
+          }
           : r,
       )
       handleSettingChange("gitRepositories", finalRepos)
@@ -271,10 +294,10 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
       const failedRepos = localSettings.gitRepositories.map((r) =>
         r.id === repoId
           ? {
-              ...r,
-              authStatus: "failed" as const,
-              lastAuthCheck: new Date().toISOString(),
-            }
+            ...r,
+            authStatus: "failed" as const,
+            lastAuthCheck: new Date().toISOString(),
+          }
           : r,
       )
       handleSettingChange("gitRepositories", failedRepos)
@@ -287,6 +310,139 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
       }
     }
   }
+
+  // Replace your Kubernetes settings section with:
+
+  // const handleKubeConfigSelect = async () => {
+  //   try {
+  //     let selectedPath: string | null = null
+
+  //     if (window.electronAPI?.openFile) {
+  //       selectedPath = await window.electronAPI.openFile({
+  //         filters: [{ name: 'Kubernetes Config', extensions: ['yaml', 'yml', 'json', 'config'] }]
+  //       })
+  //     } else {
+  //       // Web fallback
+  //       const input = document.createElement('input')
+  //       input.type = 'file'
+  //       input.accept = '.yaml,.yml,.json,.config'
+  //       input.onchange = (e) => {
+  //         const files = (e.target as HTMLInputElement).files
+  //         if (files?.[0]) {
+  //           selectedPath = files[0].name
+  //         }
+  //       }
+  //       input.click()
+  //     }
+
+  //     if (selectedPath) {
+  //       // Save to settings
+  //       handleSettingChange('kubeConfigPath', selectedPath)
+
+  //       // Update Kubernetes service
+  //       if (window.electronAPI?.invoke) {
+  //         await window.electronAPI.invoke('k8s:setConfigPath', selectedPath)
+  //       }
+  //     }
+  //   } catch (error) {
+  //     console.error('Error selecting kubeconfig:', error)
+  //   }
+  // }
+
+  // const handleKubeConfigSelect = async () => {
+  //   try {
+  //     const filePath = await window.electronAPI?.openFile?.({
+  //       filters: [{ name: 'Kubernetes Config', extensions: ['yaml', 'yml', 'json', 'config'] }]
+  //     });
+
+  //     if (filePath) {
+  //       const success = await window.electronAPI.setUserConfigPath(filePath);
+  //       if (success) {
+  //         const activePath = await window.electronAPI.getActiveConfigPath();
+  //         setKubeConfigState(prev => ({
+  //           active: activePath,
+  //           available: { ...prev.available, userSelected: filePath }
+  //         }));
+  //         handleSettingChange('kubeConfigPath', activePath);
+  //       }
+  //     }
+  //   } catch (error) {
+  //     console.error('Failed to update kubeconfig:', error);
+  //   }
+  // }
+
+  const [isSelectingFile, setIsSelectingFile] = useState(false);
+
+    
+  const handleKubeConfigSelect = async () => {
+    setIsSelectingFile(true);
+    try {
+      const result = await window.electronAPI?.openFile({
+        filters: [{ name: 'Kubernetes Config', extensions: ['yaml', 'yml', 'json', 'config'] }]
+      });
+
+      // if (result && !result.canceled && result.filePaths.length > 0) {
+      //   const rawPath = result.filePaths[0];
+      //   console.log('Selected path:', rawPath); // Debug
+
+      //   const success = await window.electronAPI.setUserConfigPath(rawPath);
+      //   if (success) {
+      //     const activePath = await window.electronAPI.getActiveConfigPath();
+      //     console.log('Active path confirmed:', activePath); // Debug
+      //     handleSettingChange('kubeConfigPath', activePath);
+      //   }
+      // }
+
+      if (result && !result.canceled) {
+        const rawPath = result;
+        console.log('Selected path:', rawPath); // Debug
+
+        const success = await window.electronAPI.setUserConfigPath(rawPath);
+        if (success) {
+          const activePath = await window.electronAPI.getActiveConfigPath();
+          console.log('Active path confirmed:', activePath); // Debug
+          handleSettingChange('kubeConfigPath', activePath);
+        }
+      }      
+
+    } catch (error) {
+      console.error('Failed to update kubeconfig:', error);
+    }
+  }
+
+  // const handleKubeConfigSelect = async () => {
+  //   try {
+  //     const result = await window.electronAPI?.openFile();
+
+  //     if (!result || result.canceled) return;
+
+  //     // Handle both Electron and web cases
+  //     // const rawPath = Array.isArray(result) ?
+  //     //   result[0] : // Web fallback
+  //     //   result.filePaths?.[0]; // Electron
+
+  //     // if (!rawPath) {
+  //     //   console.error('No path selected');
+  //     //   return;
+  //     // }
+
+  //     console.log('Selected path:', result);
+
+  //     // For UNC paths, ensure we have the correct format
+  //     const normalizedPath = result.startsWith('\\\\') ?
+  //       result.replace(/\\/g, '\\\\') :
+  //       result;
+
+  //     const success = await window.electronAPI?.setUserConfigPath(normalizedPath);
+  //     if (success) {
+  //       const activePath = await window.electronAPI.getActiveConfigPath();
+  //       console.log('Active path confirmed:', activePath);
+  //       handleSettingChange('kubeConfigPath', activePath);
+  //     }
+  //   } catch (error) {
+  //     console.error('Failed to update kubeconfig:', error);
+  //   }
+  // };
 
   const getAuthStatusIcon = (status?: string) => {
     switch (status) {
@@ -418,9 +574,8 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
       className={`w-10 h-6 rounded-full relative transition-colors ${enabled ? "bg-amber-500" : "bg-gray-300"}`}
     >
       <div
-        className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-transform ${
-          enabled ? "translate-x-5" : "translate-x-1"
-        }`}
+        className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-transform ${enabled ? "translate-x-5" : "translate-x-1"
+          }`}
       />
     </button>
   )
@@ -774,31 +929,8 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={async () => {
-                      try {
-                        if (window.electronAPI?.openFile) {
-                          const filePath = await window.electronAPI.openFile()
-                          if (filePath) {
-                            handleSettingChange("kubeConfigPath", filePath)
-                          }
-                        } else {
-                          // Fallback for web environment
-                          const input = document.createElement("input")
-                          input.type = "file"
-                          input.accept = ".yaml,.yml,.json,.config"
-                          input.onchange = (e) => {
-                            const files = (e.target as HTMLInputElement).files
-                            if (files && files.length > 0) {
-                              // In web, we can only get the filename, not the full path
-                              handleSettingChange("kubeConfigPath", files[0].name)
-                            }
-                          }
-                          input.click()
-                        }
-                      } catch (error) {
-                        console.error("Error selecting Kubernetes config file:", error)
-                      }
-                    }}
+                    disabled={isSelectingFile}
+                    onClick={handleKubeConfigSelect}
                     className="flex items-center gap-2"
                   >
                     <FolderOpen className="h-4 w-4" />
@@ -838,10 +970,10 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
             const updatedRepos = localSettings.gitRepositories.map((repo) =>
               repo.id === authModalRepo.id
                 ? {
-                    ...repo,
-                    authStatus: "success" as const,
-                    lastAuthCheck: new Date().toISOString(),
-                  }
+                  ...repo,
+                  authStatus: "success" as const,
+                  lastAuthCheck: new Date().toISOString(),
+                }
                 : repo,
             )
             handleSettingChange("gitRepositories", updatedRepos)

@@ -4,6 +4,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { setupIpcHandlers } from './ipc-handlers.js';
 import waitOn from 'wait-on';
+import { initK8sService } from './k8s-service-client.js';
+
 
 interface WindowState {
   width: number;
@@ -16,7 +18,9 @@ interface WindowState {
 // ES Modules compatible __dirname
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-console.log(__dirname)
+// console.log(__dirname)
+
+const store = new Store();
 
 const config = new Store<{ windowState: WindowState }>({
   name: 'window-state',
@@ -127,8 +131,10 @@ async function createWindow() {
 }
 
 app.whenReady().then(() => {
-  createWindow();
+  const savedConfigPath = store.get('kubeConfigPath') as string | undefined;
   setupIpcHandlers();
+  initK8sService(savedConfigPath)
+  createWindow();
   
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

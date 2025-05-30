@@ -200,4 +200,19 @@ export function setupIpcHandlers(): void {
       throw new Error(`Failed to get directory info: ${error.message}`)
     }
   })
+
+  
+  /**
+   * File reading
+   */
+  ipcMain.handle("file:read", async (_event, filePath: string) => {
+    try {
+      const content = await fs.readFile(filePath, "utf-8");
+      return content;
+    } catch (error: any) {
+      console.error("Failed to read file:", error);
+      throw new Error(`Failed to read file: ${error.message}`);
+    }
+  });
+  
 }
