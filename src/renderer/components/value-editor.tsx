@@ -16,6 +16,7 @@ import YamlEditor, { type YamlEditorLayout } from "@/renderer/components/yaml-ed
 import type { ContextData } from "@/shared/types/context-data"
 import { generateConfigMap, generateConfigJson } from "@/renderer/lib/config-generator"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/renderer/components/ui/tooltip"
+import { buildConfigPath } from "@/renderer/lib/path-utils"
 
 interface ValueEditorProps {
   initialValue?: string
@@ -52,7 +53,7 @@ resources:
   schemaPath = "/src/mock/schema/values.schema.json",
   layout = "side-by-side",
   context,
-  baseDirectory = "/opt/config-pilot/configs"
+  baseDirectory = "/opt/config-pilot/configs",
 }) => {
   const [yamlContent, setYamlContent] = useState(initialValue)
   const [displayFormat, setDisplayFormat] = useState<"configjson" | "configmap">("configjson")
@@ -69,6 +70,16 @@ resources:
     version: "1.0.0",
     baseHostUrl: "",
   }
+
+  // Build the file path using the path utility
+  const filePath = buildConfigPath(
+    baseDirectory,
+    editorContext.customer,
+    editorContext.environment,
+    editorContext.instance,
+    editorContext.product,
+    "values.yaml",
+  )
 
   // Handle YAML content changes from the YamlEditor
   const handleYamlChange = (content: string) => {
@@ -237,11 +248,7 @@ resources:
         <div>
           <h1 className="text-2xl font-bold text-foreground">Helm Values Editor</h1>
           <p className="text-muted-foreground">
-            Editing for{" "}
-            <span className="font-medium">
-              {baseDirectory}/{editorContext.customer}/{editorContext.environment}/{editorContext.instance}/
-              {editorContext.product}/values.yaml
-            </span>
+            Editing for <span className="font-medium font-mono text-sm">{filePath}</span>
           </p>
         </div>
       </div>

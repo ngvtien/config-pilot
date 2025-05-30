@@ -32,6 +32,7 @@ import { yaml as yamlLanguage } from "@codemirror/lang-yaml"
 import { json as jsonLanguage } from "@codemirror/lang-json"
 import { oneDark } from "@codemirror/theme-one-dark"
 import { jsonTheme, readOnlyExtensions, jsonReadOnlyExtensions } from "@/renderer/lib/codemirror-themes"
+import { buildConfigPath } from "@/renderer/lib/path-utils"
 import type { ContextData } from "@/shared/types/context-data"
 
 interface SecretEditorProps {
@@ -114,6 +115,16 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
     version: "1.0.0",
     baseHostUrl: "",
   }
+
+    // Build the file path using the path utility
+  const filePath = buildConfigPath(
+    baseDirectory,
+    editorContext.customer,
+    editorContext.environment,
+    editorContext.instance,
+    editorContext.product,
+    "secrets.yaml",
+  )
 
   // Extract values from context for easier use
   const { environment: env, product, customer } = editorContext
@@ -729,8 +740,8 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
           <h2 className="text-2xl font-bold text-foreground">Helm Secrets Editor</h2>
           <p className="text-muted-foreground">
             Editing for{" "}
-            <span className="font-medium">
-              {baseDirectory}/{customer}/{env}/{editorContext.instance}/{product}/secrets.yaml
+            <span className="font-medium font-mono text-sm">
+              {filePath}
             </span>
           </p>
         </div>
