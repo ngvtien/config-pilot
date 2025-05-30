@@ -1,0 +1,89 @@
+.
+├── README.md
+├── components.json
+├── desktop-icon.png
+├── electron-builder.json
+├── eslint.config.js
+├── folder_structure.txt
+├── index.html
+├── package-lock.json
+├── package.json
+├── postcss.config.js
+├── src
+│   ├── index.css
+│   ├── lib
+│   │   └── utils.ts
+│   ├── main
+│   │   ├── ipc-handlers.ts
+│   │   ├── js-yaml.d.ts
+│   │   ├── k8s-service-client.ts
+│   │   ├── main.ts
+│   │   ├── tsconfig.json
+│   │   ├── types.ts
+│   │   └── util.ts
+│   ├── mock
+│   │   ├── cai
+│   │   │   └── dev
+│   │   │       └── values.yaml
+│   │   ├── dev
+│   │   │   ├── secrets.yaml
+│   │   │   └── values.yaml
+│   │   ├── prod
+│   │   │   ├── secrets.yaml
+│   │   │   └── values.yaml
+│   │   ├── schema
+│   │   │   ├── secrets.schema.json
+│   │   │   └── values.schema.json
+│   │   ├── sit
+│   │   │   ├── secrets.yaml
+│   │   │   └── values.yaml
+│   │   ├── templates
+│   │   │   └── configmap.yaml
+│   │   └── uat
+│   │       ├── secrets.yaml
+│   │       └── values.yaml
+│   ├── preload
+│   │   ├── main.d.ts
+│   │   ├── preload.ts
+│   │   └── tsconfig.json
+│   ├── renderer
+│   │   ├── App.css
+│   │   ├── App.tsx
+│   │   ├── assets
+│   │   │   └── react.svg
+│   │   ├── contexts
+│   │   │   └── ThemeContext.tsx
+│   │   ├── fallback.html
+│   │   ├── hooks
+│   │   │   ├── use-mobile.tsx
+│   │   │   ├── use-toast.tsx
+│   │   │   └── use-zoom.ts
+│   │   ├── index.prod.html
+│   │   ├── lib
+│   │   │   ├── codemirror-themes.ts
+│   │   │   └── config-generator.ts
+│   │   ├── main.tsx
+│   │   ├── services
+│   │   │   ├── credential-manager.service.ts
+│   │   │   └── kubernetes-config.service.ts
+│   │   ├── tsconfig.json
+│   │   └── vite-env.d.ts
+│   └── shared
+│       ├── ipc
+│       ├── tsconfig.json
+│       ├── types
+│       │   ├── context-data.ts
+│       │   ├── electron-api.d.ts
+│       │   ├── electron.d.ts
+│       │   ├── git-repository.ts
+│       │   ├── index.ts
+│       │   └── settings-data.ts
+│       └── utils
+├── tailwind.config.js
+├── tsconfig.app.json
+├── tsconfig.json
+├── tsconfig.node.json
+├── tsconfig.tsbuildinfo
+└── vite.config.ts
+
+23 directories, 63 files

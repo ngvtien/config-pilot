@@ -1,0 +1,15 @@
+{
+    "appId": "au.com.da.config-pilot",
+    "files": ["dist-electron", "dist-react"],
+    "icon": "./desktop-icon.png",
+    "mac": {
+        "target": "dmg"
+    },
+    "linux": {
+        "target": "AppImage",
+        "category": "Utility"
+    },
+    "win": {
+        "target": ["portable", "msi"]
+    }
+}

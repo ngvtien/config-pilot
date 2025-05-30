@@ -1,0 +1,460 @@
+/* Remove the problematic Geist font imports and use Google Fonts or system fonts instead */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+@import url(https://fonts.googleapis.com/css2?family=Lato:wght@100;300;400;700;900&display=swap);
+@import url(https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700;800&display=swap);
+@import url(https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200);
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 20 14.3% 4.1%;
+    --card: 0 0% 100%;
+    --card-foreground: 20 14.3% 4.1%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 20 14.3% 4.1%;
+    --primary: 37.7 92.1% 50.2%;
+    --primary-foreground: 26 83.3% 14.1%;
+    --secondary: 60 4.8% 95.9%;
+    --secondary-foreground: 24 9.8% 10%;
+    --muted: 60 4.8% 95.9%;
+    --muted-foreground: 25 5.3% 44.7%;
+    --accent: 60 4.8% 95.9%;
+    --accent-foreground: 24 9.8% 10%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 60 9.1% 97.8%;
+    --border: 20 5.9% 90%;
+    --input: 20 5.9% 90%;
+    --ring: 37.7 92.1% 50.2%;
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+    --radius: 0.25rem;
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 37.7 92.1% 50.2%;
+    --sidebar-primary-foreground: 26 83.3% 14.1%;
+    --sidebar-accent: 60 4.8% 95.9%;
+    --sidebar-accent-foreground: 24 9.8% 10%;
+    --sidebar-border: 20 5.9% 90%;
+    --sidebar-ring: 37.7 92.1% 50.2%;
+    /* Custom sidebar width for collapsed state */
+    --sidebar-width-icon: 4rem; /* 64px instead of default 3rem (48px) */
+  }
+
+  .dark {
+    /* Warmer dark colors - less harsh blue-gray */
+    --background: 24 9.8% 6%;
+    --background-gradient: linear-gradient(135deg, hsl(24 9.8% 6%) 0%, hsl(20 8% 8%) 100%);
+    --foreground: 60 9.1% 97.8%;
+    --card: 24 9.8% 8%;
+    --card-gradient: linear-gradient(135deg, hsl(24 9.8% 8%) 0%, hsl(20 8% 10%) 100%);
+    --card-foreground: 60 9.1% 97.8%;
+    --popover: 24 9.8% 8%;
+    --popover-foreground: 60 9.1% 97.8%;
+    --primary: 37.7 92.1% 50.2%;
+    --primary-foreground: 26 83.3% 14.1%;
+    --secondary: 20 8% 12%;
+    --secondary-foreground: 60 9.1% 97.8%;
+    --muted: 20 8% 12%;
+    --muted-foreground: 24 5.4% 65%;
+    --accent: 20 8% 12%;
+    --accent-foreground: 60 9.1% 97.8%;
+    --destructive: 0 72.2% 50.6%;
+    --destructive-foreground: 60 9.1% 97.8%;
+    --border: 20 8% 18%;
+    --input: 20 8% 18%;
+    --ring: 37.7 92.1% 50.2%;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+    /* Layered backgrounds - sidebar darker than main */
+    --sidebar-background: 24 9.8% 4%;
+    --sidebar-gradient: linear-gradient(180deg, hsl(24 9.8% 4%) 0%, hsl(20 8% 6%) 100%);
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 37.7 92.1% 50.2%;
+    --sidebar-primary-foreground: 26 83.3% 14.1%;
+    --sidebar-accent: 20 8% 14%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 20 8% 16%;
+    --sidebar-ring: 37.7 92.1% 50.2%;
+    /* Selection and focus colors */
+    --selection-bg: 37.7 92.1% 50.2%;
+    --selection-fg: 26 83.3% 14.1%;
+    --focus-ring: 37.7 92.1% 50.2%;
+    /* Reduced radius for sharper look */
+    --radius: 0.25rem;
+    /* Custom sidebar width for collapsed state */
+    --sidebar-width-icon: 4rem; /* 64px instead of default 3rem (48px) */
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  /* Enhanced dark mode backgrounds with gradients */
+  .dark body {
+    background: var(--background-gradient);
+    min-height: 100vh;
+  }
+
+  /* Custom selection colors */
+  .dark ::selection {
+    background: hsl(var(--selection-bg) / 0.3);
+    color: hsl(var(--selection-fg));
+  }
+
+  .dark ::-moz-selection {
+    background: hsl(var(--selection-bg) / 0.3);
+    color: hsl(var(--selection-fg));
+  }
+
+  /* Enhanced focus indicators */
+  .dark *:focus-visible {
+    outline: 2px solid hsl(var(--focus-ring));
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px hsl(var(--focus-ring) / 0.1);
+  }
+}
+
+/* Custom scrollbars for dark mode */
+.dark ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.dark ::-webkit-scrollbar-track {
+  background: hsl(20 8% 8%);
+  border-radius: 2px;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, hsl(20 8% 20%) 0%, hsl(20 8% 16%) 100%);
+  border-radius: 2px;
+  border: 1px solid hsl(20 8% 12%);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, hsl(20 8% 24%) 0%, hsl(20 8% 20%) 100%);
+}
+
+.dark ::-webkit-scrollbar-corner {
+  background: hsl(20 8% 8%);
+}
+
+/* Firefox scrollbar styling */
+.dark * {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(20 8% 18%) hsl(20 8% 8%);
+}
+
+/* Remove borders from font-mono elements in dark mode */
+.dark .font-mono {
+  background: transparent !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  border: none !important;
+}
+
+/* Enhanced sidebar with gradient background */
+.dark [data-sidebar="sidebar"] {
+  background: var(--sidebar-gradient) !important;
+  border-right: 1px solid hsl(var(--sidebar-border));
+  z-index: 40;
+}
+
+/* Card gradients for depth */
+.dark .border.rounded-lg {
+  background: var(--card-gradient);
+  border: 1px solid hsl(var(--border));
+  box-shadow: 0 1px 3px 0 hsl(0 0% 0% / 0.1), 0 1px 2px -1px hsl(0 0% 0% / 0.1);
+}
+
+/* Backdrop blur on sticky header - enhanced for dark mode */
+.dark header.sticky {
+  background: hsl(var(--background) / 0.95) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid hsl(var(--border) / 0.8);
+}
+
+/* Enhanced button hover states */
+.dark .bg-secondary:hover {
+  background: linear-gradient(135deg, hsl(20 8% 14%) 0%, hsl(20 8% 16%) 100%);
+}
+
+.dark .bg-accent:hover {
+  background: linear-gradient(135deg, hsl(20 8% 14%) 0%, hsl(20 8% 16%) 100%);
+}
+
+/* Enhanced dropdown and popover backgrounds */
+.dark [data-radix-popper-content-wrapper] {
+  background: var(--card-gradient);
+  border: 1px solid hsl(var(--border));
+  box-shadow: 0 10px 15px -3px hsl(0 0% 0% / 0.1), 0 4px 6px -4px hsl(0 0% 0% / 0.1);
+}
+
+/* Enhanced alert styling */
+.dark .bg-amber-50 {
+  background: linear-gradient(135deg, hsl(37.7 92.1% 8%) 0%, hsl(37.7 80% 10%) 100%);
+  border-color: hsl(37.7 80% 20%);
+}
+
+.dark .border-amber-200 {
+  border-color: hsl(37.7 80% 20%);
+}
+
+.dark .text-amber-800 {
+  color: hsl(37.7 80% 70%);
+}
+
+.dark .text-amber-600 {
+  color: hsl(37.7 80% 65%);
+}
+
+/* Enhanced input styling */
+.dark input[type="text"],
+.dark input[type="password"],
+.dark textarea,
+.dark select {
+  background: linear-gradient(135deg, hsl(20 8% 10%) 0%, hsl(20 8% 12%) 100%);
+  border: 1px solid hsl(var(--border));
+  color: hsl(var(--foreground));
+}
+
+.dark input[type="text"]:focus,
+.dark input[type="password"]:focus,
+.dark textarea:focus,
+.dark select:focus {
+  border-color: hsl(var(--ring));
+  box-shadow: 0 0 0 2px hsl(var(--ring) / 0.2);
+}
+
+/* Enhanced badge styling */
+.dark .bg-blue-500 {
+  background: linear-gradient(135deg, hsl(217 91% 60%) 0%, hsl(217 91% 55%) 100%);
+}
+
+.dark .bg-green-500 {
+  background: linear-gradient(135deg, hsl(142 76% 36%) 0%, hsl(142 76% 32%) 100%);
+}
+
+.dark .bg-amber-500 {
+  background: linear-gradient(135deg, hsl(37.7 92.1% 50%) 0%, hsl(37.7 92.1% 45%) 100%);
+}
+
+.dark .bg-orange-500 {
+  background: linear-gradient(135deg, hsl(24.6 95% 53%) 0%, hsl(24.6 95% 48%) 100%);
+}
+
+.dark .bg-red-500 {
+  background: linear-gradient(135deg, hsl(0 84% 60%) 0%, hsl(0 84% 55%) 100%);
+}
+
+/* Enhanced menu item hover states */
+.dark [data-sidebar="menu-button"]:hover {
+  background: linear-gradient(135deg, hsl(var(--sidebar-accent)) 0%, hsl(20 8% 16%) 100%);
+}
+
+/* AGGRESSIVE SIDEBAR WIDTH FIXES - Multiple targeting approaches */
+
+/* Target the sidebar component directly with high specificity */
+[data-sidebar="sidebar"][data-state="collapsed"] {
+  width: 4rem !important;
+  min-width: 4rem !important;
+  max-width: 4rem !important;
+}
+
+/* Target with class combinations */
+.group[data-collapsible="icon"] [data-sidebar="sidebar"] {
+  width: 4rem !important;
+  min-width: 4rem !important;
+}
+
+/* Target the sidebar wrapper */
+.sidebar-custom[data-state="collapsed"] {
+  width: 4rem !important;
+  min-width: 4rem !important;
+}
+
+/* Target any element with collapsed state */
+*[data-state="collapsed"][data-sidebar="sidebar"] {
+  width: 4rem !important;
+  min-width: 4rem !important;
+}
+
+/* Override Tailwind classes directly */
+.w-12[data-state="collapsed"] {
+  width: 4rem !important;
+}
+
+.w-3[data-state="collapsed"] {
+  width: 4rem !important;
+}
+
+/* Ensure the logo container has proper width in collapsed state */
+[data-sidebar="sidebar"][data-state="collapsed"] .aspect-square,
+.group[data-collapsible="icon"] .aspect-square {
+  min-width: 2rem;
+  flex-shrink: 0;
+}
+
+/* Force sidebar width using CSS custom properties */
+.sidebar-collapsed-width {
+  --sidebar-width-icon: 4rem !important;
+}
+
+/* Custom amber theme overrides */
+@layer components {
+  .btn-primary {
+    @apply bg-amber-500 hover:bg-amber-600 text-amber-950;
+  }
+
+  .btn-secondary {
+    @apply bg-amber-100 hover:bg-amber-200 text-amber-900 border-amber-200;
+  }
+
+  .btn-outline {
+    @apply border-amber-300 text-amber-700 hover:bg-amber-50;
+  }
+
+  .badge-default {
+    @apply bg-amber-500 text-amber-950;
+  }
+
+  .badge-secondary {
+    @apply bg-amber-100 text-amber-800;
+  }
+
+  .badge-outline {
+    @apply border-amber-300 text-amber-700;
+  }
+}
+
+/* Ensure buttons use the custom amber theme */
+.bg-primary {
+  background-color: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+
+.bg-primary:hover {
+  background-color: hsl(37.7 92.1% 45.2%); /* Darker on hover */
+}
+
+.bg-secondary {
+  background-color: hsl(var(--secondary));
+  color: hsl(var(--secondary-foreground));
+}
+
+.bg-secondary:hover {
+  background-color: hsl(60 4.8% 90.9%);
+}
+
+.border-input {
+  border-color: hsl(var(--input));
+}
+
+.text-primary {
+  color: hsl(var(--primary));
+}
+
+.text-secondary {
+  color: hsl(var(--secondary-foreground));
+}
+
+.ring-ring {
+  --tw-ring-color: hsl(var(--ring));
+}
+
+/* Focus states with custom amber */
+.focus\:ring-ring:focus {
+  --tw-ring-color: hsl(var(--ring));
+}
+
+.focus\:ring-2:focus {
+  --tw-ring-offset-width: 2px;
+  --tw-ring-color: hsl(var(--ring));
+  box-shadow: var(--tw-ring-inset) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color);
+}
+
+/* Custom scrollbar for tree view */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: hsl(var(--muted) / 0.3);
+  border-radius: 4px;
+  margin: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, hsl(var(--muted-foreground) / 0.3) 0%, hsl(var(--muted-foreground) / 0.2) 100%);
+  border-radius: 4px;
+  border: 1px solid hsl(var(--background));
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, hsl(var(--muted-foreground) / 0.5) 0%, hsl(var(--muted-foreground) / 0.3) 100%);
+}
+
+.custom-scrollbar::-webkit-scrollbar-corner {
+  background: hsl(var(--muted) / 0.3);
+}
+
+/* Firefox scrollbar styling */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted-foreground) / 0.3) hsl(var(--muted) / 0.3);
+}
+
+/* Smooth scrolling behavior */
+.custom-scrollbar {
+  scroll-behavior: smooth;
+}
+
+/* Hide scrollbar when not needed */
+.custom-scrollbar {
+  overflow: auto;
+}
+
+/* Ensure proper scroll padding */
+.custom-scrollbar {
+  scroll-padding: 1rem;
+}
+
+/* For modern browsers */
+.scroll-container {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 #f1f5f9;
+}
+
+/* For Webkit browsers */
+.scroll-container::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.scroll-container::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+
+.scroll-container::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1;
+  border-radius: 4px;
+}

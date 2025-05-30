@@ -1,0 +1,7 @@
+replicaCount: 1
+image:
+  repository: nginx
+  tag: "1.19"
+service:
+  type: LoadBalancer
+  port: 80

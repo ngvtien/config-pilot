@@ -1,0 +1,24 @@
+replicaCount: 2
+environments:
+  - dev
+  - uat
+image:
+  repository: nginx
+  tag: "1.25.0"
+service:
+  type: ClusterIP
+  port: 80
+  ports:
+    - name: http
+      port: 80
+    - name: https
+      port: 443
+config:
+  featureToggles:
+    enableNewUI: true
+    enableBetaMode: false
+  logging:
+    level: Information
+    output: Console
+  connectionStrings:
+    defaultConnection: "Server=db;Database=myapp;User Id=sa;Password=yourStrong(!)Password;"      

@@ -1,0 +1,172 @@
+config:
+  Organisation: acf
+  logging:
+    level: Information
+    output: Console
+  Serilog:
+    Using:
+    - Serilog.Sinks.File
+    - Serilog.Sinks.Console
+    - Serilog.Sinks.EventLog
+    MinimumLevel:
+      Default: Debug
+      Override:
+        Microsoft: Debug
+        System: Debug
+    WriteTo:
+    - Name: File
+      Args:
+        source: CAI ACF
+        logName: CAI ACF
+        path: E:\Logs\CAI\CAI ACF\log-.txt
+        rollingInterval: Day
+        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss} [{ThreadId}] {Level:u3} {Message:lj}{NewLine}{Exception}"
+    - Name: Console
+      Args:
+        source: CAI ACF
+        logName: CAI ACF
+        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss} [{ThreadId}] {Level:u3} {Message:lj}{NewLine}{Exception}"
+    - Name: EventLog
+      Args:
+        source: CAI ACF
+        logName: CAI ACF
+        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss} [{ThreadId}] {Level:u3} {Message:lj}{NewLine}{Exception}"
+    Enrich:
+    - FromLogContext
+    - WithThreadId
+    Properties:
+      Application: CAI ACF
+  acf:
+    OrganisationConfiguration:
+      checkAllowLimitMods: 'True'
+      globalPayClientId: '523669'
+      globalPayUserId: '139965'
+      branchNumber: '5'
+      matrixCreditUnionId: '2377'
+      fiServUrl: http://10.99.123.136/crg_CommunicatorUAT004/crg.aspx
+      eventLogName: CAI ACF
+      eventLogSource: CAI ACF
+      overrideExternalTransferToInstitution: 'true'
+      suppressServiceIdCheckThirdParties: EDC,EDC256,EDC256ECDSA
+      useEsbSslEndpoint: 'true'
+      secondaryPasswordIV: SecondaryPasswordIV
+      secondaryPasswordKey: SecondaryPasswordKey
+      fiServRestApiPassword: FiServRestApiPassword
+      Services:
+      - Key: '602'
+        PasswordEncoding: Xor
+        PasswordSalt: Test Password Salt 1
+        Fallbacks:
+        - PasswordEncoding: Md5
+          PasswordSalt: Test Password Salt 2
+      Encoders:
+      - Key: AcfEnc
+        Code: |-
+          using DataAction.Cai.Repository;
+          dXNpbmcgU3lzdGVtOwoKbmFtZXNwYWNlIEZvbwp7CiAgICBwdWJsaWMgY2xhc3MgUWNjdVBhc3N3b3JkRW5jb2RlciA6IEJhc2VQYXNzd29yZEVuY29kZXIKICAgIHsKICAgICAgICAvL2Zyb20gY3I6IDEgLSBjb252ZXJ0IHRvIGxvd2VyLCAyIC0gdHJ1bmNhdGUgcGFzdCAxMCBjaGFyYWN0ZXJzLCAzIC0gaGFzaCB3aXRoIG1kNQogICAgICAgIHB1YmxpYyBvdmVycmlkZSBzdHJpbmcgRW5jb2RlKHN0cmluZyBwYXNzd29yZCwgc3RyaW5nIG1lbWJlck51bWJlciwgc3RyaW5nIHNhbHQpCiAgICAgICAgewogICAgICAgICAgICB2YXIgY2xlYW5lZCA9IHBhc3N3b3JkID8/IHN0cmluZy5FbXB0eTsKICAgICAgICAgICAgCiAgICAgICAgICAgIHJldHVybiBNZDUoCiAgICAgICAgICAgICBjbGVhbmVkLlRvTG93ZXIoKS5TdWJzdHJpbmcoMCwgTWF0aC5NaW4oMTAsIGNsZWFuZWQuTGVuZ3RoKSksCiAgICAgICAgICAgICBtZW1iZXJOdW1iZXIgPz8gc3RyaW5nLkVtcHR5LAogICAgICAgICAgICAgc2FsdCk7CiAgICAgICAgfQogICAgfQp9
+      ServiceXapiUsernameOverrides:
+      - ServiceId: '601'
+        Username: VRU
+      - ServiceId: '602'
+        Username: NET
+  AlternateOrganisations: []
+  ConnectionStrings:
+    ACF: DataSource=10.99.103.240,8200;Initial Catalog=A_DevCPS;User Id=CPS_CAI;Password=P@ssword1;charset=iso_1;Connection
+      Lifetime=120;ClientHostName=DA-DVCAI01;EncryptPassword=2;Pooling=false;ApplicationName=ACF
+      CAI (unpooled);
+    ACF-ConnectionPooling: DataSource=10.99.103.240,8200;Initial Catalog=A_DevCPS;User
+      Id=CPS_CAI;Password=P@ssword1;charset=iso_1;Connection Lifetime=120;ClientHostName=DA-DVCAI01;EncryptPassword=2;Pooling=true;Min
+      Pool Size=5;Max Pool Size=10;ApplicationName=ACF CAI (pooled);
+    CBS-ACF-TrustedStaffLogin: DataSource=10.99.103.240,8200;Initial Catalog=DevCPS;User
+      Id=TRUSTED;Password=PASSWORD;charset=iso_1;Pooling=false;ClientHostName=DA-DVCAI01;ApplicationName=ACF
+      ESB STAFF TRUSTED(unpooled);EncryptPassword=2;
+    ACF_IB: DataSource=10.99.103.240,8200;Initial Catalog=IB_DevCPS;User Id=CPS_CAI;Password=P@ssword1;charset=iso_1;Connection
+      Lifetime=120;ClientHostName=DA-DVCAI01;EncryptPassword=2;Pooling=false;ApplicationName=ACF
+      CAI (unpooled);
+    ACF_SXI: DataSource=10.99.21.67,5000;Initial Catalog=#{Databases[SXI].DatabaseName};User
+      Id=#{Databases[SXI].Username};Password=#{Databases[SXI].Password};charset=iso_1;Connection
+      Lifetime=60;ClientHostName=DA-DVCAI01;EncryptPassword=2;Pooling=false;ApplicationName=ACF
+      CAI (unpooled);
+  NewRelic.AppName: DEV ACF CAI,DEV ACF
+  SignaturePswd: SignaturePswd
+  GetAccountsThresholdInMilliseconds: '60000'
+  OrganisationId: ACF
+  useAseNetCoreDbDriver: 'true'
+  exceptionSensitiveParameterList: "@psPIN,@psNewPIN,@psCardNo,@psPan"
+  AllowedHosts: "*"
+  cai.server:
+    bcp:
+      partnerPath: "\\\\[bcp_partner_ip_address]\\BCP"
+    fiServ:
+      url: http://10.99.123.136/crg_CommunicatorUAT004/crg.aspx
+  system.serviceModel:
+    client:
+      endpoint:
+      - name: AccountingPort
+        address: http://webservice1.finsyn.net.au/CubsWebServices/Accounting
+        binding: basicHttpBinding
+        bindingConfiguration: AccountingPortBinding
+        contract: Accounting.Accounting
+      - name: GlobalPayWebServices.HttpEndpoint
+        address: https://demo.webservices.globalpay.convera.com/PartnerAPI.Service/PartnerAPIWebService.svc/production
+        binding: wsHttpBinding
+        behaviorConfiguration: GlobalPayWebServices.ClientBehavior
+        bindingConfiguration: WSHttpBinding_PartnerAPIWebService
+        contract: PartnerAPIWebService.PartnerAPIWebService
+      - name: DataAction.Cai.Repository.Products.Loans.Calculator.ILegacyLoanCalculator
+        address: http://data-dkvcai4.cai.dataaction.com.au:80/Cai/LoanCalculator/2011_09_29/LegacyLoanCalculator.svc/Soap11
+        binding: basicHttpBinding
+        bindingConfiguration: NoSecurityBinding
+        contract: DataAction.Cai.Repository.Products.Loans.Calculator.ILegacyLoanCalculator
+      - name: EDC_ServiceLimits_EsbSslEndpoint
+        address: https://da-dvesb01.digitaldev.local:41002/
+        binding: basicHttpBinding
+        behaviorConfiguration: EDC_EsbSslBehavior
+        bindingConfiguration: basicHttpBinding
+        contract: Esb.Integration.ServiceLimits
+      - name: EDC_Cards_EsbSslEndpoint
+        address: https://da-dvesb01.digitaldev.local:41002/
+        binding: basicHttpBinding
+        behaviorConfiguration: EDC_EsbSslBehavior
+        bindingConfiguration: basicHttpBinding
+        contract: Esb.Integration.Cards
+      - name: EDC256_ServiceLimits_EsbSslEndpoint
+        address: https://da-dvesb01.digitaldev.local:41002/
+        binding: basicHttpBinding
+        behaviorConfiguration: EDC256_EsbSslBehavior
+        bindingConfiguration: basicHttpBinding
+        contract: Esb.Integration.ServiceLimits
+      - name: EDC256_Cards_EsbSslEndpoint
+        address: https://da-dvesb01.digitaldev.local:41002/
+        binding: basicHttpBinding
+        behaviorConfiguration: EDC256_EsbSslBehavior
+        bindingConfiguration: basicHttpBinding
+        contract: Esb.Integration.Cards
+    ClientBehaviors:
+    - Name: GlobalPayWebServices.ClientBehavior
+      dataContractSerializer:
+        maxItemsInObjectGraph: 2147483647
+      clientCredentials:
+        clientCertificate:
+          storeLocation: LocalMachine
+          storeName: My
+          x509FindType: FindByThumbprint
+          findValue: 15004f2d6364a8ecd6055175bd79f9ad2e33443e
+    - Name: EDC_EsbSslBehavior
+      dataContractSerializer:
+        maxItemsInObjectGraph: 2147483647
+      clientCredentials:
+        clientCertificate:
+          storeLocation: LocalMachine
+          storeName: My
+          x509FindType: FindByThumbprint
+          findValue: ac c8 66 1b 77 3b a5 f3 27 2b 6a 89 9f e3 5b 5f c6 2c 1f a1
+    - Name: EDC256_EsbSslBehavior
+      dataContractSerializer:
+        maxItemsInObjectGraph: 2147483647
+      clientCredentials:
+        clientCertificate:
+          storeLocation: LocalMachine
+          storeName: My
+          x509FindType: FindByThumbprint
+          findValue: a0 9c 1d 8f 02 a4 fc 0e cc e4 ad 0a f9 8e 6c ec b8 68 ee 26

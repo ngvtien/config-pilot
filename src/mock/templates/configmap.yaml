@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: my-app-config
+data:
+  config.json: |
+{{#if (lookup Values.data "config.json")}}
+  {{#each (splitLines (lookup Values.data "config.json"))}}
+    {{this}}
+  {{/each}}
+{{else}}
+  # No config.json found
+{{/if}}
+

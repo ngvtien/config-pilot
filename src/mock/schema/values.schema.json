@@ -1,0 +1,100 @@
+{
+  "type": "object",
+  "properties": {
+    "replicaCount": {
+      "type": "integer",
+      "title": "Replica Number",
+      "default": 1
+    },
+    "environments": {
+      "type": "array",
+      "title": "Environments",
+      "items": {
+        "type": "string"
+      }
+    },
+    "image": {
+      "type": "object",
+      "properties": {
+        "repository": {
+          "type": "string",
+          "default": "nginx"
+        },
+        "tag": {
+          "type": "string",
+          "default": "latest"
+        }
+      }
+    },
+    "service": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "ClusterIP",
+            "NodePort",
+            "LoadBalancer"
+          ]
+        },
+        "port": {
+          "type": "integer"
+        },
+        "ports": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "port": {
+                "type": "number"
+              }
+            }
+          }
+        }
+      }
+    },
+    "config": {
+      "type": "object",
+      "title": "Application Configuration",
+      "properties": {
+        "featureToggles": {
+          "type": "object",
+          "title": "Feature Toggles",
+          "properties": {
+            "enableNewUI": { "type": "boolean", "default": true },
+            "enableBetaMode": { "type": "boolean", "default": false }
+          }
+        },
+        "logging": {
+          "type": "object",
+          "title": "Logging",
+          "properties": {
+            "level": {
+              "type": "string",
+              "enum": ["Trace", "Debug", "Information", "Warning", "Error", "Critical"],
+              "default": "Information"
+            },
+            "output": {
+              "type": "string",
+              "enum": ["Console", "File", "Both"],
+              "default": "Console"
+            }
+          }
+        },
+        "connectionStrings": {
+          "type": "object",
+          "title": "Connection Strings",
+          "properties": {
+            "defaultConnection": {
+              "type": "string",
+              "default": "Server=db;Database=myapp;User Id=sa;Password=yourStrong(!)Password;"
+            }
+          }
+        }
+      }
+    }    
+  }
+}
