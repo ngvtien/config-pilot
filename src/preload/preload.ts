@@ -1,9 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron"
 import path from "path"
 
-contextBridge.exposeInMainWorld("electronAPI", {
-  //invoke: (channel:string, ...args:any[]) => ipcRenderer.invoke(channel, ...args),
-
+contextBridge.exposeInMainWorld("electronAPI", {  
 invoke: (channel:string, ...args:any[]) => {
     const validChannels = [
       'k8s:getContexts',
@@ -11,6 +9,7 @@ invoke: (channel:string, ...args:any[]) => {
       'k8s:setUserConfigPath',
       'k8s:getActiveConfigPath',
       'k8s:getAvailableConfigs',
+      'k8s:switchContext',
       'window:isMaximized',
       'app:version',
       'dialog:openFile',
@@ -60,5 +59,6 @@ invoke: (channel:string, ...args:any[]) => {
   getAvailableConfigs: () => ipcRenderer.invoke('k8s:getAvailableConfigs'),
   getActiveConfigPath : () => ipcRenderer.invoke('k8s:getActiveConfigPath'),
   setUserConfigPath: (path: string) => ipcRenderer.invoke('k8s:setUserConfigPath', path),
+  switchContext: (contextName: string) => ipcRenderer.invoke('k8s:switchContext', contextName),
 
 })

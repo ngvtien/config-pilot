@@ -20,6 +20,7 @@ import {
 import { cn } from "@/lib/utils"
 import { ScrollArea } from "@/renderer/components/ui/scroll-area"
 import { Badge } from "@/renderer/components/ui/badge"
+import { Card, CardHeader } from "@/renderer/components/ui/card"
 
 // Context types
 interface FileExplorerContext {
@@ -593,16 +594,12 @@ export const FileExplorer = ({ context, onFileSelect, onContextChange, className
   const fileSystemData = useMemo(() => generateFileSystemData(context), [context])
 
   return (
-    <div
-      className={cn(
-        "flex flex-col h-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg",
-        className,
-      )}
-    >
-      <ContextBreadcrumb context={context} onContextChange={onContextChange} />
-
+    <Card className={cn("flex flex-col h-full", className)}>
+      <CardHeader className="pb-3">
+        <ContextBreadcrumb context={context} onContextChange={onContextChange} />
+      </CardHeader>
       <ScrollArea className="flex-1">
-        <div className="p-2 space-y-1">
+        <div className="p-6 space-y-1">
           {fileSystemData.map((item) => (
             <FileExplorerItem
               key={item.id}
@@ -615,6 +612,6 @@ export const FileExplorer = ({ context, onFileSelect, onContextChange, className
           ))}
         </div>
       </ScrollArea>
-    </div>
+    </Card>
   )
 }

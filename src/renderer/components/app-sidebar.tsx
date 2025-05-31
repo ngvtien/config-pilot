@@ -185,23 +185,26 @@ export function AppSidebar({
   return (
     <Sidebar collapsible="icon" variant="sidebar" {...props}>
       <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              size="lg"
-              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground cursor-pointer"
-              onClick={toggleSidebar}
-            >
-              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-yellow-500 text-white font-bold">
-                CP
+        <div className="p-2">
+          <div 
+            className="cursor-pointer transition-all duration-200 hover:bg-sidebar-accent rounded-md p-2"
+            onClick={toggleSidebar}
+          >
+            <div className="flex flex-col items-center justify-center">
+
+              <div className="flex items-center justify-center rounded-lg bg-yellow-500 text-white font-bold size-8 group-data-[collapsible=icon]:size-8 group-data-[state=expanded]:size-12">
+                <span className="text-sm group-data-[state=expanded]:text-lg">
+                  CP
+                </span>
               </div>
-              <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-semibold">ConfigPilot</span>
-                <span className="truncate text-xs">Configuration Management</span>
+              
+              <div className="flex flex-col items-center text-center mt-2 group-data-[collapsible=icon]:hidden">
+                <span className="font-semibold text-base">ConfigPilot</span>
+                <span className="text-xs text-muted-foreground">Configuration Management</span>
               </div>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
+            </div>
+          </div>
+        </div>
       </SidebarHeader>
 
       <SidebarContent>

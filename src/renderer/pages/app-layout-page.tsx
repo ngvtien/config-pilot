@@ -351,7 +351,7 @@ export default function AppLayoutPage({
         view={view}
         setView={setView}
         environment={context.environment}
-        setEnvironment={(env) => handleContextChange({ ...context, environment: env })}
+        setEnvironment={(env: any) => handleContextChange({ ...context, environment: env })}
         kubernetesContext={kubernetesContext}
         setKubernetesContext={handleKubernetesContextChange}
         onSaveContext={() => saveContextToLocalStorage(context)}
@@ -359,8 +359,8 @@ export default function AppLayoutPage({
       <SidebarInset>
         <header className="sticky top-0 z-50 flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12 bg-background border-b">
           <div className="flex items-center gap-2 px-4 w-full">
-            <Breadcrumb>
-              <BreadcrumbList>
+            <Breadcrumb className="min-w-0 flex-1">
+              <BreadcrumbList className="flex-nowrap">
                 <BreadcrumbItem className="hidden md:block">
                   <BreadcrumbPage>ConfigPilot</BreadcrumbPage>
                 </BreadcrumbItem>

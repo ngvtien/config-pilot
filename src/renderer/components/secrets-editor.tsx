@@ -733,7 +733,7 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
   }, [isResizing])
 
   return (
-    <div className="flex flex-col h-screen bg-background rounded-lg overflow-hidden border border-border">
+    <div className="flex flex-col h-screen bg-background overflow-hidden">
       {/* Header */}
       <div className="flex justify-between items-center bg-card p-4 rounded-t-lg">
         <div>
@@ -805,7 +805,7 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
                   {/* Secrets Table */}
                   <div className="flex-1 overflow-auto border border-border rounded-lg bg-card">
                     <table className="w-full border-collapse">
-                      <thead className="bg-muted/50 sticky top-0 z-10">
+                      <thead className="bg-muted sticky top-0 z-10 shadow-sm">
                         <tr>
                           <th className="p-3 text-left border-b border-border">
                             <Checkbox

@@ -458,3 +458,16 @@
   background-color: #cbd5e1;
   border-radius: 4px;
 }
+
+/* Prevent header overlap with collapsed sidebar */
+.group[data-collapsible="icon"] [data-sidebar="inset"] > header {
+  margin-left: 4rem;
+  width: calc(100% - 4rem);
+  transition: margin-left 0.2s ease-in-out, width 0.2s ease-in-out;
+}
+
+/* Reset for expanded state */
+.group[data-state="expanded"] [data-sidebar="inset"] > header {
+  margin-left: 0;
+  width: 100%;
+}

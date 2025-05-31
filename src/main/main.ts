@@ -1,4 +1,4 @@
-import { app, BrowserWindow, screen, nativeTheme } from 'electron';
+import { app, BrowserWindow, screen, nativeTheme, session } from 'electron';
 import Store from 'electron-store';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -130,7 +130,18 @@ async function createWindow() {
 
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+
+  if (isDev) {
+    try {
+      await session.defaultSession.loadExtension(
+        path.join(require.resolve('react-devtools'), '..', '..'),
+        { allowFileAccess: true }
+      );
+    } catch (e) {
+      console.error('Could not load React DevTools:', e);
+    }
+  }  
   const savedConfigPath = store.get('kubeConfigPath') as string | undefined;
   setupIpcHandlers();
   initK8sService(savedConfigPath)
