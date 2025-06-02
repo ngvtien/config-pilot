@@ -30,6 +30,33 @@ export interface SettingsData {
 
   // Backup and sync
   backupSettings?: BackupSettings
+
+  // Schema management settings
+  schemaSettings?: SchemaSettings
+
+}
+
+export interface SchemaSettings {
+  // Local schema storage directory
+  schemaStorageDir: string
+  
+  // Default Kubernetes version for new schemas
+  defaultK8sVersion: string
+  
+  // Available Kubernetes versions
+  availableVersions: string[]
+  
+  // Auto-download schemas on startup
+  autoDownloadSchemas: boolean
+  
+  // Cache duration in hours
+  schemaCacheDuration: number
+  
+  // Schema source configuration
+  schemaSource: {
+    baseUrl: string
+    fallbackUrls: string[]
+  }
 }
 
 export interface EditorSettings {

@@ -17,6 +17,7 @@ import SecretsEditor from "@/renderer/components/secrets-editor"
 import FileExplorerPage from "@/renderer/pages/file-explorer-page"
 import type { ContextData } from "@/shared/types/context-data"
 import type { SettingsData } from "@/shared/types/settings-data"
+import { KubernetesResourcePage } from "./kubernetes-resource-page"
 
 type UserRole = "developer" | "devops" | "operations"
 type ViewType =
@@ -27,6 +28,7 @@ type ViewType =
   | "template-editor"
   | "oci-registry"
   | "kubernetes"
+  | "k8s-resources"  // Add this new view  
   | "argocd"
   | "git-repos"
   | "file-explorer"
@@ -310,6 +312,13 @@ export default function AppLayoutPage({
             </div>
           </div>
         )
+        case "k8s-resources":
+          return (
+            <KubernetesResourcePage
+              context={context  || localContext}
+              settings={settings || localSettings}
+            />
+          )        
       case "file-explorer":
         return (
           <FileExplorerPage

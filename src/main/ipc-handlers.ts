@@ -184,6 +184,19 @@ export function setupIpcHandlers(): void {
   })
 
   /**
+   * Ensure directory exists
+   */
+  ipcMain.handle('fs:ensureDirectory', async (_event, dirPath: string) => {
+    try {
+      await fs.mkdir(dirPath, { recursive: true })
+      return { success: true }
+    } catch (error: any) {
+      console.error('Failed to create directory:', error)
+      throw new Error(`Failed to create directory: ${error.message}`)
+    }
+  })
+
+  /**
    * Get directory info
    */
   ipcMain.handle("directory:info", async (_event, { path: dirPath }: { path: string }) => {
@@ -201,7 +214,19 @@ export function setupIpcHandlers(): void {
     }
   })
 
-  
+  /**
+   * List directories
+   */
+  ipcMain.handle('fs:listDirectories', async (_event, dirPath: string) => {
+    try {
+      const items = await fs.readdir(dirPath, { withFileTypes: true })
+      return items.filter(item => item.isDirectory()).map(item => item.name)
+    } catch (error: any) {
+      console.error('Failed to list directories:', error)
+      return []
+    }
+  })
+
   /**
    * File reading
    */
@@ -213,6 +238,77 @@ export function setupIpcHandlers(): void {
       console.error("Failed to read file:", error);
       throw new Error(`Failed to read file: ${error.message}`);
     }
-  });
-  
+  })
+
+  /**
+   * Write file
+   */
+  // ipcMain.handle('fs:writeFile', async (_event, filePath: string, content: string) => {
+  //   try {
+  //     await fs.writeFile(filePath, content, 'utf-8')
+  //     return { success: true }
+  //   } catch (error: any) {
+  //     console.error('Failed to write file:', error)
+  //     throw new Error(`Failed to write file: ${error.message}`)
+  //   }
+  // })
+
+  /**
+   * Write file
+   */
+  ipcMain.handle('fs:writeFile', async (_event, filePath: string, content: string) => {
+    try {
+      // Normalize the path and ensure parent directory exists
+      const normalizedPath = path.resolve(filePath)
+      const dir = path.dirname(normalizedPath)
+      await fs.mkdir(dir, { recursive: true })
+
+      await fs.writeFile(normalizedPath, content, 'utf-8')
+      return { success: true }
+    } catch (error: any) {
+      console.error('Failed to write file:', error)
+      throw new Error(`Failed to write file: ${error.message}`)
+    }
+  })
+
+  /**
+   * Get file info
+   */
+  ipcMain.handle("file:info", async (_event, { path: filePath }: { path: string }) => {
+    try {
+      const stats = await fs.stat(filePath)
+      return {
+        exists: true,
+        isFile: stats.isFile(),
+        isDirectory: stats.isDirectory(),
+        size: stats.size,
+        created: stats.birthtime,
+        modified: stats.mtime,
+      }
+    } catch (error: any) {
+      throw new Error(`Failed to get file info: ${error.message}`)
+    }
+  })
+
+
+  /**
+   * Check if file exists
+   */
+  ipcMain.handle("file:exists", async (_event, { path: filePath }: { path: string }) => {
+    try {
+      const stats = await fs.stat(filePath)
+      return { exists: true, isFile: stats.isFile(), isDirectory: stats.isDirectory() }
+    } catch (error) {
+      return { exists: false, isFile: false, isDirectory: false }
+    }
+  })
+
+  /**
+   * Get Electron user data directory
+   */
+  ipcMain.handle("app:getUserDataPath", async () => {
+    return app.getPath("userData")
+  })
+
+
 }

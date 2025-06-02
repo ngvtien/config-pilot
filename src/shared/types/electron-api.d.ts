@@ -42,4 +42,7 @@ export interface ElectronAPI {
 
   // K8s related operations
   setKubeConfigPath: (path: string) => Promise<{ success: boolean }>
+
+  // App operations
+  getUserDataPath: () => Promise<string>  
 }

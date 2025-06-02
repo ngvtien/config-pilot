@@ -50,7 +50,7 @@ export default defineConfig({
               style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com;
               font-src 'self' https://fonts.gstatic.com;
               img-src 'self' data:;
-              connect-src 'self' http://localhost:5125 ws://localhost:5125;
+              connect-src 'self' http://localhost:5125 ws://localhost:5125 https://raw.githubusercontent.com https://api.github.com;
             `
             : `
               default-src 'self';

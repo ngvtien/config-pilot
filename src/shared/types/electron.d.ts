@@ -22,6 +22,7 @@
 // }
 
 // export {}
+import { join } from "path"
 
 export interface ElectronAPI {
   testGitCredentials?: (params: { url: string; credentials: any }) => Promise<boolean>
@@ -43,6 +44,11 @@ export interface ElectronAPI {
   chartSaveValues?: (chartPath: string, values: any) => Promise<void>
   helmTemplate?: (params: any) => Promise<string>
   dialogSelectDirectory?: () => Promise<{ canceled: boolean; filePaths: string[] }>
+
+  joinPath: (...parts: string[]) => join(...parts)
+
+  // App operations
+  getUserDataPath: () => Promise<string>
 }
 
 declare global {

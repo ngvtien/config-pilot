@@ -118,6 +118,11 @@ const devopsTools = [
     view: "kubernetes" as ViewType,
   },
   {
+    title: "K8s Resources",  // Add this new item
+    icon: FileText,
+    view: "k8s-resources" as ViewType,
+  },
+  {
     title: "ArgoCD",
     icon: GitBranch,
     view: "argocd" as ViewType,
