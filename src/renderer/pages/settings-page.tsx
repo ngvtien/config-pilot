@@ -25,6 +25,8 @@ import type { GitRepository } from "@/shared/types/git-repository"
 import type { SettingsData } from "@/shared/types/settings-data"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/renderer/components/ui/tabs"
 import { joinPath } from "@/renderer/lib/path-utils"
+// Add to imports
+import { KubernetesVersionSelector } from '@/renderer/components/kubernetes-version-selector'
 
 interface SettingsPageProps {
   context: ContextData
@@ -373,7 +375,7 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
 
   const [isSelectingFile, setIsSelectingFile] = useState(false);
 
-    
+
   const handleKubeConfigSelect = async () => {
     setIsSelectingFile(true);
     try {
@@ -403,7 +405,7 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
           console.log('Active path confirmed:', activePath); // Debug
           handleSettingChange('kubeConfigPath', activePath);
         }
-      }      
+      }
 
     } catch (error) {
       console.error('Failed to update kubeconfig:', error);
@@ -900,6 +902,24 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
           <div className="border rounded-lg p-6">
             <h3 className="text-lg font-semibold mb-4">Kubernetes</h3>
             <div className="space-y-4">
+
+              <div className="border-b border-border pb-4 mb-4">
+                <div className="flex items-center gap-2 mb-4">
+                  <GitBranch className="h-5 w-5" />
+                  <h4 className="font-medium">Kubernetes Version</h4>
+                </div>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Configure the Kubernetes version for schema validation and resource creation.
+                </p>
+                <KubernetesVersionSelector
+                  selectedVersion={localSettings.kubernetesVersion || 'v1.31.0'}
+                  onVersionChange={(version) => handleSettingChange('kubernetesVersion', version)}
+                  onVersionInfoChange={(info) => {
+                    // Optional: Store version info in settings if needed
+                  }}
+                />
+              </div>
+
               <div className="flex items-center justify-between">
                 <div>
                   <h4 className="font-medium">Auto-refresh contexts</h4>

@@ -29,7 +29,9 @@ export interface YamlEditorProps {
   /** Target YAML filename to edit */
   targetYamlFilename: string
   /** Path to the JSON schema file */
-  jsonSchemaFile: string
+  jsonSchemaFile?: string
+  /** Dynamic JSON schema object (alternative to jsonSchemaFile) */
+  jsonSchema?: any
   /** Context data for environment/product information */
   context: ContextData
   /** Layout configuration - stacked (vertical) or side-by-side (horizontal) */
@@ -157,6 +159,7 @@ const jsonReadOnlyExtensions = [
 const YamlEditor: React.FC<YamlEditorProps> = ({
   targetYamlFilename,
   jsonSchemaFile,
+  jsonSchema,
   context,
   layout = "stacked",
   initialContent = "",
@@ -186,7 +189,7 @@ const YamlEditor: React.FC<YamlEditorProps> = ({
   // Load schema when component mounts
   useEffect(() => {
     loadSchema()
-  }, [jsonSchemaFile])
+  }, [jsonSchemaFile, jsonSchema])
 
   // Load values when component mounts or context changes
   useEffect(() => {
@@ -196,6 +199,47 @@ const YamlEditor: React.FC<YamlEditorProps> = ({
   // Load schema from file or localStorage
   const loadSchema = async () => {
     try {
+
+      // If a dynamic schema object is provided, use it directly
+      if (jsonSchema) {
+        setSchema({ ...jsonSchema })
+        showNotification("Dynamic schema loaded!", "success")
+        return
+      }
+
+      // If no jsonSchemaFile is provided and no dynamic schema, use default
+      if (!jsonSchemaFile) {
+        const defaultSchema = {
+          type: "object",
+          properties: {
+            metadata: {
+              type: "object",
+              title: "Metadata",
+              properties: {
+                name: {
+                  type: "string",
+                  title: "Name",
+                  default: "",
+                },
+                namespace: {
+                  type: "string",
+                  title: "Namespace",
+                  default: "default",
+                },
+              },
+            },
+            spec: {
+              type: "object",
+              title: "Specification",
+              properties: {},
+            },
+          },
+        }
+        setSchema(defaultSchema)
+        showNotification("Using default schema", "success")
+        return
+      }
+
       // First try to load from localStorage
       const savedSchema = localStorage.getItem(`schema_${jsonSchemaFile}`)
       if (savedSchema) {

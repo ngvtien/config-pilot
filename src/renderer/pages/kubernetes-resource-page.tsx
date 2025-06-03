@@ -1,16 +1,14 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from '@/renderer/components/ui/card'
 import { Button } from '@/renderer/components/ui/button'
 import { Input } from '@/renderer/components/ui/input'
 import { Badge } from '@/renderer/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs'
-import { ScrollArea } from '@/renderer/components/ui/scroll-area'
-import { Alert, AlertDescription } from '@/renderer/components/ui/alert'
-import { 
-  Plus, 
-  FileText, 
-  Folder, 
-  Search, 
+import {
+  Plus,
+  FileText,
+  Folder,
+  Search,
   Filter,
   GitBranch,
   Upload,
@@ -20,12 +18,13 @@ import {
   Eye
 } from 'lucide-react'
 import { KubernetesResourceCreator } from '@/renderer/components/kubernetes-resource-creator'
+import KubernetesSchemaEditor from '../components/kubernetes-schema-editor'
+
 import type { ContextData } from '@/shared/types/context-data'
 import type { SettingsData } from '@/shared/types/settings-data'
 import type { ContextAwareKubernetesResource } from '@/shared/types/kubernetes'
 import { contextNamingService } from '@/renderer/services/context-naming-service'
 import yaml from 'js-yaml'
-import { KubernetesVersionSelector } from '@/renderer/components/kubernetes-version-selector'
 import { joinPath } from '@/renderer/lib/path-utils'
 
 interface KubernetesResourcePageProps {
@@ -49,17 +48,19 @@ export function KubernetesResourcePage({ context, settings }: KubernetesResource
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedKind, setSelectedKind] = useState<string>('')
   const [isLoading, setIsLoading] = useState(false)
+
   
   // Add version state
-  const [selectedK8sVersion, setSelectedK8sVersion] = useState<string>(() => {
-    return localStorage.getItem('kubernetes-selected-version') || 'v1.27.0'
-  })
+  //  const [selectedK8sVersion, setSelectedK8sVersion] = useState<string>(() => {
+  //    return localStorage.getItem('kubernetes-selected-version') || 'v1.27.0'
+  //  })
+  const selectedK8sVersion = settings.kubernetesVersion || 'v1.31.0'
 
-  // Add state for version information
-  const [versionInfo, setVersionInfo] = useState<{
-    availableVersions: number
-    localVersions: number
-  }>({ availableVersions: 0, localVersions: 0 })
+  // // Add state for version information
+  // const [versionInfo, setVersionInfo] = useState<{
+  //   availableVersions: number
+  //   localVersions: number
+  // }>({ availableVersions: 0, localVersions: 0 })
 
   // Add userDataDir state
   const [userDataDir, setUserDataDir] = useState<string>('')
@@ -81,10 +82,15 @@ export function KubernetesResourcePage({ context, settings }: KubernetesResource
     loadUserDataDir()
   }, [])
 
+  // Memoize the context-dependent values to prevent unnecessary re-runs
+const contextKey = useMemo(() => {
+  return `${context.product}-${context.customer}-${context.environment}-${context.instance}`
+}, [context.product, context.customer, context.environment, context.instance])
+
   // Load saved resources on mount and context change
   useEffect(() => {
     loadSavedResources()
-  }, [context])
+  }, [contextKey])
 
   const loadSavedResources = async () => {
     setIsLoading(true)
@@ -99,7 +105,7 @@ export function KubernetesResourcePage({ context, settings }: KubernetesResource
         context.environment || '',
         context.instance || ''
       )
-      
+
       // Mock implementation - in real app, this would use IPC to scan filesystem
       const mockResources: SavedResource[] = [
         {
@@ -112,7 +118,7 @@ export function KubernetesResourcePage({ context, settings }: KubernetesResource
           content: {} as ContextAwareKubernetesResource
         }
       ]
-      
+
       setSavedResources(mockResources)
     } catch (error) {
       console.error('Error loading saved resources:', error)
@@ -121,20 +127,17 @@ export function KubernetesResourcePage({ context, settings }: KubernetesResource
     }
   }
 
-  const handleSaveResource = async (
-    resource: ContextAwareKubernetesResource, 
-    filePath: string
-  ) => {
+  const handleSaveResource = useCallback(async (content: string, resourceType: string) => {
     try {
-      const yamlContent = yaml.dump(resource, { 
-        indent: 2, 
+      const yamlContent = yaml.dump(resource, {
+        indent: 2,
         lineWidth: -1,
-        noRefs: true 
+        noRefs: true
       })
 
       // Use Electron IPC to save file
       const fullPath = `${settings.baseDirectory}/${filePath}`
-      
+
       // This would call the main process to save the file
       await window.electronAPI.saveFile({
         filePath: fullPath,
@@ -144,16 +147,16 @@ export function KubernetesResourcePage({ context, settings }: KubernetesResource
 
       // Refresh the saved resources list
       await loadSavedResources()
-      
+
       // Switch to manage tab to show the saved resource
       setActiveTab('manage')
-      
+
       console.log('Resource saved successfully:', fullPath)
     } catch (error) {
       console.error('Error saving resource:', error)
       throw error
     }
-  }
+  }, []);
 
   const handleDeleteResource = async (resource: SavedResource) => {
     try {
@@ -167,13 +170,55 @@ export function KubernetesResourcePage({ context, settings }: KubernetesResource
 
   const filteredResources = savedResources.filter(resource => {
     const matchesSearch = resource.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         resource.kind.toLowerCase().includes(searchTerm.toLowerCase())
+      resource.kind.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesKind = !selectedKind || resource.kind === selectedKind
     return matchesSearch && matchesKind
   })
 
   const uniqueKinds = Array.from(new Set(savedResources.map(r => r.kind)))
 
+  // Add this handler alongside the existing handleSaveResource
+  const handleSaveResourceV2 = useCallback(async (content: string, resourceType: string) => {
+    try {
+      // Parse the YAML content to get resource details
+      const parsedResource = yaml.load(content) as any
+
+      if (!parsedResource || !parsedResource.metadata?.name) {
+        throw new Error('Invalid resource: missing metadata.name')
+      }
+
+      // Create the resource object in the expected format
+      const resource: ContextAwareKubernetesResource = {
+        ...parsedResource,
+        context: {
+          product: context.product,
+          customer: context.customer,
+          environment: context.environment,
+          version: selectedK8sVersion
+        }
+      }
+
+      // Generate file path
+      const fileName = `${parsedResource.metadata.name}-${resourceType.toLowerCase()}.yaml`
+      const filePath = safeJoinPath(
+        settings.baseDirectory || '',
+        'k8s-resources',
+        context.product || '',
+        context.customer || '',
+        context.environment || '',
+        fileName
+      )
+
+      // Save the resource
+      await handleSaveResource(resource, filePath)
+
+    } catch (error) {
+      console.error('Error saving resource:', error)
+      // Handle error appropriately
+    }
+  }, [context, selectedK8sVersion, settings, handleSaveResource])
+
+  const memoizedContext = useMemo(() => context, [contextKey])
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -183,8 +228,18 @@ export function KubernetesResourcePage({ context, settings }: KubernetesResource
           <p className="text-muted-foreground">
             Create and manage Kubernetes resources for {context.product} - {context.customer} - {context.environment}
           </p>
+          <p className="text-xs">
+              Resource directory: {safeJoinPath(
+                settings.baseDirectory,
+                'k8s-resources',
+                context.product,
+                context.customer,
+                context.environment,
+                context.instance
+              )}
+            </p>          
         </div>
-        
+
         <div className="flex items-center gap-2">
           <Badge variant="outline">
             Context: {context.customer}/{context.environment}/{context.instance}
@@ -192,87 +247,38 @@ export function KubernetesResourcePage({ context, settings }: KubernetesResource
         </div>
       </div>
 
-      {/* Context Info */}
-      <Card>
-        <CardContent className="pt-6">
-          {/* <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-            <div>
-              <span className="font-medium">Product:</span>
-              <div className="text-muted-foreground">{context.product}</div>
-            </div>
-            <div>
-              <span className="font-medium">Customer:</span>
-              <div className="text-muted-foreground">{context.customer}</div>
-            </div>
-            <div>
-              <span className="font-medium">Environment:</span>
-              <div className="text-muted-foreground">{context.environment}</div>
-            </div>
-            <div>
-              <span className="font-medium">Base Directory:</span>
-              <div className="text-muted-foreground font-mono text-xs">
-                {settings.baseDirectory}/k8s-resources/{context.product}/{context.customer}/{context.environment}/{context.instance}
-              </div>
-            </div>
-          </div> */}
-            <div className="text-sm text-muted-foreground space-y-1">
-              <p>Available versions: {versionInfo.availableVersions}</p>
-              <p>Downloaded versions: {versionInfo.localVersions}</p>
-              {userDataDir && (
-                <p className="text-xs">Schema directory: {joinPath(userDataDir, 'schemas')}</p>
-              )}
-                            {userDataDir && (
-                <p className="text-xs">Schema directory: {joinPath(userDataDir, 'schemas')}</p>
-              )}
-<p className="text-xs">
-                Resource directory: {safeJoinPath(
-                  settings.baseDirectory,
-                  'k8s-resources',
-                  context.product,
-                  context.customer,
-                  context.environment,
-                  context.instance
-                )}
-              </p>
-            </div>
-
-        </CardContent>
-      </Card>
-
-      {/* Add Version Selector */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Schema Configuration</CardTitle>
-        </CardHeader>
-        <CardContent>
-        <KubernetesVersionSelector
-                  selectedVersion={selectedK8sVersion}
-                  onVersionChange={setSelectedK8sVersion}
-                  onVersionInfoChange={setVersionInfo}
-                />
-        </CardContent>
-      </Card>
-
       {/* Main Tabs */}
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'create' | 'manage')}>
-        <TabsList>
-          <TabsTrigger value="create" className="flex items-center gap-2">
-            <Plus className="h-4 w-4" />
-            Create Resource
-          </TabsTrigger>
-          <TabsTrigger value="manage" className="flex items-center gap-2">
-            <Folder className="h-4 w-4" />
-            Manage Resources ({savedResources.length})
-          </TabsTrigger>
-        </TabsList>
-
         <TabsContent value="create" className="mt-6">
-          <KubernetesResourceCreator
-            context={context}
-            settings={settings}
-            k8sVersion={selectedK8sVersion}
-            onSave={handleSaveResource}
-          />
+          {/* Kubernetes Version Selector */}
+          {/* <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <GitBranch className="h-5 w-5" />
+                Kubernetes Version
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <KubernetesVersionSelector
+                selectedVersion={selectedK8sVersion}
+                onVersionChange={setSelectedK8sVersion}
+                versionInfo={versionInfo}
+                onVersionInfoChange={setVersionInfo}
+              />
+            </CardContent>
+          </Card> */}
+
+          {/* Resource Creator Components */}
+          <Tabs defaultValue="v2" className="w-full">
+            <TabsContent value="v2">
+              <KubernetesSchemaEditor
+                  context={context}
+                  k8sVersion={selectedK8sVersion}
+                  onSave={handleSaveResourceV2}
+                  onClose={() => setShowResourceCreatorV2(false)}
+                />              
+            </TabsContent>
+          </Tabs>
         </TabsContent>
 
         <TabsContent value="manage" className="mt-6">
@@ -292,7 +298,7 @@ export function KubernetesResourcePage({ context, settings }: KubernetesResource
                       />
                     </div>
                   </div>
-                  
+
                   <div className="flex items-center gap-2">
                     <Filter className="h-4 w-4 text-muted-foreground" />
                     <select
@@ -306,7 +312,7 @@ export function KubernetesResourcePage({ context, settings }: KubernetesResource
                       ))}
                     </select>
                   </div>
-                  
+
                   <Button variant="outline" size="sm" onClick={loadSavedResources}>
                     <FileText className="h-4 w-4" />
                     Refresh
@@ -321,7 +327,7 @@ export function KubernetesResourcePage({ context, settings }: KubernetesResource
                 <Card>
                   <CardContent className="pt-6 text-center">
                     <div className="text-muted-foreground">
-                      {savedResources.length === 0 
+                      {savedResources.length === 0
                         ? 'No resources found. Create your first resource using the Create tab.'
                         : 'No resources match your search criteria.'
                       }
@@ -347,7 +353,7 @@ export function KubernetesResourcePage({ context, settings }: KubernetesResource
                             </div>
                           </div>
                         </div>
-                        
+
                         <div className="flex items-center gap-2">
                           <Button variant="outline" size="sm">
                             <Eye className="h-4 w-4" />
@@ -361,8 +367,8 @@ export function KubernetesResourcePage({ context, settings }: KubernetesResource
                             <GitBranch className="h-4 w-4" />
                             Commit
                           </Button>
-                          <Button 
-                            variant="outline" 
+                          <Button
+                            variant="outline"
                             size="sm"
                             onClick={() => handleDeleteResource(resource)}
                           >

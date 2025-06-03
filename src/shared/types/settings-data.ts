@@ -12,6 +12,7 @@ export interface SettingsData {
   defaultNamespace: string
   baseDirectory: string
   kubeConfigPath: string
+  kubernetesVersion: string
 
   // Git repositories
   gitRepositories: GitRepository[]

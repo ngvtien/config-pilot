@@ -6,6 +6,7 @@ import { Alert, AlertDescription } from '@/renderer/components/ui/alert'
 import { Badge } from '@/renderer/components/ui/badge'
 import { Download, CheckCircle, AlertTriangle, RefreshCw } from 'lucide-react'
 import { kubernetesSchemaService } from '@/renderer/services/kubernetes-schema-service'
+import { joinPath } from '@/renderer/lib/path-utils'
 
 interface KubernetesVersionSelectorProps {
     selectedVersion: string
@@ -74,6 +75,10 @@ export const KubernetesVersionSelector = React.memo(({
     const handleVersionChange = (version: string) => {
         localStorage.setItem('kubernetes-selected-version', version)
         onVersionChange(version)
+    }
+
+    const safeJoinPath = (...segments: (string | undefined | null)[]): string => {
+        return joinPath(...segments.map(segment => segment || ''))
     }
 
     const loadVersions = async () => {
@@ -244,8 +249,7 @@ export const KubernetesVersionSelector = React.memo(({
                         <Select
                             value={selectedVersion}
                             onValueChange={handleVersionChange}
-                            disabled={isLoadingVersions}
-                        >
+                            disabled={isLoadingVersions}>
 
                             <SelectTrigger className="w-full">
                                 <div className="flex items-center justify-between w-full">
@@ -339,7 +343,7 @@ export const KubernetesVersionSelector = React.memo(({
                 <p>Available versions: {availableVersions.length}</p>
                 <p>Downloaded versions: {localVersions.length}</p>
                 {userDataDir && (
-                    <p className="text-xs">Schema directory: {userDataDir}\\schemas</p>
+                    <p className="text-xs">Schema directory: {joinPath(userDataDir, 'schemas')}</p>
                 )}
             </div>
         </div>

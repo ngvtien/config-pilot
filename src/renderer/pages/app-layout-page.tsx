@@ -1,5 +1,5 @@
 "use client"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { AppSidebar } from "@/renderer/components/app-sidebar"
 import {
   Breadcrumb,
@@ -70,6 +70,7 @@ export default function AppLayoutPage({
     defaultNamespace: "default",
     baseDirectory: "/opt/config-pilot/configs",
     kubeConfigPath: "~/.kube/config",
+    kubernetesVersion: "v1.31.0",
     gitRepositories: [],
     editorSettings: {
       fontSize: 14,
@@ -143,9 +144,9 @@ export default function AppLayoutPage({
   })
 
   // Use controlled or uncontrolled mode
-  const context = propContextData || localContext
-  const settings = propSettingsData || localSettings
-
+  const context = useMemo(() => propContextData || localContext, [propContextData, localContext])
+  const settings = useMemo(() => propSettingsData || localSettings, [propSettingsData, localSettings])
+  
   // Load from localStorage only if not controlled
   useEffect(() => {
     if (!propContextData) {
@@ -267,6 +268,10 @@ export default function AppLayoutPage({
     }
   }
 
+  const memoizedContext = useMemo(() => {
+    return propContextData || localContext;
+  }, [propContextData, localContext]);
+
   const renderContent = () => {
     switch (view) {
       case "schema":
@@ -312,13 +317,15 @@ export default function AppLayoutPage({
             </div>
           </div>
         )
-        case "k8s-resources":
+        case "k8s-resources": {
+          // Replace the context assignment around line 146 with:
           return (
             <KubernetesResourcePage
-              context={context  || localContext}
+              context={memoizedContext}
               settings={settings || localSettings}
             />
-          )        
+          )
+        }        
       case "file-explorer":
         return (
           <FileExplorerPage
