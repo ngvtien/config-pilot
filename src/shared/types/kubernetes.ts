@@ -1,3 +1,5 @@
+import { ContextData } from "./context-data.js"
+
 export interface KubernetesContext {
   name: string
 }

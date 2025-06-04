@@ -1,4 +1,5 @@
-import type { GitRepository } from "./git-repository"
+import { Environment } from "./context-data.js"
+import type { GitRepository } from "./git-repository.js"
 
 export interface SettingsData {
   // General settings
@@ -35,6 +36,15 @@ export interface SettingsData {
   // Schema management settings
   schemaSettings?: SchemaSettings
 
+  // Vault configurations
+  vaultConfigurations?: {
+    [key in Environment]?: {
+      url: string
+      namespace?: string
+      authMethod: 'token' | 'userpass' | 'ldap'
+      // credentials stored securely via electronAPI
+    }
+  }
 }
 
 export interface SchemaSettings {
@@ -304,4 +314,5 @@ export const createDefaultSettings = (): SettingsData => ({
       enabled: false,
     },
   },
+  kubernetesVersion: ""
 })

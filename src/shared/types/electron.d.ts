@@ -45,7 +45,7 @@ export interface ElectronAPI {
   helmTemplate?: (params: any) => Promise<string>
   dialogSelectDirectory?: () => Promise<{ canceled: boolean; filePaths: string[] }>
 
-  joinPath: (...parts: string[]) => join(...parts)
+  joinPath: (...parts: string[]) => string //join(...parts)
 
   // App operations
   getUserDataPath: () => Promise<string>

@@ -25,8 +25,8 @@ import type { GitRepository } from "@/shared/types/git-repository"
 import type { SettingsData } from "@/shared/types/settings-data"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/renderer/components/ui/tabs"
 import { joinPath } from "@/renderer/lib/path-utils"
-// Add to imports
 import { KubernetesVersionSelector } from '@/renderer/components/kubernetes-version-selector'
+import { VaultConfigurationSection } from "@/renderer/components/vault-configuration"
 
 interface SettingsPageProps {
   context: ContextData
@@ -601,13 +601,13 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
         </div>
       </div>
 
-      <Tabs defaultValue="repositories" className="w-full">
+      <Tabs defaultValue="general" className="w-full">
         <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="repositories">Git Repositories</TabsTrigger>
-          <TabsTrigger value="directory">Base Directory</TabsTrigger>
           <TabsTrigger value="general">General</TabsTrigger>
-          <TabsTrigger value="editor">Editor</TabsTrigger>
           <TabsTrigger value="kubernetes">Kubernetes</TabsTrigger>
+          <TabsTrigger value="repositories">Git Repositories</TabsTrigger>
+          <TabsTrigger value="vault">Vault</TabsTrigger>
+          <TabsTrigger value="editor">Editor</TabsTrigger>
         </TabsList>
 
         <TabsContent value="repositories" className="space-y-4">
@@ -741,18 +741,24 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
           </div>
         </TabsContent>
 
-        <TabsContent value="directory" className="space-y-4">
-          {/* Base Directory content - keeping existing code */}
+        <TabsContent value="vault" className="space-y-6">
+          {/* Vault content - keeping existing code */}
+          <VaultConfigurationSection 
+            settings={settings}
+            onSettingsChange={onSettingsChange} 
+            context={context}          
+          />
+        </TabsContent>
+
+        <TabsContent value="general" className="space-y-4">
           <div className="border rounded-lg p-6">
-            <h3 className="text-lg font-semibold mb-4">Base Directory</h3>
+            <h3 className="text-lg font-semibold mb-4">General</h3>
+
             <div className="space-y-4">
+
               <div>
-                <Label htmlFor="baseDirectory" className="text-sm font-medium">
-                  Working Directory
-                </Label>
-                <p className="text-xs text-muted-foreground mb-2">
-                  Local folder where files are created, updated, and compared against Git repositories
-                </p>
+                <h4 className="font-medium">Working Directory</h4>
+                <p className="text-sm text-muted-foreground">Local folder where files are created, updated, and compared against Git repositories</p>
                 <div className="flex gap-2">
                   <Input
                     id="baseDirectory"
@@ -775,18 +781,8 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
                     New
                   </Button>
                 </div>
-                {localSettings.baseDirectory && (
-                  <p className="text-xs text-muted-foreground mt-1">Current: {localSettings.baseDirectory}</p>
-                )}
               </div>
-            </div>
-          </div>
-        </TabsContent>
 
-        <TabsContent value="general" className="space-y-4">
-          <div className="border rounded-lg p-6">
-            <h3 className="text-lg font-semibold mb-4">General</h3>
-            <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
                   <h4 className="font-medium">Auto-save</h4>

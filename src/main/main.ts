@@ -74,8 +74,7 @@ async function createWindow() {
     ...windowState,
     show: false,
     webPreferences: {
-      //preload: path.join(__dirname, 'preload.js'),
-      preload: path.join(__dirname, '../dist-electron/preload.js'),
+      preload: path.join(__dirname, '../preload/preload.js'),
       sandbox: true,
       contextIsolation: true
     }

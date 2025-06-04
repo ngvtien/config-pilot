@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "main": "dist-electron/main.js",
+  "main": "dist-electron/main/main.js",
   "scripts": {
     "build1": "npm run clean && npm run build:main && npm run build:preload && npm run build:react",
     "build:main": "tsc -p src/main/tsconfig.json",
@@ -55,6 +55,7 @@
     "immer": "^10.1.1",
     "jsonrepair": "^3.12.0",
     "lucide-react": "^0.511.0",
+    "node-vault": "^0.10.2",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-organizational-chart": "^2.2.1",
