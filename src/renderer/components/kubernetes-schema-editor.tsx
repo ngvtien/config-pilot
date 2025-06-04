@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import Form from '@rjsf/core'
 import validator from '@rjsf/validator-ajv8'
 import { RJSFSchema, UiSchema } from '@rjsf/utils'
@@ -7,7 +7,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/renderer/components/
 import { Badge } from '@/renderer/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs'
 import { ScrollArea } from '@/renderer/components/ui/scroll-area'
-import { Separator } from '@/renderer/components/ui/separator'
 import { Input } from '@/renderer/components/ui/input'
 import { Label } from '@/renderer/components/ui/label'
 import { Textarea } from '@/renderer/components/ui/textarea'
@@ -17,15 +16,14 @@ import { useTheme } from '@/renderer/components/theme-provider'
 
 import CodeMirror from "@uiw/react-codemirror"
 import { yaml as yamlLanguage } from "@codemirror/lang-yaml"
+import { json as jsonLanguage } from "@codemirror/lang-json"
 import { oneDark } from "@codemirror/theme-one-dark"
 import { EditorView } from "@codemirror/view"
 import { joinPath } from '@/renderer/lib/path-utils'
 
 import {
-    FileText,
     Settings,
     Eye,
-    Save,
     X,
     Layers,
     Database,
@@ -36,15 +34,14 @@ import {
     Key,
     Route,
     Copy,
-    Plus,
-    ChevronUp,
-    ChevronDown,
     Search
 } from 'lucide-react'
 
 import yaml from 'js-yaml'
 import { kubernetesSchemaService } from '@/renderer/services/kubernetes-schema-service'
 import { kubernetesSchemaIndexer } from '@/renderer/services/kubernetes-schema-indexer'
+import { Dialog, DialogContent, DialogTitle, DialogClose } from '@radix-ui/react-dialog'
+import { DialogHeader } from '@/renderer/components/ui/dialog'
 
 // Resource type icons mapping
 const RESOURCE_ICONS = {
@@ -739,6 +736,24 @@ export default function KubernetesSchemaEditor({
     )
     const [searchSuggestions, setSearchSuggestions] = useState<string[]>([])
 
+    // Add new state for schema viewer
+    const [showSchemaViewer, setShowSchemaViewer] = useState(false)
+    const [rawSchemaContent, setRawSchemaContent] = useState<string>('')
+    
+    // Add function to view raw schema
+    const handleViewSchema = async () => {
+        if (!schema) return
+        
+        try {
+            // Format the schema as pretty JSON
+            const formattedSchema = JSON.stringify(schema, null, 2)
+            setRawSchemaContent(formattedSchema)
+            setShowSchemaViewer(true)
+        } catch (error) {
+            console.error('Failed to format schema:', error)
+        }
+    }
+
     const { theme } = useTheme()
     
     // Helper function to determine if we're in dark mode
@@ -1179,7 +1194,20 @@ export default function KubernetesSchemaEditor({
                 {/* Form Section */}
                 <Card className="flex flex-col min-h-0">
                     <CardHeader className="flex-shrink-0">
-                        <CardTitle>Configuration Form</CardTitle>
+                    <div className="flex items-center justify-between">
+                            <CardTitle>Configuration Form</CardTitle>
+                            {schema && (
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={handleViewSchema}
+                                    className="text-xs"
+                                >
+                                    <Eye className="h-3 w-3 mr-1" />
+                                    View Schema
+                                </Button>
+                            )}
+                        </div>
                     </CardHeader>
                     <CardContent className="flex-1 min-h-0">
                         <ScrollArea className="h-full pr-4">
@@ -1263,6 +1291,61 @@ export default function KubernetesSchemaEditor({
                     </CardContent>
                 </Card>
             </div>
+
+            {/* Schema Viewer Modal */}
+            <Dialog open={showSchemaViewer} onOpenChange={setShowSchemaViewer}>
+                <DialogContent className="max-w-6xl w-[95vw] h-[85vh] flex flex-col resize overflow-hidden fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 border-2 border-border shadow-2xl">
+                    <DialogHeader className="flex-shrink-0 sticky top-0 bg-background z-10 border-b pb-3">
+                        <div className="flex items-center justify-between">
+                            <DialogTitle className="pl-4">JSON Resource Type Schema - {selectedResourceType}</DialogTitle>
+                            <div className="flex items-center gap-2">
+                            <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => {
+                                        if (rawSchemaContent) {
+                                            navigator.clipboard.writeText(rawSchemaContent);
+                                        }
+                                    }}
+                                    className="text-xs pt-1"
+                                >
+                                    <Copy className="h-3 w-3 mr-1" />
+                                    Copy
+                                </Button>
+                                <DialogClose asChild>
+                                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                        <X className="h-5 w-5" />
+                                        <span className="sr-only">Close</span>
+                                    </Button>
+                                </DialogClose>
+                            </div>
+                        </div>
+                    </DialogHeader>
+                    <div className="flex-1 min-h-0 overflow-auto">
+                        <div className="border rounded-md h-full">
+                            <CodeMirror
+                                value={rawSchemaContent || ''}
+                                height="100%"
+                                theme={isDarkMode ? oneDark : undefined}
+                                extensions={[
+                                    jsonLanguage(),
+                                    EditorView.lineWrapping,
+                                    ...readOnlyExtensions
+                                ]}
+                                editable={false}
+                                basicSetup={{
+                                    lineNumbers: true,
+                                    foldGutter: true,
+                                    dropCursor: false,
+                                    allowMultipleSelections: false,
+                                    indentOnInput: false
+                                }}
+                            />
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
         </div>
     )
 }
