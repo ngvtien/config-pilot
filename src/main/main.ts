@@ -1,11 +1,10 @@
-import { app, BrowserWindow, screen, nativeTheme, session } from 'electron';
+import { app, BrowserWindow, nativeTheme, screen, session } from 'electron';
 import Store from 'electron-store';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { setupIpcHandlers } from './ipc-handlers.js';
+import { setupIpcHandlers } from './ipc-handlers';
 import waitOn from 'wait-on';
-import { initK8sService } from './k8s-service-client.js';
-
+import { initK8sService } from './k8s-service-client';
 
 interface WindowState {
   width: number;
@@ -15,12 +14,13 @@ interface WindowState {
   isMaximized: boolean;
 }
 
+
 // ES Modules compatible __dirname
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+//const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // console.log(__dirname)
 
-const store = new Store();
+const store = new Store() as any;
 
 const config = new Store<{ windowState: WindowState }>({
   name: 'window-state',
@@ -31,7 +31,7 @@ const config = new Store<{ windowState: WindowState }>({
       isMaximized: false
     }
   }
-});
+}) as any;
 
 const isDev = !app.isPackaged;
 let mainWindow: BrowserWindow;
@@ -74,7 +74,7 @@ async function createWindow() {
     ...windowState,
     show: false,
     webPreferences: {
-      preload: path.join(__dirname, '../preload/preload.js'),
+      preload: path.join(__dirname, '..', 'preload.js'),
       sandbox: true,
       contextIsolation: true
     }
@@ -131,17 +131,6 @@ async function createWindow() {
 }
 
 app.whenReady().then(async () => {
-
-  if (isDev) {
-    try {
-      await session.defaultSession.loadExtension(
-        path.join(require.resolve('react-devtools'), '..', '..'),
-        { allowFileAccess: true }
-      );
-    } catch (e) {
-      console.error('Could not load React DevTools:', e);
-    }
-  }  
   const savedConfigPath = store.get('kubeConfigPath') as string | undefined;
   setupIpcHandlers();
   initK8sService(savedConfigPath)

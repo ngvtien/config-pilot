@@ -4,6 +4,9 @@ import path from "path"
 import { exec } from "child_process"
 import util from "util"
 import yaml from "js-yaml"
+import { VaultService } from './vault-service'
+import { VaultCredentialManager } from './vault-credential-manager'
+
 
 const execPromise = util.promisify(exec)
 
@@ -310,5 +313,147 @@ export function setupIpcHandlers(): void {
     return app.getPath("userData")
   })
 
+  /**
+   * Store secure credentials using Electron's safeStorage
+   */
+  ipcMain.handle("credentials:store", async (_event, key: string, data: string) => {
+    try {
+      const { safeStorage } = await import('electron')
+      if (!safeStorage.isEncryptionAvailable()) {
+        throw new Error('Encryption is not available on this system')
+      }
+      
+      const encrypted = safeStorage.encryptString(data)
+      const store = (await import('electron-store')).default
+      const credentialStore = new store({ name: 'secure-credentials' }) as any
+      credentialStore.set(key, encrypted.toString('base64'))
+      
+      return { success: true }
+    } catch (error: any) {
+      console.error('Failed to store secure credentials:', error)
+      throw new Error(`Failed to store secure credentials: ${error.message}`)
+    }
+  })
 
+  /**
+   * Retrieve secure credentials using Electron's safeStorage
+   */
+  ipcMain.handle("credentials:get", async (_event, key: string) => {
+    try {
+      const { safeStorage } = await import('electron')
+      if (!safeStorage.isEncryptionAvailable()) {
+        throw new Error('Encryption is not available on this system')
+      }
+      
+      const store = (await import('electron-store')).default
+      const credentialStore = new store({ name: 'secure-credentials' }) as any
+      const encryptedData = credentialStore.get(key) as string
+      
+      if (!encryptedData) {
+        return null
+      }
+      
+      const buffer = Buffer.from(encryptedData, 'base64')
+      const decrypted = safeStorage.decryptString(buffer)
+      
+      return decrypted
+    } catch (error: any) {
+      console.error('Failed to retrieve secure credentials:', error)
+      return null
+    }
+  })
+
+  /**
+   * Delete secure credentials
+   */
+  ipcMain.handle("credentials:delete", async (_event, key: string) => {
+    try {
+      const store = (await import('electron-store')).default
+      const credentialStore = new store({ name: 'secure-credentials' }) as any
+      credentialStore.delete(key)
+      
+      return { success: true }
+    } catch (error: any) {
+      console.error('Failed to delete secure credentials:', error)
+      throw new Error(`Failed to delete secure credentials: ${error.message}`)
+    }
+  })
+
+  /**
+   * Test Vault connection
+   */
+  ipcMain.handle("vault:testConnection", async (_event, environment: string, url: string, token: string, namespace?: string) => {
+    try {
+      const vault = await import('node-vault')
+      const client = vault.default({
+        apiVersion: 'v1',
+        endpoint: url,
+        token: token,
+        namespace: namespace
+      })
+      
+      // Test connection by checking health
+      await client.health()
+      return { success: true, connected: true }
+    } catch (error: any) {
+      console.error(`Vault connection test failed for ${environment}:`, error)
+      return { success: false, connected: false, error: error.message }
+    }
+  })
+
+  /**
+   * Store Vault credentials
+   */
+  ipcMain.handle("vault:storeCredentials", async (_event, environment: string, credentials: any) => {
+    try {
+      await VaultCredentialManager.storeCredentials(environment as any, credentials)
+      return { success: true }
+    } catch (error: any) {
+      console.error(`Failed to store Vault credentials for ${environment}:`, error)
+      throw new Error(`Failed to store Vault credentials: ${error.message}`)
+    }
+  })
+
+  /**
+   * Get Vault credentials
+   */
+  ipcMain.handle("vault:getCredentials", async (_event, environment: string) => {
+    try {
+      const credentials = await VaultCredentialManager.getCredentials(environment as any)
+      return credentials
+    } catch (error: any) {
+      console.error(`Failed to get Vault credentials for ${environment}:`, error)
+      return null
+    }
+  })
+
+  /**
+   * Write secret to Vault
+   */
+  ipcMain.handle("vault:writeSecret", async (_event, environment: string, path: string, key: string, value: string) => {
+    try {
+      const vaultService = new VaultService()
+      const result = await vaultService.writeSecret(environment as any, path, key, value)
+      return { success: result }
+    } catch (error: any) {
+      console.error(`Failed to write Vault secret for ${environment}:`, error)
+      throw new Error(`Failed to write Vault secret: ${error.message}`)
+    }
+  })
+
+  /**
+   * Read secret from Vault
+   */
+  ipcMain.handle("vault:readSecret", async (_event, environment: string, path: string, key: string) => {
+    try {
+      const vaultService = new VaultService()
+      const value = await vaultService.readSecret(environment as any, path, key)
+      return { success: true, value }
+    } catch (error: any) {
+      console.error(`Failed to read Vault secret for ${environment}:`, error)
+      throw new Error(`Failed to read Vault secret: ${error.message}`)
+    }
+  })
+
+  
 }

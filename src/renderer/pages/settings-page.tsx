@@ -743,10 +743,11 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
 
         <TabsContent value="vault" className="space-y-6">
           {/* Vault content - keeping existing code */}
-          <VaultConfigurationSection 
+          <VaultConfigurationSection
+            context={context}
             settings={settings}
-            onSettingsChange={onSettingsChange} 
-            context={context}          
+            onSettingsChange={onSettingsChange}
+            onContextChange={onContextChange} // Add this prop
           />
         </TabsContent>
 

@@ -25,16 +25,23 @@ contextBridge.exposeInMainWorld("electronAPI", {
       'directory:info',
       'fs:listDirectories',
       'fs:ensureDirectory',
-      'k8s:setConfigPath'
-
+      'k8s:setConfigPath',
+      // Vault channels
+      'vault:testConnection',
+      'vault:storeCredentials',
+      'vault:getCredentials',
+      'vault:writeSecret',
+      'vault:readSecret',
+      // Secure credential channels
+      'credentials:store',
+      'credentials:get',
+      'credentials:delete'
     ]
     if (validChannels.includes(channel)) {
       return ipcRenderer.invoke(channel, ...args)
     }
     throw new Error(`Invalid IPC channel: ${channel}`)
   },
-
-  //  joinPath: (...parts: string[]) => join(...parts),
 
   // Window controls
   minimize: () => ipcRenderer.send("window:minimize"),
@@ -71,5 +78,27 @@ contextBridge.exposeInMainWorld("electronAPI", {
   switchContext: (contextName: string) => ipcRenderer.invoke('k8s:switchContext', contextName),
 
   // Add to electronAPI object
-  getUserDataPath: () => ipcRenderer.invoke('app:getUserDataPath')
+  getUserDataPath: () => ipcRenderer.invoke('app:getUserDataPath'),
+
+ // Vault operations
+ vault: {
+    testConnection: (environment: string, url: string, token: string, namespace?: string) =>
+      ipcRenderer.invoke('vault:testConnection', environment, url, token, namespace),
+    storeCredentials: (environment: string, credentials: any) =>
+      ipcRenderer.invoke('vault:storeCredentials', environment, credentials),
+    getCredentials: (environment: string) =>
+      ipcRenderer.invoke('vault:getCredentials', environment),
+    writeSecret: (environment: string, path: string, key: string, value: string) =>
+      ipcRenderer.invoke('vault:writeSecret', environment, path, key, value),
+    readSecret: (environment: string, path: string, key: string) =>
+      ipcRenderer.invoke('vault:readSecret', environment, path, key)
+  },
+
+  // Secure credential operations
+  storeSecureCredentials: (key: string, data: string) =>
+    ipcRenderer.invoke('credentials:store', key, data),
+  getSecureCredentials: (key: string) =>
+    ipcRenderer.invoke('credentials:get', key),
+  deleteSecureCredentials: (key: string) =>
+    ipcRenderer.invoke('credentials:delete', key)
 })

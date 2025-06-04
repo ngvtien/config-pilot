@@ -1,5 +1,8 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.createDefaultSettings = void 0;
 // Default settings factory
-export const createDefaultSettings = () => ({
+const createDefaultSettings = () => ({
     autoSave: true,
     darkMode: false,
     lineNumbers: true,
@@ -77,3 +80,4 @@ export const createDefaultSettings = () => ({
     },
     kubernetesVersion: ""
 });
+exports.createDefaultSettings = createDefaultSettings;

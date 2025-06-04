@@ -481,7 +481,7 @@ export function initK8sService(initialConfigPath?: string) {
     const success = k8sService.setUserConfigPath(path);
     k8sService.debugConfigState();
     if (success) {
-      new Store().set('kubeConfigPath', path);
+      (new Store() as any).set('kubeConfigPath', path);
     }
     return success;
   });

@@ -1,62 +1,20 @@
-// {
-//   "compilerOptions": {
-//     "strict": true,
-//     "target": "ESNext",
-//     "module": "NodeNext",
-//     "outDir": "../../dist-electron",
-//     "skipLibCheck": true,
-//   }
-// }
-
-
-// {
-//   "compilerOptions": {
-//     "strict": true,
-//     "target": "ESNext",
-//     "module": "NodeNext",
-//     "outDir": "../../dist-electron",
-//     "skipLibCheck": true,
-//     "moduleResolution": "NodeNext",
-//     "allowSyntheticDefaultImports": true,
-//     "esModuleInterop": true
-//   },
-//   "include": ["./**/*.ts"]
-// }
-
-
-// {
-//   "compilerOptions": {
-//     "strict": true,
-//     "target": "ESNext",
-//     "module": "NodeNext",
-//     "outDir": "../../dist-electron",
-//     "skipLibCheck": true,
-//     "moduleResolution": "NodeNext",
-//     "allowSyntheticDefaultImports": true,
-//     "esModuleInterop": true,
-//     "composite": true,
-//     "declaration": true
-//   },
-//   "include": ["./**/*.ts"]
-// }
-
 {
+  "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "strict": true,
-    "target": "ES2020",
-    "module": "Node16",
     "outDir": "../../dist-electron",
-    "skipLibCheck": true,
-    "moduleResolution": "Node16",
+    "rootDir": "..",
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "node",
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
-    "composite": true,
-    "declaration": true,
-    "rootDir": "../"
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": false,
+    "declaration": false,
+    "sourceMap": true,
+    "resolveJsonModule": true
   },
-  "include": [
-    "./**/*.ts", 
-    "main.ts",
-    "../shared/types/**/*.ts"
-  ]  
+  "include": ["**/*"],
+  "exclude": ["node_modules", "dist-electron"]
 }

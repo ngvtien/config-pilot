@@ -1,5 +1,8 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.KUBERNETES_RESOURCE_TEMPLATES = void 0;
 // Resource templates for common Kubernetes resources
-export const KUBERNETES_RESOURCE_TEMPLATES = [
+exports.KUBERNETES_RESOURCE_TEMPLATES = [
     {
         kind: 'Deployment',
         apiVersion: 'apps/v1',

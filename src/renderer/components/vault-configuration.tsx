@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react"
+import React, { useState, useEffect } from "react"
+import { toast } from "@/renderer/hooks/use-toast"
+import { Alert, AlertDescription } from "@/renderer/components/ui/alert"
 import { Button } from "@/renderer/components/ui/button"
 import { Input } from "@/renderer/components/ui/input"
 import { Label } from "@/renderer/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/renderer/components/ui/card"
 import { Badge } from "@/renderer/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/renderer/components/ui/tabs"
 import { Key, CheckCircle, XCircle, Loader2 } from "lucide-react"
 import { VaultCredentialManager } from "@/renderer/services/vault-credential-manager"
 import type { ContextData } from "@/shared/types/context-data"
@@ -14,13 +15,16 @@ interface VaultConfigurationProps {
   context: ContextData
   settings: SettingsData
   onSettingsChange: (settings: SettingsData) => void
+  onContextChange?: (context: ContextData) => void
 }
 
 const ENVIRONMENTS = ['dev', 'sit', 'uat', 'prod'] as const
 type Environment = typeof ENVIRONMENTS[number]
 
-export function VaultConfigurationSection({ context, settings, onSettingsChange }: VaultConfigurationProps) {
-  const [activeEnvironment, setActiveEnvironment] = useState<Environment>(context.environment as Environment)
+export function VaultConfigurationSection({ context, settings, onSettingsChange, onContextChange }: VaultConfigurationProps) {
+  // Use the environment from context directly
+  const currentEnvironment = context.environment as Environment
+  
   const [environmentConfigs, setEnvironmentConfigs] = useState<Record<Environment, {
     url: string
     token: string
@@ -35,11 +39,16 @@ export function VaultConfigurationSection({ context, settings, onSettingsChange 
     prod: { url: '', token: '', namespace: '', connectionStatus: 'unknown', isTestingConnection: false, hasStoredCredentials: false }
   })
   
-  const vaultCredManager = VaultCredentialManager.getInstance()
+  const vaultCredManager = VaultCredentialManager
 
   useEffect(() => {
     loadEnvironmentConfigurations()
   }, [])
+
+  // Reload configuration when environment changes
+  useEffect(() => {
+    loadCurrentEnvironmentConfiguration()
+  }, [currentEnvironment])
 
   const loadEnvironmentConfigurations = async () => {
     const newConfigs = { ...environmentConfigs }
@@ -53,14 +62,26 @@ export function VaultConfigurationSection({ context, settings, onSettingsChange 
       }
       
       // Check for stored credentials
-      const stored = await vaultCredManager.getVaultCredentials(env)
+      const stored = await vaultCredManager.getCredentials(env)
       newConfigs[env].hasStoredCredentials = !!stored
     }
     
     setEnvironmentConfigs(newConfigs)
   }
 
-  const updateEnvironmentConfig = (env: Environment, field: string, value: string) => {
+  const loadCurrentEnvironmentConfiguration = async () => {
+    const envConfig = settings.environments?.[currentEnvironment]
+    if (envConfig?.vault?.url) {
+      updateEnvironmentConfig(currentEnvironment, 'url', envConfig.vault.url)
+      updateEnvironmentConfig(currentEnvironment, 'namespace', envConfig.vault.namespace || '')
+    }
+    
+    // Check for stored credentials
+    const stored = await vaultCredManager.getCredentials(currentEnvironment)
+    updateEnvironmentConfig(currentEnvironment, 'hasStoredCredentials', !!stored)
+  }
+
+  const updateEnvironmentConfig = (env: Environment, field: string, value: string | boolean) => {
     setEnvironmentConfigs(prev => ({
       ...prev,
       [env]: {
@@ -93,12 +114,12 @@ export function VaultConfigurationSection({ context, settings, onSettingsChange 
 
       // Store credentials securely if token provided
       if (config.token) {
-        await vaultCredManager.storeVaultCredentials({
+        await vaultCredManager.storeCredentials(env, {
           url: config.url,
           token: config.token,
           authMethod: 'token',
           namespace: config.namespace
-        }, env)
+        })
         
         // Clear token from memory
         updateEnvironmentConfig(env, 'token', '')
@@ -106,7 +127,7 @@ export function VaultConfigurationSection({ context, settings, onSettingsChange 
       }
 
       toast({ title: `Vault configuration saved for ${env.toUpperCase()}` })
-    } catch (error) {
+    } catch (error: any) {
       toast({ 
         title: `Failed to save Vault configuration for ${env.toUpperCase()}`, 
         description: error.message,
@@ -120,10 +141,12 @@ export function VaultConfigurationSection({ context, settings, onSettingsChange 
     updateEnvironmentConfig(env, 'isTestingConnection', true)
     
     try {
-      const isConnected = await window.electronAPI.testVaultConnection(
-        config.url, 
-        config.token || await getStoredToken(env)
-      )
+      const token = config.token || await getStoredToken(env)
+      if (!token) {
+        throw new Error('No token available for testing')
+      }
+      
+      const isConnected = await window.electronAPI.testVaultConnection(config.url, token)
       updateEnvironmentConfig(env, 'connectionStatus', isConnected ? 'success' : 'error')
     } catch (error) {
       updateEnvironmentConfig(env, 'connectionStatus', 'error')
@@ -133,12 +156,12 @@ export function VaultConfigurationSection({ context, settings, onSettingsChange 
   }
 
   const getStoredToken = async (env: Environment): Promise<string | null> => {
-    const stored = await vaultCredManager.getVaultCredentials(env)
+    const stored = await vaultCredManager.getCredentials(env)
     return stored?.token || null
   }
 
   const clearEnvironmentCredentials = async (env: Environment) => {
-    await vaultCredManager.removeVaultCredentials(env)
+    await vaultCredManager.deleteCredentials(env)
     updateEnvironmentConfig(env, 'hasStoredCredentials', false)
     toast({ title: `Vault credentials cleared for ${env.toUpperCase()}` })
   }
@@ -153,66 +176,69 @@ export function VaultConfigurationSection({ context, settings, onSettingsChange 
     return descriptions[env]
   }
 
-  const renderEnvironmentTab = (env: Environment) => {
-    const config = environmentConfigs[env]
-    const isCurrentEnvironment = context.environment === env
+  const handleEnvironmentSwitch = (env: Environment) => {
+    if (onContextChange) {
+      onContextChange({ ...context, environment: env })
+    }
+  }
+
+  const renderCurrentEnvironmentConfig = () => {
+    const config = environmentConfigs[currentEnvironment]
     
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-2 mb-4">
-          <Badge variant={isCurrentEnvironment ? "default" : "secondary"}>
-            {env.toUpperCase()}
+          <Badge variant="default">
+            {currentEnvironment.toUpperCase()}
           </Badge>
-          {isCurrentEnvironment && (
-            <Badge variant="outline">Current Environment</Badge>
-          )}
+          <Badge variant="outline">Current Environment</Badge>
         </div>
         
         <p className="text-sm text-muted-foreground mb-4">
-          {getEnvironmentDescription(env)}
+          {getEnvironmentDescription(currentEnvironment)}
         </p>
 
         <div className="space-y-2">
-          <Label htmlFor={`vault-url-${env}`}>Vault URL</Label>
+          <Label htmlFor={`vault-url-${currentEnvironment}`}>Vault URL</Label>
           <Input
-            id={`vault-url-${env}`}
-            placeholder={`https://vault-${env}.company.com`}
+            id={`vault-url-${currentEnvironment}`}
+            placeholder={`https://vault-${currentEnvironment}.company.com`}
             value={config.url}
-            onChange={(e) => updateEnvironmentConfig(env, 'url', e.target.value)}
+            onChange={(e) => updateEnvironmentConfig(currentEnvironment, 'url', e.target.value)}
           />
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor={`vault-namespace-${env}`}>Vault Namespace (Optional)</Label>
+          <Label htmlFor={`vault-namespace-${currentEnvironment}`}>Vault Namespace (Optional)</Label>
           <Input
-            id={`vault-namespace-${env}`}
-            placeholder={`${env}/secrets`}
+            id={`vault-namespace-${currentEnvironment}`}
+            placeholder={`${currentEnvironment}/secrets`}
             value={config.namespace}
-            onChange={(e) => updateEnvironmentConfig(env, 'namespace', e.target.value)}
+            onChange={(e) => updateEnvironmentConfig(currentEnvironment, 'namespace', e.target.value)}
           />
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor={`vault-token-${env}`}>Vault Token</Label>
+          <Label htmlFor={`vault-token-${currentEnvironment}`}>Vault Token</Label>
           <Input
-            id={`vault-token-${env}`}
+            id={`vault-token-${currentEnvironment}`}
             type="password"
             placeholder="hvs.XXXXXXXXXXXXXX"
             value={config.token}
-            onChange={(e) => updateEnvironmentConfig(env, 'token', e.target.value)}
+            onChange={(e) => updateEnvironmentConfig(currentEnvironment, 'token', e.target.value)}
           />
           <p className="text-sm text-muted-foreground">
-            Token will be stored securely per environment
+            Token will be stored securely for this environment
           </p>
         </div>
 
         <div className="flex gap-2">
-          <Button onClick={() => saveEnvironmentConfiguration(env)}>
-            Save {env.toUpperCase()} Config
+          <Button onClick={() => saveEnvironmentConfiguration(currentEnvironment)}>
+            Save {currentEnvironment.toUpperCase()} Config
           </Button>
           <Button 
             variant="outline" 
-            onClick={() => testEnvironmentConnection(env)}
+            onClick={() => testEnvironmentConnection(currentEnvironment)}
             disabled={!config.url || config.isTestingConnection}
           >
             {config.isTestingConnection ? (
@@ -232,8 +258,8 @@ export function VaultConfigurationSection({ context, settings, onSettingsChange 
               )}
               <AlertDescription>
                 {config.connectionStatus === 'success' 
-                  ? `Successfully connected to ${env.toUpperCase()} Vault`
-                  : `Failed to connect to ${env.toUpperCase()} Vault. Check URL and token.`
+                  ? `Successfully connected to ${currentEnvironment.toUpperCase()} Vault`
+                  : `Failed to connect to ${currentEnvironment.toUpperCase()} Vault. Check URL and token.`
                 }
               </AlertDescription>
             </div>
@@ -244,9 +270,9 @@ export function VaultConfigurationSection({ context, settings, onSettingsChange 
           <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
             <div className="flex items-center gap-2">
               <Badge variant="secondary">Stored</Badge>
-              <span className="text-sm">{env.toUpperCase()} Vault credentials are securely stored</span>
+              <span className="text-sm">{currentEnvironment.toUpperCase()} Vault credentials are securely stored</span>
             </div>
-            <Button variant="outline" size="sm" onClick={() => clearEnvironmentCredentials(env)}>
+            <Button variant="outline" size="sm" onClick={() => clearEnvironmentCredentials(currentEnvironment)}>
               Clear Credentials
             </Button>
           </div>
@@ -260,31 +286,40 @@ export function VaultConfigurationSection({ context, settings, onSettingsChange 
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Key className="h-5 w-5" />
-          Environment-Aware Vault Configuration
+          Vault Configuration - {currentEnvironment.toUpperCase()}
         </CardTitle>
         <CardDescription>
-          Configure HashiCorp Vault connections per environment. Each environment can have different Vault instances, namespaces, and credentials.
+          Configure HashiCorp Vault connection for the current environment ({currentEnvironment}). 
+          Switch environments using the context selector above.
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <Tabs value={activeEnvironment} onValueChange={(value) => setActiveEnvironment(value as Environment)}>
-          <TabsList className="grid w-full grid-cols-4">
-            {ENVIRONMENTS.map(env => (
-              <TabsTrigger key={env} value={env} className="relative">
-                {env.toUpperCase()}
-                {environmentConfigs[env].hasStoredCredentials && (
-                  <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full" />
-                )}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-          
-          {ENVIRONMENTS.map(env => (
-            <TabsContent key={env} value={env}>
-              {renderEnvironmentTab(env)}
-            </TabsContent>
-          ))}
-        </Tabs>
+        {renderCurrentEnvironmentConfig()}
+        
+        {/* Environment Status Overview */}
+        {onContextChange && (
+          <div className="mt-6 pt-4 border-t">
+            <h4 className="text-sm font-medium mb-2">Other Environments</h4>
+            <div className="flex gap-2 flex-wrap">
+              {ENVIRONMENTS.filter(env => env !== currentEnvironment).map(env => (
+                <Badge 
+                  key={env} 
+                  variant="outline" 
+                  className="cursor-pointer hover:bg-muted transition-colors"
+                  onClick={() => handleEnvironmentSwitch(env)}
+                >
+                  {env.toUpperCase()}
+                  {environmentConfigs[env].hasStoredCredentials && (
+                    <div className="ml-1 w-1.5 h-1.5 bg-green-500 rounded-full" />
+                  )}
+                </Badge>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Click to switch environment. Green dot indicates stored credentials.
+            </p>
+          </div>
+        )}
       </CardContent>
     </Card>
   )

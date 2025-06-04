@@ -1,15 +1,16 @@
 {
   "compilerOptions": {
+    "strict": true,
+    "target": "ES2020",
+    "module": "CommonJS",
+    "outDir": "../../dist-electron",
+    "skipLibCheck": true,
+    "moduleResolution": "node",
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
     "composite": true,
     "declaration": true,
-    "target": "ES2020",
-    "module": "ESNext",
-    "moduleResolution": "Node",
-    "strict": true,
-    "skipLibCheck": true,
-    "baseUrl": ".",
-    "outDir": "../../dist/shared"
+    "rootDir": "."
   },
-  "include": ["**/*.ts", "**/*.d.ts"],
-  "exclude": ["node_modules"]
+  "include": ["./**/*.ts"]
 }
