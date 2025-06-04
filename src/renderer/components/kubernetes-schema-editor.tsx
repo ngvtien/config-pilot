@@ -13,14 +13,13 @@ import { Label } from '@/renderer/components/ui/label'
 import { Textarea } from '@/renderer/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/renderer/components/ui/select'
 import { Checkbox } from '@/renderer/components/ui/checkbox'
-import { useTheme } from '@/renderer/components/theme-provider' // Import 
+import { useTheme } from '@/renderer/components/theme-provider'
 
 import CodeMirror from "@uiw/react-codemirror"
 import { yaml as yamlLanguage } from "@codemirror/lang-yaml"
 import { oneDark } from "@codemirror/theme-one-dark"
 import { EditorView } from "@codemirror/view"
 import { joinPath } from '@/renderer/lib/path-utils'
-
 
 import {
     FileText,
@@ -37,14 +36,16 @@ import {
     Key,
     Route,
     Copy,
-    Plus,        // Add this
-    ChevronUp,   // Add this
-    ChevronDown  // Add this
+    Plus,
+    ChevronUp,
+    ChevronDown,
+    Search
 } from 'lucide-react'
 
 import yaml from 'js-yaml'
 import { kubernetesSchemaService } from '@/renderer/services/kubernetes-schema-service'
 import { kubernetesSchemaIndexer } from '@/renderer/services/kubernetes-schema-indexer'
+
 // Resource type icons mapping
 const RESOURCE_ICONS = {
     'Deployment': Layers,
@@ -92,6 +93,7 @@ const readOnlyExtensions = [
     }),
     EditorView.editable.of(false),
 ]
+
 // Custom widgets that use your UI components
 const customWidgets = {
     TextWidget: (props: any) => {
@@ -172,8 +174,6 @@ const customWidgets = {
             </div>
         )
     },
-
-    // Add to customWidgets
     NumberWidget: (props: any) => {
         const { id, value, onChange, label, placeholder, disabled, readonly, required, schema } = props
         const { minimum, maximum } = schema || {}
@@ -291,7 +291,6 @@ const getResourceSchema = (resourceType: string): RJSFSchema => {
 
     return baseSchema
 }
-
 
 const getDefaultApiVersion = (resourceType: string): string => {
     switch (resourceType) {
@@ -450,53 +449,11 @@ const getServiceSpec = (): RJSFSchema => ({
     }
 })
 
-const uiSchema: UiSchema = {
-    'ui:submitButtonOptions': {
-        norender: true
-    },
-    metadata: {
-        labels: {
-            'ui:widget': 'textarea',
-            'ui:options': {
-                rows: 3
-            }
-        },
-        annotations: {
-            'ui:widget': 'textarea',
-            'ui:options': {
-                rows: 3
-            }
-        },
-        creationTimestamp: {
-            'ui:widget': 'DateTimeWidget'
-        }
-    },
-    spec: {
-        // Add specific UI hints for common fields
-        replicas: {
-            'ui:widget': 'NumberWidget'
-        }
-    }
-}
-
-const RESOURCE_TYPES = [
-    'Deployment',
-    'Service',
-    'ConfigMap',
-    'Secret',
-    'Ingress'
-]
-
-// Custom field template for better spacing and styling
+// Custom field template for better styling
 const CustomFieldTemplate = (props: any) => {
-    const { id, children, errors, help, description, hidden, required, displayLabel } = props
-
-    if (hidden) {
-        return <div className="hidden">{children}</div>
-    }
-
+    const { id, classNames, label, help, required, description, errors, children } = props
     return (
-        <div className="mb-4">
+        <div className={`space-y-2 ${classNames}`}>
             {children}
             {description && (
                 <div className="text-sm text-muted-foreground mt-1">{description}</div>
@@ -625,7 +582,6 @@ const enhancedUiSchema: UiSchema = {
     spec: {
         'ui:title': 'Specification',
         'ui:description': 'Resource-specific configuration',
-        // Common enum field configurations
         protocol: {
             'ui:help': 'Network protocol for the service'
         },
@@ -641,37 +597,52 @@ const enhancedUiSchema: UiSchema = {
     }
 }
 
-// Add resource grouping configuration after the RESOURCE_ICONS mapping
+// Resource grouping configuration
 const RESOURCE_GROUPS = {
     workloads: {
         title: '🧩 Workloads',
         description: 'Resources that run applications or jobs',
-        resources: ['Deployment', 'StatefulSet', 'DaemonSet', 'Job', 'CronJob', 'Pod']
+        resources: ['Deployment', 'StatefulSet', 'DaemonSet', 'Job', 'CronJob', 'Pod', 'ReplicaSet']
+    },
+    cluster: {
+        title: '🏗️ Cluster Infrastructure',
+        description: 'Internal resources that affect scheduling and topology',
+        resources: ['Namespace', 'PersistentVolume', 'PersistentVolumeClaim', 'StorageClass', 'Node', 'CSIDriver', 'CSIDriverList', 'CSINode']
     },
     configuration: {
-        title: '🟦 Configuration',
+        title: '📦 Configuration & Secrets',
         description: 'Used to inject config into workloads',
         resources: ['ConfigMap', 'Secret', 'ServiceAccount']
     },
     networking: {
-        title: '🟨 Networking & Access',
+        title: '🌐 Networking',
         description: 'Define internal/external access, routing, and service discovery',
-        resources: ['Service', 'Ingress', 'NetworkPolicy']
+        resources: ['Service', 'Ingress', 'IngressClass', 'NetworkPolicy', 'EndpointSlice']
     },
-    storage: {
-        title: '🟥 Storage',
-        description: 'Defines volumes and data persistence',
-        resources: ['PersistentVolume', 'PersistentVolumeClaim', 'StorageClass']
-    },
+    // storage: {
+    //     title: '💾 Storage',
+    //     description: 'Defines volumes and data persistence',
+    //     resources: ['PersistentVolume', 'PersistentVolumeClaim', 'StorageClass']
+    // },
     security: {
-        title: '🟪 RBAC & Security',
+        title: '🔐 RBAC & Security',
         description: 'Manage permissions and access',
-        resources: ['Role', 'ClusterRole', 'RoleBinding', 'ClusterRoleBinding', 'PodSecurityPolicy']
+        resources: ['Role', 'ClusterRole', 'RoleBinding', 'ClusterRoleBinding', 'PodSecurityPolicy', 'NetworkPolicy', 'SecurityContext', 'LimitRange', 'ResourceQuota']
+    },
+    policy: {
+        title: '📋 Policy & Automation',
+        description: 'Internal resources that affect scheduling and topology',
+        resources: ['ValidatingWebhookConfiguration', 'MutatingWebhookConfiguration', 'PodDisruptionBudget', 'PriorityClass' ]
+    },
+    observability: {
+        title: '📈 Observability',
+        description: 'Monitoring, logging, and tracing',
+        resources: ['Event', 'EventList', 'WatchEvent', 'HorizontalPodAutoscaler', 'HorizontalPodAutoscalerList' ]
     },
     others: {
-        title: '🟧 Others',
+        title: '🔄 Others',
         description: 'Additional Kubernetes resources',
-        resources: [] // Will be populated with remaining resources
+        resources: []
     }
 }
 
@@ -699,6 +670,20 @@ const categorizeResources = (availableKinds: string[]) => {
     return categorized
 }
 
+// Helper function to get category for a resource type
+const getCategoryForResourceType = (resourceType: string): string => {
+    for (const [categoryKey, category] of Object.entries(RESOURCE_GROUPS)) {
+        if (category.resources.includes(resourceType)) {
+            return categoryKey
+        }
+    }
+    return 'others'
+}
+
+// Popular resource types for large categories
+const popularResourceTypes = {
+    others: ['CustomResourceDefinition', 'ConfigMap', 'Secret', 'PersistentVolume']
+}
 
 export default function KubernetesSchemaEditor({
     context,
@@ -709,7 +694,9 @@ export default function KubernetesSchemaEditor({
     const STORAGE_KEYS = {
         availableKinds: `k8s-available-kinds-${k8sVersion}`,
         selectedResourceType: `k8s-selected-resource-type-${context.product}-${context.customer}-${context.environment}`,
-        expandedGroups: `k8s-expanded-groups-${context.product}-${context.customer}-${context.environment}`
+        expandedGroups: `k8s-expanded-groups-${context.product}-${context.customer}-${context.environment}`,
+        selectedCategory: `k8s-selected-category-${context.product}-${context.customer}-${context.environment}`,
+        resourceTypeFilter: `k8s-resource-filter-${context.product}-${context.customer}-${context.environment}`
     }
 
     // Helper function to get cached data
@@ -733,7 +720,6 @@ export default function KubernetesSchemaEditor({
         getCachedData(STORAGE_KEYS.availableKinds, [])
     )
     const [isLoadingKinds, setIsLoadingKinds] = useState(() => {
-        // Only show loading if we don't have cached data
         const cached = getCachedData(STORAGE_KEYS.availableKinds, [])
         return cached.length === 0
     })
@@ -743,8 +729,18 @@ export default function KubernetesSchemaEditor({
         const cached = getCachedData(STORAGE_KEYS.expandedGroups, ['workloads'])
         return new Set(cached)
     })
+    
+    // New state variables for the optimized layout
+    const [selectedCategory, setSelectedCategory] = useState<string>(() =>
+        getCachedData(STORAGE_KEYS.selectedCategory, 'workloads')
+    )
+    const [resourceTypeFilter, setResourceTypeFilter] = useState<string>(() =>
+        getCachedData(STORAGE_KEYS.resourceTypeFilter, '')
+    )
+    const [searchSuggestions, setSearchSuggestions] = useState<string[]>([])
 
-    const { theme } = useTheme() // Get current theme
+    const { theme } = useTheme()
+    
     // Helper function to determine if we're in dark mode
     const isDarkMode = useMemo(() => {
         if (theme === 'system') {
@@ -768,48 +764,81 @@ export default function KubernetesSchemaEditor({
         localStorage.setItem(STORAGE_KEYS.expandedGroups, JSON.stringify([...expandedGroups]))
     }, [expandedGroups, STORAGE_KEYS.expandedGroups])
 
+    useEffect(() => {
+        localStorage.setItem(STORAGE_KEYS.selectedCategory, JSON.stringify(selectedCategory))
+    }, [selectedCategory, STORAGE_KEYS.selectedCategory])
+
+    useEffect(() => {
+        localStorage.setItem(STORAGE_KEYS.resourceTypeFilter, JSON.stringify(resourceTypeFilter))
+    }, [resourceTypeFilter, STORAGE_KEYS.resourceTypeFilter])
+
     // Load available resource kinds from schema indexer
     useEffect(() => {
         const loadAvailableKinds = async () => {
             if (!userDataDir || !k8sVersion) {
-                setIsLoadingKinds(false) // Important: clear loading if dependencies not ready
+                setIsLoadingKinds(false)
                 return
             }
 
-            setIsLoadingKinds(true) // Set loading state
+            setIsLoadingKinds(true)
             try {
                 const definitionsPath = `${userDataDir}/schemas/${k8sVersion}/_definitions.json`
                 await kubernetesSchemaIndexer.loadSchemaDefinitions(definitionsPath)
                 const kinds = kubernetesSchemaIndexer.getAvailableKinds()
                 setAvailableKinds(kinds)
 
-                // Ensure selected resource type is valid
                 if (kinds.length > 0 && !kinds.includes(selectedResourceType)) {
-                    setSelectedResourceType(kinds[0]) // Set to first available kind
+                    setSelectedResourceType(kinds[0])
                 }
             } catch (error) {
                 console.error('Failed to load schema definitions:', error)
-                // Fallback to common resource types
                 const fallbackKinds = ['Deployment', 'Service', 'ConfigMap', 'Secret', 'Ingress']
-
                 setAvailableKinds(fallbackKinds)
                 if (!fallbackKinds.includes(selectedResourceType)) {
                     setSelectedResourceType('Deployment')
                 }
             } finally {
-                setIsLoadingKinds(false) // Clear loading state
+                setIsLoadingKinds(false)
             }
         }
 
         loadAvailableKinds()
     }, [userDataDir, k8sVersion])
 
-    // const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['workloads']))
-
     // Categorize resources when availableKinds changes
     const categorizedResources = useMemo(() => {
         return categorizeResources(availableKinds)
     }, [availableKinds])
+
+    // Get filtered resource types based on selected category and search filter
+    const filteredResourceTypes = useMemo(() => {
+        const categoryResources = categorizedResources[selectedCategory]?.resources || []
+        
+        if (!resourceTypeFilter) {
+            // For large categories, show popular items first
+            if (selectedCategory === 'others' && categoryResources.length > 20) {
+                const popular = popularResourceTypes.others.filter(type => 
+                    categoryResources.includes(type)
+                )
+                const remaining = categoryResources.filter(type => 
+                    !popular.includes(type)
+                ).sort()
+                return [...popular, ...remaining]
+            }
+            return categoryResources.sort()
+        }
+        
+        return categoryResources.filter(type => 
+            type.toLowerCase().includes(resourceTypeFilter.toLowerCase())
+        ).sort()
+    }, [categorizedResources, selectedCategory, resourceTypeFilter])
+
+    // Determine display method based on category size
+    const getDisplayMethod = (category: string, items: string[]) => {
+        if (items.length <= 8) return 'horizontal'
+        if (items.length <= 20) return 'grid'
+        return 'dropdown'
+    }
 
     const toggleGroup = (groupKey: string) => {
         const newExpanded = new Set(expandedGroups)
@@ -858,14 +887,11 @@ export default function KubernetesSchemaEditor({
 
     // Convert Kubernetes OpenAPI schema to RJSF format
     const convertK8sSchemaToRJSF = (k8sSchema: any, fullDefinitions?: any): RJSFSchema => {
-        // The Kubernetes schema is already in JSON Schema format
-        // We need to include the full definitions context for reference resolution
         const schema: RJSFSchema = {
             ...k8sSchema,
             $schema: 'http://json-schema.org/draft-07/schema#'
         }
 
-        // If we have full definitions, include them so RJSF can resolve references
         if (fullDefinitions && fullDefinitions.definitions) {
             schema.definitions = fullDefinitions.definitions
         }
@@ -876,15 +902,11 @@ export default function KubernetesSchemaEditor({
     // Load actual Kubernetes schema when resource type changes
     useEffect(() => {
         const loadSchema = async () => {
-            // Wait for kinds to be loaded first
             if (!selectedResourceType || !k8sVersion || !userDataDir) return
 
             setIsLoadingSchema(true)
             try {
-                // Get the API version for the resource type
                 const apiVersion = getDefaultApiVersion(selectedResourceType)
-
-                // Load the full definitions file to get all schema references
                 const definitionsPath = safeJoinPath(
                     userDataDir,
                     'schemas',
@@ -892,11 +914,9 @@ export default function KubernetesSchemaEditor({
                     '_definitions.json'
                 )
 
-                // const definitionsPath = `${userDataDir}/schemas/${k8sVersion}/_definitions.json`
                 const definitionsContent = await window.electronAPI.readFile(definitionsPath)
                 const fullDefinitions = JSON.parse(definitionsContent)
 
-                // Load the real Kubernetes schema
                 const k8sSchema = await kubernetesSchemaService.getSchema(
                     selectedResourceType,
                     apiVersion,
@@ -905,11 +925,9 @@ export default function KubernetesSchemaEditor({
                 )
 
                 if (k8sSchema) {
-                    // Convert Kubernetes schema to RJSF format with full definitions
                     const rjsfSchema = convertK8sSchemaToRJSF(k8sSchema, fullDefinitions)
                     setSchema(rjsfSchema)
 
-                    // Set default form data
                     const defaultData = {
                         apiVersion,
                         kind: selectedResourceType,
@@ -948,6 +966,8 @@ export default function KubernetesSchemaEditor({
 
     const handleResourceTypeChange = (resourceType: string) => {
         setSelectedResourceType(resourceType)
+        setResourceTypeFilter('')
+        setSearchSuggestions([])
     }
 
     const handleFormChange = ({ formData: newFormData }: { formData: any }) => {
@@ -957,6 +977,92 @@ export default function KubernetesSchemaEditor({
     const handleSave = () => {
         if (onSave) {
             onSave(yamlPreview, selectedResourceType)
+        }
+    }
+
+    // Enhanced search with auto-complete
+    const handleSearchChange = (value: string) => {
+        setResourceTypeFilter(value)
+        if (value.length > 0 && selectedCategory === 'others') {
+            const suggestions = availableKinds
+                .filter(kind => 
+                    getCategoryForResourceType(kind) === 'others' &&
+                    kind.toLowerCase().includes(value.toLowerCase())
+                )
+                .slice(0, 10)
+            setSearchSuggestions(suggestions)
+        } else {
+            setSearchSuggestions([])
+        }
+    }
+
+    // Render resource type selector based on display method
+    const renderResourceTypeSelector = () => {
+        const categoryItems = filteredResourceTypes
+        const displayMethod = getDisplayMethod(selectedCategory, categoryItems)
+        
+        switch (displayMethod) {
+            case 'horizontal':
+                return (
+                    <div className="flex gap-2 overflow-x-auto pb-2">
+                        {categoryItems.map((type) => {
+                            const IconComponent = RESOURCE_ICONS[type as keyof typeof RESOURCE_ICONS] || Box
+                            return (
+                                <Button
+                                    key={type}
+                                    variant={selectedResourceType === type ? "default" : "outline"}
+                                    size="sm"
+                                    onClick={() => handleResourceTypeChange(type)}
+                                    className="flex items-center gap-2 whitespace-nowrap"
+                                >
+                                    <IconComponent className="h-4 w-4" />
+                                    {type}
+                                </Button>
+                            )
+                        })}
+                    </div>
+                )
+            case 'grid':
+                return (
+                    <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 max-h-[200px] overflow-y-auto">
+                        {categoryItems.map((type) => {
+                            const IconComponent = RESOURCE_ICONS[type as keyof typeof RESOURCE_ICONS] || Box
+                            return (
+                                <Button
+                                    key={type}
+                                    variant={selectedResourceType === type ? "default" : "outline"}
+                                    onClick={() => handleResourceTypeChange(type)}
+                                    className="h-16 flex flex-col gap-1 text-xs"
+                                    title={type}
+                                >
+                                    <IconComponent className="h-4 w-4" />
+                                    <span className="truncate">{type}</span>
+                                </Button>
+                            )
+                        })}
+                    </div>
+                )
+            case 'dropdown':
+                return (
+                    <Select value={selectedResourceType} onValueChange={handleResourceTypeChange}>
+                        <SelectTrigger className="w-[300px]">
+                            <SelectValue placeholder="Select resource type..." />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-[300px]">
+                            {categoryItems.map((type) => {
+                                const IconComponent = RESOURCE_ICONS[type as keyof typeof RESOURCE_ICONS] || Box
+                                return (
+                                    <SelectItem key={type} value={type}>
+                                        <div className="flex items-center gap-2">
+                                            <IconComponent className="h-4 w-4" />
+                                            <span>{type}</span>
+                                        </div>
+                                    </SelectItem>
+                                )
+                            })}
+                        </SelectContent>
+                    </Select>
+                )
         }
     }
 
@@ -972,9 +1078,9 @@ export default function KubernetesSchemaEditor({
     }
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-4 h-screen flex flex-col">
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-shrink-0">
                 <div>
                     <h2 className="text-xl font-semibold">Create Kubernetes Resource</h2>
                     <p className="text-sm text-muted-foreground">
@@ -983,7 +1089,6 @@ export default function KubernetesSchemaEditor({
                 </div>
                 <div className="flex items-center gap-2">
                     <Badge variant="outline">k8s {k8sVersion}</Badge>
-                    {/* <Badge variant="secondary">Real Schema</Badge> */}
                     <Button variant="outline" onClick={onClose}>
                         Cancel
                     </Button>
@@ -993,85 +1098,91 @@ export default function KubernetesSchemaEditor({
                 </div>
             </div>
 
-            <Card>
-                <CardHeader>
-                    <CardTitle>Resource Type</CardTitle>
+            {/* Compact Resource Type Selector */}
+            <Card className="flex-shrink-0">
+                <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                        <CardTitle className="text-lg">Resource Type</CardTitle>
+                        <Badge variant="secondary" className="text-xs">
+                            {filteredResourceTypes.length} available
+                        </Badge>
+                    </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                    {
-                        isLoadingKinds ? (
-                            <div className="flex items-center justify-center py-8">
-                                <div className="text-sm text-muted-foreground">Loading resource types...</div>
-                            </div>
-                        ) : (
-
-                            Object.entries(categorizedResources).map(([groupKey, group]) => {
-                                // Skip empty groups
-                                if (group.resources.length === 0) return null
-
-                                const isExpanded = expandedGroups.has(groupKey)
-
-                                return (
-                                    <div key={groupKey} className="border rounded-lg">
-                                        {/* Group Header */}
-                                        <button
-                                            onClick={() => toggleGroup(groupKey)}
-                                            className="w-full p-3 text-left hover:bg-muted/50 transition-colors flex items-center justify-between"
-                                        >
-                                            <div>
-                                                <h3 className="font-medium text-sm">{group.title}</h3>
-                                                <p className="text-xs text-muted-foreground mt-1">{group.description}</p>
-                                            </div>
+                    {isLoadingKinds ? (
+                        <div className="flex items-center justify-center py-4">
+                            <div className="text-sm text-muted-foreground">Loading resource types...</div>
+                        </div>
+                    ) : (
+                        <>
+                            {/* Category Tabs */}
+                            <Tabs value={selectedCategory} onValueChange={setSelectedCategory}>
+                                <TabsList className="grid w-full grid-cols-8">
+                                    {Object.entries(categorizedResources).map(([key, group]) => {
+                                        if (group.resources.length === 0) return null
+                                        return (
+                                            <TabsTrigger key={key} value={key} className="text-xs">
+                                                {group.title} ({group.resources.length})
+                                            </TabsTrigger>
+                                        )
+                                    })}
+                                </TabsList>
+                                
+                                {Object.entries(categorizedResources).map(([key, group]) => {
+                                    if (group.resources.length === 0) return null
+                                    return (
+                                        <TabsContent key={key} value={key} className="space-y-3">
                                             <div className="flex items-center gap-2">
-                                                <Badge variant="secondary" className="text-xs">
-                                                    {group.resources.length}
-                                                </Badge>
-                                                {isExpanded ? (
-                                                    <ChevronUp className="h-4 w-4" />
-                                                ) : (
-                                                    <ChevronDown className="h-4 w-4" />
+                                                <p className="text-sm text-muted-foreground flex-1">
+                                                    {group.description}
+                                                </p>
+                                                {/* Search for large categories */}
+                                                {group.resources.length > 8 && (
+                                                    <div className="relative">
+                                                        <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                                                        <Input
+                                                            placeholder="Search resources..."
+                                                            value={resourceTypeFilter}
+                                                            onChange={(e) => handleSearchChange(e.target.value)}
+                                                            className="pl-8 w-[250px]"
+                                                        />
+                                                        {searchSuggestions.length > 0 && (
+                                                            <div className="absolute top-full left-0 right-0 bg-background border rounded-md shadow-lg z-10 max-h-[200px] overflow-y-auto">
+                                                                {searchSuggestions.map((suggestion) => (
+                                                                    <div
+                                                                        key={suggestion}
+                                                                        className="px-3 py-2 hover:bg-muted cursor-pointer text-sm"
+                                                                        onClick={() => {
+                                                                            handleResourceTypeChange(suggestion)
+                                                                        }}
+                                                                    >
+                                                                        {suggestion}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 )}
                                             </div>
-                                        </button>
-
-                                        {/* Group Resources */}
-                                        {isExpanded && (
-                                            <div className="p-3 pt-0 border-t">
-                                                <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
-                                                    {group.resources.map((type) => {
-                                                        const IconComponent = RESOURCE_ICONS[type as keyof typeof RESOURCE_ICONS] || Box
-                                                        return (
-                                                            <Button
-                                                                key={type}
-                                                                variant={selectedResourceType === type ? 'default' : 'outline'}
-                                                                onClick={() => handleResourceTypeChange(type)}
-                                                                className="h-16 flex flex-col gap-1 text-xs"
-                                                                title={type}
-                                                            >
-                                                                <IconComponent className="h-4 w-4" />
-                                                                <span className="truncate">{type}</span>
-                                                            </Button>
-                                                        )
-                                                    })}
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                )
-                            }))
-                    }
+                                            {renderResourceTypeSelector()}
+                                        </TabsContent>
+                                    )
+                                })}
+                            </Tabs>
+                        </>
+                    )}
                 </CardContent>
             </Card>
 
-            {/* Form and Preview */}
-            <div className="grid gap-6 lg:grid-cols-2">
+            {/* Form and Preview - Dynamic Height */}
+            <div className="grid gap-4 lg:grid-cols-2 flex-1 min-h-0">
                 {/* Form Section */}
-                <Card className="flex flex-col">
-                    <CardHeader>
+                <Card className="flex flex-col min-h-0">
+                    <CardHeader className="flex-shrink-0">
                         <CardTitle>Configuration Form</CardTitle>
                     </CardHeader>
-                    <CardContent className="flex-1">
-                        <ScrollArea className="h-[600px] pr-4">
+                    <CardContent className="flex-1 min-h-0">
+                        <ScrollArea className="h-full pr-4">
                             {schema ? (
                                 <div className="space-y-6">
                                     <Form
@@ -1099,9 +1210,9 @@ export default function KubernetesSchemaEditor({
                     </CardContent>
                 </Card>
 
-                {/* Enhanced YAML Preview Section with Syntax Highlighting */}
-                <Card className="flex flex-col">
-                    <CardHeader>
+                {/* YAML Preview Section */}
+                <Card className="flex flex-col min-h-0">
+                    <CardHeader className="flex-shrink-0">
                         <div className="flex items-center justify-between">
                             <CardTitle>YAML Preview</CardTitle>
                             <div className="flex items-center gap-2">
@@ -1118,11 +1229,11 @@ export default function KubernetesSchemaEditor({
                             </div>
                         </div>
                     </CardHeader>
-                    <CardContent className="flex-1 p-0">
-                        <ScrollArea className="h-[600px]">
+                    <CardContent className="flex-1 p-0 min-h-0">
+                        <div className="h-full">
                             <CodeMirror
                                 value={yamlPreview}
-                                height="600px"
+                                height="100%"
                                 theme={isDarkMode ? oneDark : undefined}
                                 extensions={[
                                     yamlLanguage(),
@@ -1148,7 +1259,7 @@ export default function KubernetesSchemaEditor({
                                     allowMultipleSelections: false,
                                 }}
                             />
-                        </ScrollArea>
+                        </div>
                     </CardContent>
                 </Card>
             </div>
