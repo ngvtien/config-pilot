@@ -41,6 +41,35 @@ interface ConnectionStatus {
   error?: string
 }
 
+// Add these interfaces after the existing ones (around line 30)
+interface K8sDeployment {
+  name: string
+  namespace: string
+  replicas: { ready: number; total: number }
+  status: string
+  age: string
+  images: string[]
+}
+
+interface K8sService {
+  name: string
+  namespace: string
+  type: string
+  clusterIP: string
+  externalIP: string
+  ports: string[]
+  age: string
+}
+
+interface K8sNode {
+  name: string
+  status: string
+  roles: string[]
+  age: string
+  version: string
+  ready: boolean
+}
+
 // Class to manage Kubernetes operations
 class KubernetesService {
   private kc: k8s.KubeConfig
@@ -249,6 +278,118 @@ class KubernetesService {
       // Update connection status if this fails
       this.connectionStatus.connected = false
       this.connectionStatus.error = error instanceof Error ? error.message : String(error)
+      return []
+    }
+  }
+
+  async getDeployments(namespace?: string): Promise<K8sDeployment[]> {
+    if (!this.k8sCoreApi || !this.connectionStatus.connected) {
+      console.warn("Cannot get deployments: Not connected to Kubernetes")
+      return []
+    }
+
+    try {
+      const appsApi = this.kc.makeApiClient(k8s.AppsV1Api)
+      const deploymentList = namespace
+        ? await appsApi.listNamespacedDeployment({ namespace })
+        : await appsApi.listDeploymentForAllNamespaces()
+
+      return deploymentList.items.map((deployment) => {
+        const ready = deployment.status?.readyReplicas || 0
+        const total = deployment.spec?.replicas || 0
+        let status = 'Unknown'
+
+        if (ready === total && total > 0) {
+          status = 'Ready'
+        } else if (ready > 0) {
+          status = 'Partial'
+        } else {
+          status = 'NotReady'
+        }
+
+        return {
+          name: deployment.metadata?.name || "unknown",
+          namespace: deployment.metadata?.namespace || "unknown",
+          replicas: { ready, total },
+          status,
+          age: deployment.metadata?.creationTimestamp
+            ? this.calculateAge(new Date(deployment.metadata.creationTimestamp))
+            : "Unknown",
+          images: deployment.spec?.template?.spec?.containers?.map(c => c.image).filter((image): image is string => image !== undefined) || []
+        }
+        
+      })
+    } catch (error) {
+      console.error("Error getting deployments:", error)
+      return []
+    }
+  }
+
+  async getServices(namespace?: string): Promise<K8sService[]> {
+    if (!this.k8sCoreApi || !this.connectionStatus.connected) {
+      console.warn("Cannot get services: Not connected to Kubernetes")
+      return []
+    }
+
+    try {
+      const serviceList = namespace
+        ? await this.k8sCoreApi.listNamespacedService({ namespace })
+        : await this.k8sCoreApi.listServiceForAllNamespaces()
+
+      return serviceList.items.map((service) => ({
+        name: service.metadata?.name || "unknown",
+        namespace: service.metadata?.namespace || "unknown",
+        type: service.spec?.type || "ClusterIP",
+        clusterIP: service.spec?.clusterIP || "None",
+        externalIP: service.status?.loadBalancer?.ingress?.[0]?.ip ||
+          service.spec?.externalIPs?.[0] || "<none>",
+        ports: service.spec?.ports?.map(p => `${p.port}${p.nodePort ? ':' + p.nodePort : ''}/${p.protocol}`) || [],
+        age: service.metadata?.creationTimestamp
+          ? this.calculateAge(new Date(service.metadata.creationTimestamp))
+          : "Unknown"
+      }))
+    } catch (error) {
+      console.error("Error getting services:", error)
+      return []
+    }
+  }
+
+  async getNodes(): Promise<K8sNode[]> {
+    if (!this.k8sCoreApi || !this.connectionStatus.connected) {
+      console.warn("Cannot get nodes: Not connected to Kubernetes")
+      return []
+    }
+
+    try {
+      const nodeList = await this.k8sCoreApi.listNode()
+
+      return nodeList.items.map((node) => {
+        const readyCondition = node.status?.conditions?.find(c => c.type === 'Ready')
+        const isReady = readyCondition?.status === 'True'
+
+        // Extract roles from labels
+        const roles = node.metadata?.labels ? Object.keys(node.metadata.labels)
+          .filter(label => label.startsWith('node-role.kubernetes.io/'))
+          .map(label => label.replace('node-role.kubernetes.io/', ''))
+          .filter(role => role !== '') : []
+
+        if (roles.length === 0) {
+          roles.push('worker')
+        }
+
+        return {
+          name: node.metadata?.name || "unknown",
+          status: isReady ? 'Ready' : 'NotReady',
+          roles,
+          age: node.metadata?.creationTimestamp
+            ? this.calculateAge(new Date(node.metadata.creationTimestamp))
+            : "Unknown",
+          version: node.status?.nodeInfo?.kubeletVersion || "Unknown",
+          ready: isReady
+        }
+      })
+    } catch (error) {
+      console.error("Error getting nodes:", error)
       return []
     }
   }
@@ -517,6 +658,18 @@ export function initK8sService(initialConfigPath?: string) {
   ipcMain.handle("k8s:getAvailableConfigs", () => {
     return k8sService.getAvailableConfigs();
   });
+
+  ipcMain.handle("k8s:getDeployments", async (_, namespace) => {
+    return await k8sService.getDeployments(namespace)
+  })
+  
+  ipcMain.handle("k8s:getServices", async (_, namespace) => {
+    return await k8sService.getServices(namespace)
+  })
+  
+  ipcMain.handle("k8s:getNodes", async () => {
+    return await k8sService.getNodes()
+  })
 
   console.log("Kubernetes client service initialized")
 }

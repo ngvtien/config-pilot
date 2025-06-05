@@ -18,6 +18,8 @@ import FileExplorerPage from "@/renderer/pages/file-explorer-page"
 import type { ContextData } from "@/shared/types/context-data"
 import type { SettingsData } from "@/shared/types/settings-data"
 import { KubernetesResourcePage } from "./kubernetes-resource-page"
+import { KubernetesDashboardPage } from './kubernetes-dashboard-page'
+
 import { useWindowTitle } from '@/renderer/hooks/useWindowTitle'
 
 type UserRole = "developer" | "devops" | "operations"
@@ -29,7 +31,8 @@ type ViewType =
   | "template-editor"
   | "oci-registry"
   | "kubernetes"
-  | "k8s-resources"  // Add this new view  
+  | "k8s-resources"
+  | "k8s-dashboard" 
   | "argocd"
   | "git-repos"
   | "file-explorer"
@@ -306,21 +309,21 @@ export default function AppLayoutPage({
             }}
           />
         )
-      case "kubernetes":
-        return (
-          <div className="space-y-4">
-            <h2 className="text-2xl font-bold">Kubernetes</h2>
-            <p className="text-muted-foreground">Manage Kubernetes deployments and resources.</p>
-            <div className="border rounded-lg p-8 text-center">
-              <div className="text-4xl mb-4">📦</div>
-              <h3 className="text-lg font-semibold mb-2">Kubernetes Management</h3>
-              <p className="text-muted-foreground">Deploy and manage your applications on Kubernetes clusters.</p>
-              <p className="text-sm text-muted-foreground mt-2">
-                Current context: <span className="font-mono">{kubernetesContext}</span>
-              </p>
-            </div>
-          </div>
-        )
+      // case "kubernetes":
+      //   return (
+      //     <div className="space-y-4">
+      //       <h2 className="text-2xl font-bold">Kubernetes</h2>
+      //       <p className="text-muted-foreground">Manage Kubernetes deployments and resources.</p>
+      //       <div className="border rounded-lg p-8 text-center">
+      //         <div className="text-4xl mb-4">📦</div>
+      //         <h3 className="text-lg font-semibold mb-2">Kubernetes Management</h3>
+      //         <p className="text-muted-foreground">Deploy and manage your applications on Kubernetes clusters.</p>
+      //         <p className="text-sm text-muted-foreground mt-2">
+      //           Current context: <span className="font-mono">{kubernetesContext}</span>
+      //         </p>
+      //       </div>
+      //     </div>
+      //   )
         case "k8s-resources": {
           // Replace the context assignment around line 146 with:
           return (
@@ -352,6 +355,8 @@ export default function AppLayoutPage({
             onSettingsChange={handleSettingsChange}
           />
         )
+      case "k8s-dashboard":
+          return <KubernetesDashboardPage /> 
       default:
         return (
           <div className="flex flex-col items-center justify-center h-full text-center space-y-4">

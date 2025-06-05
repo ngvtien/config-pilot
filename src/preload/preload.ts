@@ -3,12 +3,21 @@ import { contextBridge, ipcRenderer } from "electron"
 contextBridge.exposeInMainWorld("electronAPI", {
   invoke: (channel: string, ...args: any[]) => {
     const validChannels = [
+      // Kubernetes channels
       'k8s:getContexts',
       'k8s:getCurrentContext',
+      'k8s:switchContext',
+      'k8s:connect',
+      'k8s:getConnectionStatus',
+      'k8s:getNamespaces',
+      'k8s:getPods',
+      'k8s:getDeployments',
+      'k8s:getServices',
+      'k8s:getNodes',
+      'k8s:setConfigPath',
       'k8s:setUserConfigPath',
       'k8s:getActiveConfigPath',
       'k8s:getAvailableConfigs',
-      'k8s:switchContext',
       'window:isMaximized',
       'app:version',
       'dialog:openFile',

@@ -18,13 +18,15 @@ export function useApiCall<T>({ apiFunction, onSuccess, onError }: ApiCallConfig
       const result = await apiFunction();
       setData(result);
       onSuccess?.(result);
+      return result;  // Add this line
     } catch (err) {
       setError(err instanceof Error ? err : new Error(String(err)));
       onError?.(err as Error);
+      throw err;  // Re-throw to maintain error handling in Promise.all
     } finally {
       setLoading(false);
     }
-  };
-
+  }; 
+  
   return { data, loading, error, execute };
 }

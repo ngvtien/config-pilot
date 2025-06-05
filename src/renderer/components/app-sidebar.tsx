@@ -15,6 +15,7 @@ import {
   FolderGit2,
   Settings,
   FolderOpen,
+  Activity,
 } from "lucide-react"
 
 import {
@@ -113,9 +114,9 @@ const developerTools = [
 
 const devopsTools = [
   {
-    title: "Kubernetes",
-    icon: Boxes,
-    view: "kubernetes" as ViewType,
+    title: "K8s Dashboard",
+    icon: Activity,
+    view: "k8s-dashboard" as ViewType,
   },
   {
     title: "K8s Resources",  // Add this new item

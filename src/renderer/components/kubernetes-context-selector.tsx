@@ -60,21 +60,49 @@ const KubernetesContextSelector = React.memo(({ onContextChange, className = '' 
   });
 
   // Load initial data
-  useEffect(() => {
-    console.log('Loading contexts...');
+  // useEffect(() => {
+  //   console.log('Loading contexts...');
     
-    // Load both contexts and current context
-    Promise.all([
+  //   // Load both contexts and current context
+  //   Promise.all([
+  //     loadContexts(),
+  //     loadCurrentContext()
+  //   ]).then(() => {
+  //     console.log('Contexts loaded:', contexts);
+  //     console.log('Current context loaded:', currentContext);
+  //   }).catch((error: any) => {
+  //     console.error('Error loading Kubernetes data:', error);
+  //   });
+  // }, []);
+
+// Load initial data
+useEffect(() => {
+  console.log('Loading contexts...');
+  
+  // First check connection status
+  KubernetesService.getConnectionStatus().then((status) => {
+    console.log('Connection status:', status);
+    
+    if (!status.connected) {
+      console.log('Not connected, attempting to connect...');
+      return KubernetesService.connect();
+    }
+    return status;
+  }).then(() => {
+    // Now load contexts and current context
+    return Promise.all([
       loadContexts(),
       loadCurrentContext()
-    ]).then(() => {
-      console.log('Contexts loaded:', contexts);
-      console.log('Current context loaded:', currentContext);
-    }).catch((error: any) => {
-      console.error('Error loading Kubernetes data:', error);
-    });
-  }, []);
-
+    ]);
+  }).then(([contextsResult, currentContextResult]) => {
+    // Log the actual results from the API calls, not the state variables
+    console.log('Contexts loaded:', contextsResult);
+    console.log('Current context loaded:', currentContextResult);
+  }).catch((error: any) => {
+    console.error('Error loading Kubernetes data:', error);
+  });
+}, []);
+  
   const isLoading = contextsLoading || currentContextLoading || switchingContext;
   const error = contextsError || switchError;
 

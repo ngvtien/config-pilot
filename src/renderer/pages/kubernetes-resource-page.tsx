@@ -17,13 +17,11 @@ import {
   Edit,
   Eye
 } from 'lucide-react'
-import { KubernetesResourceCreator } from '@/renderer/components/kubernetes-resource-creator'
-import KubernetesSchemaEditor from '../components/kubernetes-schema-editor'
+import KubernetesSchemaEditor from '@/renderer/components/kubernetes-schema-editor'
 
 import type { ContextData } from '@/shared/types/context-data'
 import type { SettingsData } from '@/shared/types/settings-data'
 import type { ContextAwareKubernetesResource } from '@/shared/types/kubernetes'
-import { contextNamingService } from '@/renderer/services/context-naming-service'
 import yaml from 'js-yaml'
 import { joinPath } from '@/renderer/lib/path-utils'
 
