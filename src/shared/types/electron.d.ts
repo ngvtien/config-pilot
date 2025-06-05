@@ -51,6 +51,33 @@ export interface ElectronAPI {
     }>
   }
 
+  // ArgoCD operations
+  argocd: {
+    testConnection: (environment: string, url: string, token: string, insecureSkipTLSVerify?: boolean) => Promise<boolean>
+    storeCredentials: (environment: string, credentials: any) => Promise<{ success: boolean }>
+    getCredentials: (environment: string) => Promise<any>
+    getApplications: (environment: string) => Promise<any[]>
+    getApplication: (environment: string, name: string) => Promise<any>
+    syncApplication: (environment: string, name: string) => Promise<boolean>
+    createApplication: (environment: string, application: any) => Promise<any>
+    updateApplication: (environment: string, name: string, application: any) => Promise<any>
+    deleteApplication: (environment: string, name: string) => Promise<boolean>
+  }
+
+  // Helm operations
+  helmOCI: {
+    testConnection(environment: string, registryUrl: string, authMethod: string, username?: string, password?: string, token?: string, insecureSkipTLSVerify?: boolean): Promise<boolean>
+    storeCredentials(environment: string, credentials: any): Promise<void>
+    getCredentials(environment: string): Promise<any>
+    getRepositories(environment: string): Promise<any[]>
+    searchCharts(environment: string, query?: string): Promise<any[]>
+    getChartVersions(environment: string, chartName: string): Promise<any[]>
+    pullChart(environment: string, chartName: string, version: string, destination?: string): Promise<string>
+    inspectChart(environment: string, chartName: string, version?: string): Promise<any>
+    addRepository(environment: string, name: string, url: string): Promise<boolean>
+    removeRepository(environment: string, name: string): Promise<boolean>
+  }
+
   // App operations
   getUserDataPath: () => Promise<string>
 

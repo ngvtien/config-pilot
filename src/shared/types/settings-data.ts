@@ -56,6 +56,17 @@ export interface SettingsData {
     }
   }
 
+  // Helm OCI configurations
+  helmOCIConfigurations?: {
+    [key in Environment]?: {
+      registryUrl: string
+      authMethod: 'token' | 'username' | 'anonymous' | 'aws' | 'gcp' | 'azure'
+      insecureSkipTLSVerify?: boolean
+      awsRegion?: string
+      gcpProject?: string
+      azureSubscription?: string
+    }
+  }  
 }
 
 export interface SchemaSettings {

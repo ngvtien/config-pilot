@@ -46,7 +46,19 @@ contextBridge.exposeInMainWorld("electronAPI", {
       'argocd:syncApplication',
       'argocd:createApplication',
       'argocd:updateApplication',
-      'argocd:deleteApplication',    
+      'argocd:deleteApplication',
+
+      // Helm OCI channels
+      'helm-oci:testConnection',
+      'helm-oci:storeCredentials',
+      'helm-oci:getCredentials',
+      'helm-oci:getRepositories',
+      'helm-oci:searchCharts',
+      'helm-oci:getChartVersions',
+      'helm-oci:pullChart',
+      'helm-oci:inspectChart',
+      'helm-oci:addRepository',
+      'helm-oci:removeRepository',
     ]
     if (validChannels.includes(channel)) {
       return ipcRenderer.invoke(channel, ...args)
@@ -91,8 +103,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Add to electronAPI object
   getUserDataPath: () => ipcRenderer.invoke('app:getUserDataPath'),
 
- // Vault operations
- vault: {
+  // Vault operations
+  vault: {
     testConnection: (environment: string, url: string, token: string, namespace?: string) =>
       ipcRenderer.invoke('vault:testConnection', environment, url, token, namespace),
     storeCredentials: (environment: string, credentials: any) =>
@@ -125,7 +137,30 @@ contextBridge.exposeInMainWorld("electronAPI", {
     deleteApplication: (environment: string, name: string) =>
       ipcRenderer.invoke('argocd:deleteApplication', environment, name)
   },
-    
+
+  helmOCI: {
+    testConnection: (environment: string, registryUrl: string, authMethod: string, username?: string, password?: string, token?: string, insecureSkipTLSVerify?: boolean) =>
+      ipcRenderer.invoke('helm-oci:testConnection', environment, registryUrl, authMethod, username, password, token, insecureSkipTLSVerify),
+    storeCredentials: (environment: string, credentials: any) =>
+      ipcRenderer.invoke('helm-oci:storeCredentials', environment, credentials),
+    getCredentials: (environment: string) =>
+      ipcRenderer.invoke('helm-oci:getCredentials', environment),
+    getRepositories: (environment: string) =>
+      ipcRenderer.invoke('helm-oci:getRepositories', environment),
+    searchCharts: (environment: string, query?: string) =>
+      ipcRenderer.invoke('helm-oci:searchCharts', environment, query),
+    getChartVersions: (environment: string, chartName: string) =>
+      ipcRenderer.invoke('helm-oci:getChartVersions', environment, chartName),
+    pullChart: (environment: string, chartName: string, version: string, destination?: string) =>
+      ipcRenderer.invoke('helm-oci:pullChart', environment, chartName, version, destination),
+    inspectChart: (environment: string, chartName: string, version?: string) =>
+      ipcRenderer.invoke('helm-oci:inspectChart', environment, chartName, version),
+    addRepository: (environment: string, name: string, url: string) =>
+      ipcRenderer.invoke('helm-oci:addRepository', environment, name, url),
+    removeRepository: (environment: string, name: string) =>
+      ipcRenderer.invoke('helm-oci:removeRepository', environment, name)
+  },
+
   // Secure credential operations
   storeSecureCredentials: (key: string, data: string) =>
     ipcRenderer.invoke('credentials:store', key, data),

@@ -8,7 +8,8 @@ import { VaultService } from './vault-service'
 import { VaultCredentialManager } from './vault-credential-manager'
 import { ArgoCDService } from './argocd-service'
 import { ArgoCDCredentialManager } from './argocd-credential-manager'
-
+import { HelmOCIService } from './helm-oci-service'
+import { HelmOCICredentialManager } from './helm-oci-credential-manager'
 
 const execPromise = util.promisify(exec)
 
@@ -324,12 +325,12 @@ export function setupIpcHandlers(): void {
       if (!safeStorage.isEncryptionAvailable()) {
         throw new Error('Encryption is not available on this system')
       }
-      
+
       const encrypted = safeStorage.encryptString(data)
       const store = (await import('electron-store')).default
       const credentialStore = new store({ name: 'secure-credentials' }) as any
       credentialStore.set(key, encrypted.toString('base64'))
-      
+
       return { success: true }
     } catch (error: any) {
       console.error('Failed to store secure credentials:', error)
@@ -346,18 +347,18 @@ export function setupIpcHandlers(): void {
       if (!safeStorage.isEncryptionAvailable()) {
         throw new Error('Encryption is not available on this system')
       }
-      
+
       const store = (await import('electron-store')).default
       const credentialStore = new store({ name: 'secure-credentials' }) as any
       const encryptedData = credentialStore.get(key) as string
-      
+
       if (!encryptedData) {
         return null
       }
-      
+
       const buffer = Buffer.from(encryptedData, 'base64')
       const decrypted = safeStorage.decryptString(buffer)
-      
+
       return decrypted
     } catch (error: any) {
       console.error('Failed to retrieve secure credentials:', error)
@@ -373,7 +374,7 @@ export function setupIpcHandlers(): void {
       const store = (await import('electron-store')).default
       const credentialStore = new store({ name: 'secure-credentials' }) as any
       credentialStore.delete(key)
-      
+
       return { success: true }
     } catch (error: any) {
       console.error('Failed to delete secure credentials:', error)
@@ -393,7 +394,7 @@ export function setupIpcHandlers(): void {
         token: token,
         namespace: namespace
       })
-      
+
       // Test connection by checking health
       await client.health()
       return { success: true, connected: true }
@@ -546,5 +547,105 @@ export function setupIpcHandlers(): void {
       throw new Error(`Failed to delete ArgoCD application: ${error.message}`)
     }
   })
-    
+
+  // Helm OCI handlers
+  ipcMain.handle("helm-oci:testConnection", async (_event, environment: string, registryUrl: string, authMethod: string, username?: string, password?: string, token?: string, insecureSkipTLSVerify?: boolean) => {
+    try {
+      const helmOCIService = new HelmOCIService()
+      return await helmOCIService.testConnection(environment as any, registryUrl, authMethod, username, password, token, insecureSkipTLSVerify)
+    } catch (error: any) {
+      console.error('Helm OCI connection test failed:', error)
+      throw new Error(`Helm OCI connection test failed: ${error.message}`)
+    }
+  })
+
+  ipcMain.handle("helm-oci:storeCredentials", async (_event, environment: string, credentials: any) => {
+    try {
+      await HelmOCICredentialManager.storeCredentials(environment as any, credentials)
+      return { success: true }
+    } catch (error: any) {
+      console.error('Failed to store Helm OCI credentials:', error)
+      throw new Error(`Failed to store Helm OCI credentials: ${error.message}`)
+    }
+  })
+
+  ipcMain.handle("helm-oci:getCredentials", async (_event, environment: string) => {
+    try {
+      return await HelmOCICredentialManager.getCredentials(environment as any)
+    } catch (error: any) {
+      console.error('Failed to get Helm OCI credentials:', error)
+      throw new Error(`Failed to get Helm OCI credentials: ${error.message}`)
+    }
+  })
+
+  ipcMain.handle("helm-oci:getRepositories", async (_event, environment: string) => {
+    try {
+      const helmOCIService = new HelmOCIService()
+      return await helmOCIService.getRepositories(environment as any)
+    } catch (error: any) {
+      console.error('Failed to get Helm repositories:', error)
+      throw new Error(`Failed to get Helm repositories: ${error.message}`)
+    }
+  })
+
+  ipcMain.handle("helm-oci:searchCharts", async (_event, environment: string, query?: string) => {
+    try {
+      const helmOCIService = new HelmOCIService()
+      return await helmOCIService.searchCharts(environment as any, query)
+    } catch (error: any) {
+      console.error('Failed to search Helm charts:', error)
+      throw new Error(`Failed to search Helm charts: ${error.message}`)
+    }
+  })
+
+  ipcMain.handle("helm-oci:getChartVersions", async (_event, environment: string, chartName: string) => {
+    try {
+      const helmOCIService = new HelmOCIService()
+      return await helmOCIService.getChartVersions(environment as any, chartName)
+    } catch (error: any) {
+      console.error('Failed to get chart versions:', error)
+      throw new Error(`Failed to get chart versions: ${error.message}`)
+    }
+  })
+
+  ipcMain.handle("helm-oci:pullChart", async (_event, environment: string, chartName: string, version: string, destination?: string) => {
+    try {
+      const helmOCIService = new HelmOCIService()
+      return await helmOCIService.pullChart(environment as any, chartName, version, destination)
+    } catch (error: any) {
+      console.error('Failed to pull chart:', error)
+      throw new Error(`Failed to pull chart: ${error.message}`)
+    }
+  })
+
+  ipcMain.handle("helm-oci:inspectChart", async (_event, environment: string, chartName: string, version?: string) => {
+    try {
+      const helmOCIService = new HelmOCIService()
+      return await helmOCIService.inspectChart(environment as any, chartName, version)
+    } catch (error: any) {
+      console.error('Failed to inspect chart:', error)
+      throw new Error(`Failed to inspect chart: ${error.message}`)
+    }
+  })
+
+  ipcMain.handle("helm-oci:addRepository", async (_event, environment: string, name: string, url: string) => {
+    try {
+      const helmOCIService = new HelmOCIService()
+      return await helmOCIService.addRepository(environment as any, name, url)
+    } catch (error: any) {
+      console.error('Failed to add repository:', error)
+      throw new Error(`Failed to add repository: ${error.message}`)
+    }
+  })
+
+  ipcMain.handle("helm-oci:removeRepository", async (_event, environment: string, name: string) => {
+    try {
+      const helmOCIService = new HelmOCIService()
+      return await helmOCIService.removeRepository(environment as any, name)
+    } catch (error: any) {
+      console.error('Failed to remove repository:', error)
+      throw new Error(`Failed to remove repository: ${error.message}`)
+    }
+  })
+
 }

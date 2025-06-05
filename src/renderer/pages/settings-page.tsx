@@ -28,6 +28,7 @@ import { joinPath } from "@/renderer/lib/path-utils"
 import { KubernetesVersionSelector } from '@/renderer/components/kubernetes-version-selector'
 import { VaultConfigurationSection } from "@/renderer/components/vault-configuration"
 import { ArgoCDConfigurationSection } from '@/renderer/components/argocd-configuration'
+import { HelmOCIConfigurationSection } from "@/renderer/components/helm-oci-configuration"
 
 interface SettingsPageProps {
   context: ContextData
@@ -603,12 +604,13 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
       </div>
 
       <Tabs defaultValue="general" className="w-full">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="kubernetes">Kubernetes</TabsTrigger>
           <TabsTrigger value="repositories">Git Repositories</TabsTrigger>
           <TabsTrigger value="vault">Vault</TabsTrigger>
-          <TabsTrigger value="argocd">ArgoCD</TabsTrigger>
+          <TabsTrigger value="argocd">ArgoCD</TabsTrigger>          
+          <TabsTrigger value="helm-oci">Helm OCI</TabsTrigger>
         </TabsList>
 
         <TabsContent value="repositories" className="space-y-4">
@@ -893,32 +895,16 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
         </TabsContent>
 
         <TabsContent value="argocd" className="space-y-4">
-          {/* <div className="border rounded-lg p-6">
-            <h3 className="text-lg font-semibold mb-4">Editor</h3>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="font-medium">Line numbers</h4>
-                  <p className="text-sm text-muted-foreground">Show line numbers in code editor</p>
-                </div>
-                <ToggleSwitch
-                  enabled={localSettings.lineNumbers}
-                  onChange={(value) => handleSettingChange("lineNumbers", value)}
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="font-medium">Word wrap</h4>
-                  <p className="text-sm text-muted-foreground">Wrap long lines in the editor</p>
-                </div>
-                <ToggleSwitch
-                  enabled={localSettings.wordWrap}
-                  onChange={(value) => handleSettingChange("wordWrap", value)}
-                />
-              </div>
-            </div>
-          </div> */}
           <ArgoCDConfigurationSection
+            context={context}
+            settings={settings}
+            onSettingsChange={onSettingsChange}
+            onContextChange={onContextChange}
+          />          
+        </TabsContent>
+
+        <TabsContent value="helm-oci" className="space-y-4">
+          <HelmOCIConfigurationSection
             context={context}
             settings={settings}
             onSettingsChange={onSettingsChange}
