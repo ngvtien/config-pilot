@@ -1,4 +1,4 @@
-import type { Environment  } from '../../shared/context-data'
+import type { Environment  } from '@/shared/types/context-data'
 
 interface VaultCredentials {
     url: string
