@@ -629,12 +629,12 @@ const RESOURCE_GROUPS = {
     policy: {
         title: '📋 Policy & Automation',
         description: 'Internal resources that affect scheduling and topology',
-        resources: ['ValidatingWebhookConfiguration', 'MutatingWebhookConfiguration', 'PodDisruptionBudget', 'PriorityClass' ]
+        resources: ['ValidatingWebhookConfiguration', 'MutatingWebhookConfiguration', 'PodDisruptionBudget', 'PriorityClass']
     },
     observability: {
         title: '📈 Observability',
         description: 'Monitoring, logging, and tracing',
-        resources: ['Event', 'EventList', 'WatchEvent', 'HorizontalPodAutoscaler', 'HorizontalPodAutoscalerList' ]
+        resources: ['Event', 'EventList', 'WatchEvent', 'HorizontalPodAutoscaler', 'HorizontalPodAutoscalerList']
     },
     others: {
         title: '🔄 Others',
@@ -726,7 +726,7 @@ export default function KubernetesSchemaEditor({
         const cached = getCachedData(STORAGE_KEYS.expandedGroups, ['workloads'])
         return new Set(cached)
     })
-    
+
     // New state variables for the optimized layout
     const [selectedCategory, setSelectedCategory] = useState<string>(() =>
         getCachedData(STORAGE_KEYS.selectedCategory, 'workloads')
@@ -739,11 +739,11 @@ export default function KubernetesSchemaEditor({
     // Add new state for schema viewer
     const [showSchemaViewer, setShowSchemaViewer] = useState(false)
     const [rawSchemaContent, setRawSchemaContent] = useState<string>('')
-    
+
     // Add function to view raw schema
     const handleViewSchema = async () => {
         if (!schema) return
-        
+
         try {
             // Format the schema as pretty JSON
             const formattedSchema = JSON.stringify(schema, null, 2)
@@ -755,7 +755,7 @@ export default function KubernetesSchemaEditor({
     }
 
     const { theme } = useTheme()
-    
+
     // Helper function to determine if we're in dark mode
     const isDarkMode = useMemo(() => {
         if (theme === 'system') {
@@ -828,22 +828,22 @@ export default function KubernetesSchemaEditor({
     // Get filtered resource types based on selected category and search filter
     const filteredResourceTypes = useMemo(() => {
         const categoryResources = categorizedResources[selectedCategory]?.resources || []
-        
+
         if (!resourceTypeFilter) {
             // For large categories, show popular items first
             if (selectedCategory === 'others' && categoryResources.length > 20) {
-                const popular = popularResourceTypes.others.filter(type => 
+                const popular = popularResourceTypes.others.filter(type =>
                     categoryResources.includes(type)
                 )
-                const remaining = categoryResources.filter(type => 
+                const remaining = categoryResources.filter(type =>
                     !popular.includes(type)
                 ).sort()
                 return [...popular, ...remaining]
             }
             return categoryResources.sort()
         }
-        
-        return categoryResources.filter(type => 
+
+        return categoryResources.filter(type =>
             type.toLowerCase().includes(resourceTypeFilter.toLowerCase())
         ).sort()
     }, [categorizedResources, selectedCategory, resourceTypeFilter])
@@ -1000,7 +1000,7 @@ export default function KubernetesSchemaEditor({
         setResourceTypeFilter(value)
         if (value.length > 0 && selectedCategory === 'others') {
             const suggestions = availableKinds
-                .filter(kind => 
+                .filter(kind =>
                     getCategoryForResourceType(kind) === 'others' &&
                     kind.toLowerCase().includes(value.toLowerCase())
                 )
@@ -1015,7 +1015,7 @@ export default function KubernetesSchemaEditor({
     const renderResourceTypeSelector = () => {
         const categoryItems = filteredResourceTypes
         const displayMethod = getDisplayMethod(selectedCategory, categoryItems)
-        
+
         switch (displayMethod) {
             case 'horizontal':
                 return (
@@ -1142,7 +1142,7 @@ export default function KubernetesSchemaEditor({
                                         )
                                     })}
                                 </TabsList>
-                                
+
                                 {Object.entries(categorizedResources).map(([key, group]) => {
                                     if (group.resources.length === 0) return null
                                     return (
@@ -1194,7 +1194,7 @@ export default function KubernetesSchemaEditor({
                 {/* Form Section */}
                 <Card className="flex flex-col min-h-0">
                     <CardHeader className="flex-shrink-0">
-                    <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between">
                             <CardTitle>Configuration Form</CardTitle>
                             {schema && (
                                 <Button
@@ -1294,12 +1294,15 @@ export default function KubernetesSchemaEditor({
 
             {/* Schema Viewer Modal */}
             <Dialog open={showSchemaViewer} onOpenChange={setShowSchemaViewer}>
-                <DialogContent className="max-w-6xl w-[95vw] h-[85vh] flex flex-col resize overflow-hidden fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 border-2 border-border shadow-2xl">
+            <DialogContent className="w-[min(95vw,theme(maxWidth.6xl))] h-[85vh] flex flex-col resize overflow-hidden fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 border-2 border-border shadow-2xl">
                     <DialogHeader className="flex-shrink-0 sticky top-0 bg-background z-10 border-b pb-3">
                         <div className="flex items-center justify-between">
-                            <DialogTitle className="pl-4">JSON Resource Type Schema - {selectedResourceType}</DialogTitle>
+                            <DialogTitle className="pl-4 text-lg font-bold text-foreground drop-shadow-sm">
+                                JSON Resource Type Schema - <span className="text-amber-600 dark:text-amber-450">{selectedResourceType}</span>
+                            </DialogTitle>
+
                             <div className="flex items-center gap-2">
-                            <Button
+                                <Button
                                     variant="ghost"
                                     size="sm"
                                     onClick={() => {
@@ -1307,18 +1310,20 @@ export default function KubernetesSchemaEditor({
                                             navigator.clipboard.writeText(rawSchemaContent);
                                         }
                                     }}
-                                    className="text-xs pt-1"
+                                    className="text-xs pt-1 h-8 w-8 p-0"
+                                    title="Copy schema to clipboard"
                                 >
-                                    <Copy className="h-3 w-3 mr-1" />
-                                    Copy
+                                    <Copy className="h-5 w-5" />
+                                    <span className="sr-only">Copy</span>
                                 </Button>
                                 <DialogClose asChild>
-                                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                        <X className="h-5 w-5" />
+                                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0" title="Close dialog">
+                                        <X className="h-6 w-6" />
                                         <span className="sr-only">Close</span>
                                     </Button>
                                 </DialogClose>
                             </div>
+
                         </div>
                     </DialogHeader>
                     <div className="flex-1 min-h-0 overflow-auto">

@@ -81,6 +81,12 @@ export interface ElectronAPI {
   // App operations
   getUserDataPath: () => Promise<string>
 
+  // Windows controls
+  minimize: () => Promise<void>
+  maximize: () => Promise<void>
+  close: () => Promise<void>
+  isMaximized: () => Promise<void>
+  setTitle?: (title: string) => Promise<void>
 }
 
 declare global {

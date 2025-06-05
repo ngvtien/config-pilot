@@ -1,4 +1,4 @@
-import { app, BrowserWindow, nativeTheme, screen, session } from 'electron';
+import { app, BrowserWindow, nativeTheme, screen, session, ipcMain } from 'electron';
 import Store from 'electron-store';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -135,6 +135,41 @@ async function createWindow() {
 app.whenReady().then(async () => {
   const savedConfigPath = store.get('kubeConfigPath') as string | undefined;
   setupIpcHandlers();
+
+  // Add window control handlers
+  ipcMain.on('window:minimize', () => {
+    if (mainWindow) mainWindow.minimize();
+  });  
+
+  ipcMain.on('window:maximize', () => {
+    if (mainWindow) {
+      if (mainWindow.isMaximized()) {
+        mainWindow.unmaximize();
+      } else {
+        mainWindow.maximize();
+      }
+    }
+  });
+
+  ipcMain.on('window:unmaximize', () => {
+    if (mainWindow) mainWindow.unmaximize();
+  });
+  
+  ipcMain.on('window:close', () => {
+    if (mainWindow) mainWindow.close();
+  });
+  
+  ipcMain.handle('window:isMaximized', () => {
+    return mainWindow ? mainWindow.isMaximized() : false;
+  });
+  
+  // Add new setTitle handler
+  ipcMain.on('window:setTitle', (_event, title: string) => {
+    if (mainWindow) {
+      mainWindow.setTitle(title);
+    }
+  });
+  
   initK8sService(savedConfigPath)
   createWindow();
   

@@ -14,6 +14,9 @@ import {
   ZoomIn,
   ZoomOut,
   RotateCcw,
+  Settings,
+  Palette,
+  Code
 } from "lucide-react"
 import { Badge } from "@/renderer/components/ui/badge"
 import { Alert, AlertDescription } from "@/renderer/components/ui/alert"
@@ -609,7 +612,7 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
           <TabsTrigger value="kubernetes">Kubernetes</TabsTrigger>
           <TabsTrigger value="repositories">Git Repositories</TabsTrigger>
           <TabsTrigger value="vault">Vault</TabsTrigger>
-          <TabsTrigger value="argocd">ArgoCD</TabsTrigger>          
+          <TabsTrigger value="argocd">ArgoCD</TabsTrigger>
           <TabsTrigger value="helm-oci">Helm OCI</TabsTrigger>
         </TabsList>
 
@@ -754,15 +757,18 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
           />
         </TabsContent>
 
-        <TabsContent value="general" className="space-y-4">
+        <TabsContent value="general" className="space-y-6">
+          {/* Application Settings */}
           <div className="border rounded-lg p-6">
-            <h3 className="text-lg font-semibold mb-4">General</h3>
+            <div className="flex items-center gap-2 mb-4">
+              <Settings className="h-5 w-5" />
+              <h3 className="text-lg font-semibold">Application</h3>
+            </div>
 
-            <div className="space-y-4">
-
+            <div className="space-y-6">
               <div>
-                <h4 className="font-medium">Working Directory</h4>
-                <p className="text-sm text-muted-foreground">Local folder where files are created, updated, and compared against Git repositories</p>
+                <h4 className="font-medium mb-2">Working Directory</h4>
+                <p className="text-sm text-muted-foreground mb-3">Local folder where files are created, updated, and compared against Git repositories</p>
                 <div className="flex gap-2">
                   <Input
                     id="baseDirectory"
@@ -797,11 +803,21 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
                   onChange={(value) => handleSettingChange("autoSave", value)}
                 />
               </div>
+            </div>
+          </div>
 
+          {/* Appearance Settings */}
+          <div className="border rounded-lg p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Palette className="h-5 w-5" />
+              <h3 className="text-lg font-semibold">Appearance</h3>
+            </div>
+
+            <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h4 className="font-medium">Dark mode</h4>
-                  <p className="text-sm text-muted-foreground">Use dark theme for the interface</p>
+                  <h4 className="font-medium">Theme</h4>
+                  <p className="text-sm text-muted-foreground">Choose your preferred color theme</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <Button
@@ -824,7 +840,6 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
                 </div>
               </div>
 
-              {/* Zoom Controls */}
               <div className="flex items-center justify-between">
                 <div>
                   <h4 className="font-medium">Zoom Level</h4>
@@ -864,43 +879,48 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
                   </Button>
                 </div>
               </div>
+            </div>
+          </div>
 
-              { /* Editor */}
-              <h3 className="text-lg font-semibold mb-4">Editor</h3>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="font-medium">Line numbers</h4>
-                    <p className="text-sm text-muted-foreground">Show line numbers in code editor</p>
-                  </div>
-                  <ToggleSwitch
-                    enabled={localSettings.lineNumbers}
-                    onChange={(value) => handleSettingChange("lineNumbers", value)}
-                  />
+          {/* Editor Settings */}
+          <div className="border rounded-lg p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Code className="h-5 w-5" />
+              <h3 className="text-lg font-semibold">Editor</h3>
+            </div>
+
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="font-medium">Line numbers</h4>
+                  <p className="text-sm text-muted-foreground">Show line numbers in code editor</p>
                 </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="font-medium">Word wrap</h4>
-                    <p className="text-sm text-muted-foreground">Wrap long lines in the editor</p>
-                  </div>
-                  <ToggleSwitch
-                    enabled={localSettings.wordWrap}
-                    onChange={(value) => handleSettingChange("wordWrap", value)}
-                  />
-                </div>
+                <ToggleSwitch
+                  enabled={localSettings.lineNumbers}
+                  onChange={(value) => handleSettingChange("lineNumbers", value)}
+                />
               </div>
 
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="font-medium">Word wrap</h4>
+                  <p className="text-sm text-muted-foreground">Wrap long lines in the editor</p>
+                </div>
+                <ToggleSwitch
+                  enabled={localSettings.wordWrap}
+                  onChange={(value) => handleSettingChange("wordWrap", value)}
+                />
+              </div>
             </div>
           </div>
         </TabsContent>
-
         <TabsContent value="argocd" className="space-y-4">
           <ArgoCDConfigurationSection
             context={context}
             settings={settings}
             onSettingsChange={onSettingsChange}
             onContextChange={onContextChange}
-          />          
+          />
         </TabsContent>
 
         <TabsContent value="helm-oci" className="space-y-4">
@@ -909,7 +929,7 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
             settings={settings}
             onSettingsChange={onSettingsChange}
             onContextChange={onContextChange}
-          />          
+          />
         </TabsContent>
 
         <TabsContent value="kubernetes" className="space-y-4">

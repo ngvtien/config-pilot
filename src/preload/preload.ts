@@ -72,6 +72,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   unmaximize: () => ipcRenderer.send("window:unmaximize"),
   close: () => ipcRenderer.send("window:close"),
   isMaximized: () => ipcRenderer.invoke("window:isMaximized"),
+  setTitle: (title: string) => ipcRenderer.send("window:setTitle", title),
 
   // App info
   getAppVersion: () => ipcRenderer.invoke("app:version"),

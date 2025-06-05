@@ -18,6 +18,7 @@ import FileExplorerPage from "@/renderer/pages/file-explorer-page"
 import type { ContextData } from "@/shared/types/context-data"
 import type { SettingsData } from "@/shared/types/settings-data"
 import { KubernetesResourcePage } from "./kubernetes-resource-page"
+import { useWindowTitle } from '@/renderer/hooks/useWindowTitle'
 
 type UserRole = "developer" | "devops" | "operations"
 type ViewType =
@@ -147,6 +148,9 @@ export default function AppLayoutPage({
   const context = useMemo(() => propContextData || localContext, [propContextData, localContext])
   const settings = useMemo(() => propSettingsData || localSettings, [propSettingsData, localSettings])
   
+ // Update window title when settings change
+ useWindowTitle(settings)
+
   // Load from localStorage only if not controlled
   useEffect(() => {
     if (!propContextData) {
