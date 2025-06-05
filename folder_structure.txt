@@ -4,7 +4,6 @@
 ├── desktop-icon.png
 ├── electron-builder.json
 ├── eslint.config.js
-├── folder_structure.txt
 ├── index.html
 ├── package-lock.json
 ├── package.json

@@ -73,6 +73,8 @@ async function createWindow() {
   mainWindow = new BrowserWindow({
     ...windowState,
     show: false,
+    //icon: path.join(__dirname, '..', 'assets', 'logo.png'),
+    icon: path.join(__dirname, '..', '..', 'build', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload.js'),
       sandbox: true,

@@ -2,14 +2,20 @@
     "appId": "au.com.da.config-pilot",
     "files": ["dist-electron", "dist-react"],
     "icon": "./desktop-icon.png",
+    "directories": {
+        "buildResources": "build"
+    },
     "mac": {
+        "icon": "build/icon.icns",
         "target": "dmg"
     },
     "linux": {
+        "icon": "build/icon.png",
         "target": "AppImage",
         "category": "Utility"
     },
     "win": {
+        "icon": "build/icon.ico",
         "target": ["portable", "msi"]
     }
 }
