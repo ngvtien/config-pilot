@@ -62,10 +62,16 @@ const KubernetesContextSelector = React.memo(({ onContextChange, className = '' 
   // Load initial data
   useEffect(() => {
     console.log('Loading contexts...');
-    loadContexts().then(() => {
+    
+    // Load both contexts and current context
+    Promise.all([
+      loadContexts(),
+      loadCurrentContext()
+    ]).then(() => {
       console.log('Contexts loaded:', contexts);
+      console.log('Current context loaded:', currentContext);
     }).catch((error: any) => {
-      console.error('Error loading contexts:', error);
+      console.error('Error loading Kubernetes data:', error);
     });
   }, []);
 

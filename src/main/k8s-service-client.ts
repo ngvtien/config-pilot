@@ -138,6 +138,10 @@ class KubernetesService {
   // Connect to the current context (requires connection)
   async connect(): Promise<ConnectionStatus> {
     try {
+      // Get the current context from kubeconfig if not already set
+      const currentContext = this.connectionStatus.currentContext || this.kc.getCurrentContext();
+      this.connectionStatus.currentContext = currentContext;
+
       console.log(`Connecting to context: ${this.connectionStatus.currentContext}`)
 
       // Create the API client for the current context
@@ -389,7 +393,7 @@ class KubernetesService {
 
   validateConfigPath(rawPath: string): boolean {
     try {
-      const normalizedPath =  rawPath; //this.normalizePath(rawPath);
+      const normalizedPath = rawPath; //this.normalizePath(rawPath);
       if (!fs.existsSync(normalizedPath)) {
         console.error(`Config file not found at ${normalizedPath}`);
         return false;
