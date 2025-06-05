@@ -6,6 +6,8 @@ import util from "util"
 import yaml from "js-yaml"
 import { VaultService } from './vault-service'
 import { VaultCredentialManager } from './vault-credential-manager'
+import { ArgoCDService } from './argocd-service'
+import { ArgoCDCredentialManager } from './argocd-credential-manager'
 
 
 const execPromise = util.promisify(exec)
@@ -455,5 +457,94 @@ export function setupIpcHandlers(): void {
     }
   })
 
-  
+  // ArgoCD handlers
+  ipcMain.handle("argocd:testConnection", async (_event, environment: string, url: string, token: string, insecureSkipTLSVerify?: boolean) => {
+    try {
+      const argoCDService = new ArgoCDService()
+      return await argoCDService.testConnection(environment as any, url, token, insecureSkipTLSVerify)
+    } catch (error: any) {
+      console.error('ArgoCD connection test failed:', error)
+      throw new Error(`ArgoCD connection test failed: ${error.message}`)
+    }
+  })
+
+  ipcMain.handle("argocd:storeCredentials", async (_event, environment: string, credentials: any) => {
+    try {
+      await ArgoCDCredentialManager.storeCredentials(environment as any, credentials)
+      return { success: true }
+    } catch (error: any) {
+      console.error('Failed to store ArgoCD credentials:', error)
+      throw new Error(`Failed to store ArgoCD credentials: ${error.message}`)
+    }
+  })
+
+  ipcMain.handle("argocd:getCredentials", async (_event, environment: string) => {
+    try {
+      return await ArgoCDCredentialManager.getCredentials(environment as any)
+    } catch (error: any) {
+      console.error('Failed to get ArgoCD credentials:', error)
+      throw new Error(`Failed to get ArgoCD credentials: ${error.message}`)
+    }
+  })
+
+  ipcMain.handle("argocd:getApplications", async (_event, environment: string) => {
+    try {
+      const argoCDService = new ArgoCDService()
+      return await argoCDService.getApplications(environment as any)
+    } catch (error: any) {
+      console.error('Failed to get ArgoCD applications:', error)
+      throw new Error(`Failed to get ArgoCD applications: ${error.message}`)
+    }
+  })
+
+  ipcMain.handle("argocd:getApplication", async (_event, environment: string, name: string) => {
+    try {
+      const argoCDService = new ArgoCDService()
+      return await argoCDService.getApplication(environment as any, name)
+    } catch (error: any) {
+      console.error('Failed to get ArgoCD application:', error)
+      throw new Error(`Failed to get ArgoCD application: ${error.message}`)
+    }
+  })
+
+  ipcMain.handle("argocd:syncApplication", async (_event, environment: string, name: string) => {
+    try {
+      const argoCDService = new ArgoCDService()
+      return await argoCDService.syncApplication(environment as any, name)
+    } catch (error: any) {
+      console.error('Failed to sync ArgoCD application:', error)
+      throw new Error(`Failed to sync ArgoCD application: ${error.message}`)
+    }
+  })
+
+  ipcMain.handle("argocd:createApplication", async (_event, environment: string, application: any) => {
+    try {
+      const argoCDService = new ArgoCDService()
+      return await argoCDService.createApplication(environment as any, application)
+    } catch (error: any) {
+      console.error('Failed to create ArgoCD application:', error)
+      throw new Error(`Failed to create ArgoCD application: ${error.message}`)
+    }
+  })
+
+  ipcMain.handle("argocd:updateApplication", async (_event, environment: string, name: string, application: any) => {
+    try {
+      const argoCDService = new ArgoCDService()
+      return await argoCDService.updateApplication(environment as any, name, application)
+    } catch (error: any) {
+      console.error('Failed to update ArgoCD application:', error)
+      throw new Error(`Failed to update ArgoCD application: ${error.message}`)
+    }
+  })
+
+  ipcMain.handle("argocd:deleteApplication", async (_event, environment: string, name: string) => {
+    try {
+      const argoCDService = new ArgoCDService()
+      return await argoCDService.deleteApplication(environment as any, name)
+    } catch (error: any) {
+      console.error('Failed to delete ArgoCD application:', error)
+      throw new Error(`Failed to delete ArgoCD application: ${error.message}`)
+    }
+  })
+    
 }

@@ -35,7 +35,18 @@ contextBridge.exposeInMainWorld("electronAPI", {
       // Secure credential channels
       'credentials:store',
       'credentials:get',
-      'credentials:delete'
+      'credentials:delete',
+
+      // ArgoCD channels
+      'argocd:testConnection',
+      'argocd:storeCredentials',
+      'argocd:getCredentials',
+      'argocd:getApplications',
+      'argocd:getApplication',
+      'argocd:syncApplication',
+      'argocd:createApplication',
+      'argocd:updateApplication',
+      'argocd:deleteApplication',    
     ]
     if (validChannels.includes(channel)) {
       return ipcRenderer.invoke(channel, ...args)
@@ -94,6 +105,27 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke('vault:readSecret', environment, path, key)
   },
 
+  argocd: {
+    testConnection: (environment: string, url: string, token: string, insecureSkipTLSVerify?: boolean) =>
+      ipcRenderer.invoke('argocd:testConnection', environment, url, token, insecureSkipTLSVerify),
+    storeCredentials: (environment: string, credentials: any) =>
+      ipcRenderer.invoke('argocd:storeCredentials', environment, credentials),
+    getCredentials: (environment: string) =>
+      ipcRenderer.invoke('argocd:getCredentials', environment),
+    getApplications: (environment: string) =>
+      ipcRenderer.invoke('argocd:getApplications', environment),
+    getApplication: (environment: string, name: string) =>
+      ipcRenderer.invoke('argocd:getApplication', environment, name),
+    syncApplication: (environment: string, name: string) =>
+      ipcRenderer.invoke('argocd:syncApplication', environment, name),
+    createApplication: (environment: string, application: any) =>
+      ipcRenderer.invoke('argocd:createApplication', environment, application),
+    updateApplication: (environment: string, name: string, application: any) =>
+      ipcRenderer.invoke('argocd:updateApplication', environment, name, application),
+    deleteApplication: (environment: string, name: string) =>
+      ipcRenderer.invoke('argocd:deleteApplication', environment, name)
+  },
+    
   // Secure credential operations
   storeSecureCredentials: (key: string, data: string) =>
     ipcRenderer.invoke('credentials:store', key, data),

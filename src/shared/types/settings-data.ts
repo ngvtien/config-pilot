@@ -45,6 +45,17 @@ export interface SettingsData {
       // credentials stored securely via electronAPI
     }
   }
+
+  // ArgoCD configurations
+  argoCDConfigurations?: {
+    [key in Environment]?: {
+      url: string
+      authMethod: 'token' | 'username' | 'sso'
+      insecureSkipTLSVerify?: boolean
+      // credentials stored securely via electronAPI
+    }
+  }
+
 }
 
 export interface SchemaSettings {

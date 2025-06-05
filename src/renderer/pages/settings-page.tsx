@@ -27,6 +27,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/renderer/components/
 import { joinPath } from "@/renderer/lib/path-utils"
 import { KubernetesVersionSelector } from '@/renderer/components/kubernetes-version-selector'
 import { VaultConfigurationSection } from "@/renderer/components/vault-configuration"
+import { ArgoCDConfigurationSection } from '@/renderer/components/argocd-configuration'
 
 interface SettingsPageProps {
   context: ContextData
@@ -607,7 +608,7 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
           <TabsTrigger value="kubernetes">Kubernetes</TabsTrigger>
           <TabsTrigger value="repositories">Git Repositories</TabsTrigger>
           <TabsTrigger value="vault">Vault</TabsTrigger>
-          <TabsTrigger value="editor">Editor</TabsTrigger>
+          <TabsTrigger value="argocd">ArgoCD</TabsTrigger>
         </TabsList>
 
         <TabsContent value="repositories" className="space-y-4">
@@ -861,13 +862,38 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
                   </Button>
                 </div>
               </div>
+
+              { /* Editor */}
+              <h3 className="text-lg font-semibold mb-4">Editor</h3>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-medium">Line numbers</h4>
+                    <p className="text-sm text-muted-foreground">Show line numbers in code editor</p>
+                  </div>
+                  <ToggleSwitch
+                    enabled={localSettings.lineNumbers}
+                    onChange={(value) => handleSettingChange("lineNumbers", value)}
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-medium">Word wrap</h4>
+                    <p className="text-sm text-muted-foreground">Wrap long lines in the editor</p>
+                  </div>
+                  <ToggleSwitch
+                    enabled={localSettings.wordWrap}
+                    onChange={(value) => handleSettingChange("wordWrap", value)}
+                  />
+                </div>
+              </div>
+
             </div>
           </div>
         </TabsContent>
 
-        <TabsContent value="editor" className="space-y-4">
-          {/* Editor content - keeping existing code */}
-          <div className="border rounded-lg p-6">
+        <TabsContent value="argocd" className="space-y-4">
+          {/* <div className="border rounded-lg p-6">
             <h3 className="text-lg font-semibold mb-4">Editor</h3>
             <div className="space-y-4">
               <div className="flex items-center justify-between">
@@ -891,11 +917,16 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
                 />
               </div>
             </div>
-          </div>
+          </div> */}
+          <ArgoCDConfigurationSection
+            context={context}
+            settings={settings}
+            onSettingsChange={onSettingsChange}
+            onContextChange={onContextChange}
+          />          
         </TabsContent>
 
         <TabsContent value="kubernetes" className="space-y-4">
-          {/* Kubernetes content - keeping existing code */}
           <div className="border rounded-lg p-6">
             <h3 className="text-lg font-semibold mb-4">Kubernetes</h3>
             <div className="space-y-4">

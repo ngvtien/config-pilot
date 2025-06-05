@@ -25,3 +25,8 @@ dist-ssr
 *.sln
 *.sw?
 tsconfig.tsbuildinfo
+
+# TypeScript build outputs
+src/**/*.js
+src/**/*.d.ts
+!src/**/*.d.ts  # Keep intentional declaration files if any
