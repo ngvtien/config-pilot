@@ -66,7 +66,43 @@ export interface SettingsData {
       gcpProject?: string
       azureSubscription?: string
     }
-  }  
+  }
+  
+  // Platform configuration
+  platformType: 'kubernetes' | 'openshift' | 'auto-detect'
+  platformSettings?: PlatformSettings
+
+}
+
+// Add new platform settings interface
+export interface PlatformSettings {
+  // Platform detection settings
+  autoDetectPlatform: boolean
+  
+  // Platform-specific configurations
+  kubernetes?: {
+    preferredIngressController: 'nginx' | 'traefik' | 'istio' | 'other'
+    defaultStorageClass: string
+    enablePodSecurityPolicies: boolean
+  }
+  
+  openshift?: {
+    defaultRouteHost: string
+    enableSecurityContextConstraints: boolean
+    preferredImageRegistry: string
+    enableBuildConfigs: boolean
+    enableImageStreams: boolean
+  }
+  
+  // Feature flags based on platform
+  features: {
+    hasRoutes: boolean
+    hasDeploymentConfigs: boolean
+    hasBuildConfigs: boolean
+    hasImageStreams: boolean
+    hasSecurityContextConstraints: boolean
+    hasIngressControllers: boolean
+  }
 }
 
 export interface SchemaSettings {
@@ -336,5 +372,31 @@ export const createDefaultSettings = (): SettingsData => ({
       enabled: false,
     },
   },
-  kubernetesVersion: ""
+  kubernetesVersion: "",
+
+  // Platform defaults
+  platformType: 'auto-detect',
+  platformSettings: {
+    autoDetectPlatform: true,
+    kubernetes: {
+      preferredIngressController: 'nginx',
+      defaultStorageClass: 'standard',
+      enablePodSecurityPolicies: false
+    },
+    openshift: {
+      defaultRouteHost: '',
+      enableSecurityContextConstraints: true,
+      preferredImageRegistry: 'image-registry.openshift-image-registry.svc:5000',
+      enableBuildConfigs: true,
+      enableImageStreams: true
+    },
+    features: {
+      hasRoutes: false,
+      hasDeploymentConfigs: false,
+      hasBuildConfigs: false,
+      hasImageStreams: false,
+      hasSecurityContextConstraints: false,
+      hasIngressControllers: true
+    }
+  },  
 })

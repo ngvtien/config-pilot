@@ -16,7 +16,9 @@ import {
   RotateCcw,
   Settings,
   Palette,
-  Code
+  Code,
+  RefreshCw,
+  Server
 } from "lucide-react"
 import { Badge } from "@/renderer/components/ui/badge"
 import { Alert, AlertDescription } from "@/renderer/components/ui/alert"
@@ -32,6 +34,9 @@ import { KubernetesVersionSelector } from '@/renderer/components/kubernetes-vers
 import { VaultConfigurationSection } from "@/renderer/components/vault-configuration"
 import { ArgoCDConfigurationSection } from '@/renderer/components/argocd-configuration'
 import { HelmOCIConfigurationSection } from "@/renderer/components/helm-oci-configuration"
+import { PlatformService } from '@/renderer/services/platform.service'
+import type { PlatformInfo } from '@/main/services/platform-detection-service'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@radix-ui/react-select"
 
 interface SettingsPageProps {
   context: ContextData
@@ -104,6 +109,9 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
     }
   }
 
+  const [platformInfo, setPlatformInfo] = useState<PlatformInfo | null>(null)
+  const [isDetectingPlatform, setIsDetectingPlatform] = useState(false)
+
   const [localSettings, setLocalSettings] = useState<SettingsData>(settings)
   const [localContext, setLocalContext] = useState<ContextData>(context)
   const [hasSettingsChanges, setHasSettingsChanges] = useState(false)
@@ -120,6 +128,30 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
 
   // Replace the local zoom state with the global zoom hook
   const { zoomLevel, setZoomLevel, increaseZoom, decreaseZoom, resetZoom } = useZoom()
+
+  // Add platform detection function
+  const handleDetectPlatform = async () => {
+    setIsDetectingPlatform(true)
+    try {
+      const info = await PlatformService.detectPlatform()
+      setPlatformInfo(info)
+
+      // Update platform type in settings
+      handleSettingChange('platformType', info.type)
+
+      // Update platform features
+      if (localSettings.platformSettings) {
+        handleSettingChange('platformSettings', {
+          ...localSettings.platformSettings,
+          features: info.features
+        })
+      }
+    } catch (error) {
+      console.error('Platform detection failed:', error)
+    } finally {
+      setIsDetectingPlatform(false)
+    }
+  }
 
   // Sync local state with props when they change
   useEffect(() => {
@@ -934,8 +966,92 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
 
         <TabsContent value="kubernetes" className="space-y-4">
           <div className="border rounded-lg p-6">
-            <h3 className="text-lg font-semibold mb-4">Kubernetes</h3>
+            <h3 className="text-lg font-semibold mb-4">Kubernetes Platform</h3>
             <div className="space-y-4">
+
+              {/* Platform Type Selection */}
+              <div className="border-b border-border pb-4 mb-4">
+                <div className="flex items-center gap-2 mb-4">
+                  <Server className="h-5 w-5" />
+                  <h4 className="font-medium">Platform Type</h4>
+                </div>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Select your Kubernetes platform type or enable auto-detection.
+                </p>
+                
+                <div className="space-y-3">
+                  <div className="flex items-center gap-4">
+                    <Label className="font-medium min-w-[120px]">Platform:</Label>
+                    <Select
+                      value={localSettings.platformType || 'auto-detect'}
+                      onValueChange={(value) => handleSettingChange('platformType', value)}
+                    >
+                      <SelectTrigger className="w-[200px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="auto-detect">Auto-detect</SelectItem>
+                        <SelectItem value="kubernetes">Vanilla Kubernetes</SelectItem>
+                        <SelectItem value="openshift">Red Hat OpenShift</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleDetectPlatform}
+                      disabled={isDetectingPlatform}
+                      className="flex items-center gap-2"
+                    >
+                      {isDetectingPlatform ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-4 w-4" />
+                      )}
+                      Detect
+                    </Button>
+                  </div>
+                  
+                  {/* Platform Detection Results */}
+                  {platformInfo && (
+                    <div className="bg-muted/50 rounded-lg p-4 mt-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <CheckCircle className="h-4 w-4 text-green-500" />
+                        <span className="font-medium">Platform Detected</span>
+                      </div>
+                      <div className="text-sm space-y-1">
+                        <p><strong>Type:</strong> {platformInfo.type === 'openshift' ? 'Red Hat OpenShift' : 'Vanilla Kubernetes'}</p>
+                        {platformInfo.version && <p><strong>Version:</strong> {platformInfo.version}</p>}
+                        <p><strong>Detected:</strong> {platformInfo.detectedAt.toLocaleString()}</p>
+                        
+                        <div className="mt-3">
+                          <p className="font-medium mb-2">Available Features:</p>
+                          <div className="grid grid-cols-2 gap-1 text-xs">
+                            <div className={platformInfo.features.hasRoutes ? 'text-green-600' : 'text-muted-foreground'}>
+                              {platformInfo.features.hasRoutes ? '✓' : '✗'} Routes
+                            </div>
+                            <div className={platformInfo.features.hasDeploymentConfigs ? 'text-green-600' : 'text-muted-foreground'}>
+                              {platformInfo.features.hasDeploymentConfigs ? '✓' : '✗'} DeploymentConfigs
+                            </div>
+                            <div className={platformInfo.features.hasBuildConfigs ? 'text-green-600' : 'text-muted-foreground'}>
+                              {platformInfo.features.hasBuildConfigs ? '✓' : '✗'} BuildConfigs
+                            </div>
+                            <div className={platformInfo.features.hasImageStreams ? 'text-green-600' : 'text-muted-foreground'}>
+                              {platformInfo.features.hasImageStreams ? '✓' : '✗'} ImageStreams
+                            </div>
+                            <div className={platformInfo.features.hasSecurityContextConstraints ? 'text-green-600' : 'text-muted-foreground'}>
+                              {platformInfo.features.hasSecurityContextConstraints ? '✓' : '✗'} SCCs
+                            </div>
+                            <div className={platformInfo.features.hasIngressControllers ? 'text-green-600' : 'text-muted-foreground'}>
+                              {platformInfo.features.hasIngressControllers ? '✓' : '✗'} Ingress
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
 
               <div className="border-b border-border pb-4 mb-4">
                 <div className="flex items-center gap-2 mb-4">

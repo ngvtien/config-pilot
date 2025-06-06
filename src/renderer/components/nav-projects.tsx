@@ -49,13 +49,8 @@ export function NavProjects() {
     createProject,
     saveProject,
     currentProject,
-    isLoading,
-    closeProject  // Add this if available
+    closeProject
   } = useProject()
-
-  // Add this right after the useProject hook (around line 48)
-  console.log('Debug - currentProject:', currentProject)
-  console.log('Debug - currentProject exists:', !!currentProject)
 
   const { isMobile } = useSidebar()
   const [isCreating, setIsCreating] = useState(false)

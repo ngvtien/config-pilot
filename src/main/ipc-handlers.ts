@@ -14,8 +14,11 @@ import { ProjectManager } from './project-manager'
 import { PROJECT_CHANNELS } from '../shared/ipc/project-channels'
 import type { ProjectConfig, ProjectMetadata } from '../shared/types/project'
 import { FileService } from "./file-service"
+import { PlatformDetectionService } from './services/platform-detection-service'
 
 const execPromise = util.promisify(exec)
+
+let platformDetectionService: PlatformDetectionService | null = null
 
 /**
  * Registers all IPC handlers for the Electron main process.
@@ -713,4 +716,38 @@ export function setupIpcHandlers(): void {
     }
   })
 
+// Platform detection handlers
+ipcMain.handle('platform:detect', async () => {
+  try {
+    if (!platformDetectionService) {
+      platformDetectionService = new PlatformDetectionService()
+    }
+    return await platformDetectionService.detectPlatform()
+  } catch (error) {
+    console.error('Platform detection failed:', error)
+    throw error
+  }
+})
+
+ipcMain.handle('platform:update-kubeconfig', async (_, kubeConfigPath: string) => {
+  try {
+    if (!platformDetectionService) {
+      platformDetectionService = new PlatformDetectionService(kubeConfigPath)
+    } else {
+      platformDetectionService.updateKubeConfig(kubeConfigPath)
+    }
+    return await platformDetectionService.detectPlatform()
+  } catch (error) {
+    console.error('Platform detection after kubeconfig update failed:', error)
+    throw error
+  }
+})
+
+ipcMain.handle('platform:clear-cache', async () => {
+  if (platformDetectionService) {
+    platformDetectionService.clearCache()
+  }
+  return true
+})
+  
 }

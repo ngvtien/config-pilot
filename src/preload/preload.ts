@@ -216,6 +216,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
     export: (exportPath: string) =>
       ipcRenderer.invoke('project:export', exportPath)
   },
+
+  platform: {
+    detect: () => ipcRenderer.invoke('platform:detect'),
+    updateKubeConfig: (kubeConfigPath: string) => ipcRenderer.invoke('platform:update-kubeconfig', kubeConfigPath),
+    clearCache: () => ipcRenderer.invoke('platform:clear-cache')
+  },
+
   // Secure credential operations
   storeSecureCredentials: (key: string, data: string) =>
     ipcRenderer.invoke('credentials:store', key, data),

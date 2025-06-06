@@ -23,6 +23,12 @@ export const PROJECT_CHANNELS = {
   // Export/Import
   EXPORT_PROJECT: 'project:export',
   IMPORT_PROJECT: 'project:import',
+
+  // Platform detection channels
+  DETECT_PLATFORM: 'platform:detect',
+  UPDATE_PLATFORM_KUBECONFIG: 'platform:update-kubeconfig',
+  CLEAR_PLATFORM_CACHE: 'platform:clear-cache',
+    
 } as const
 
 export type ProjectChannels = typeof PROJECT_CHANNELS[keyof typeof PROJECT_CHANNELS]

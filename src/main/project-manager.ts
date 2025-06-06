@@ -116,7 +116,7 @@ export class ProjectManager {
       try {
         if (this.currentProject && this.currentProjectPath) {
           await this.saveProject()
-          console.log('Project auto-saved')
+          //console.log('Project auto-saved')
         }
       } catch (error) {
         console.error('Auto-save failed:', error)
