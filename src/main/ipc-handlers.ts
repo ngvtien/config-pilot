@@ -10,6 +10,10 @@ import { ArgoCDService } from './argocd-service'
 import { ArgoCDCredentialManager } from './argocd-credential-manager'
 import { HelmOCIService } from './helm-oci-service'
 import { HelmOCICredentialManager } from './helm-oci-credential-manager'
+import { ProjectManager } from './project-manager'
+import { PROJECT_CHANNELS } from '../shared/ipc/project-channels'
+import type { ProjectConfig, ProjectMetadata } from '../shared/types/project'
+import { FileService } from "./file-service"
 
 const execPromise = util.promisify(exec)
 
@@ -645,6 +649,67 @@ export function setupIpcHandlers(): void {
     } catch (error: any) {
       console.error('Failed to remove repository:', error)
       throw new Error(`Failed to remove repository: ${error.message}`)
+    }
+  })
+
+  // Project Management Handlers
+  ipcMain.handle(PROJECT_CHANNELS.CREATE_PROJECT, async (_, name: string, description?: string): Promise<ProjectConfig> => {
+    return ProjectManager.createProject(name, description)
+  })
+  
+  ipcMain.handle(PROJECT_CHANNELS.SAVE_PROJECT, async (): Promise<string> => {
+    return ProjectManager.saveProject()
+  })
+  
+  ipcMain.handle(PROJECT_CHANNELS.SAVE_PROJECT_AS, async (): Promise<string> => {
+    return ProjectManager.saveProject(true)
+  })
+  
+  ipcMain.handle(PROJECT_CHANNELS.CLOSE_PROJECT, async (): Promise<void> => {
+    return ProjectManager.closeProject()
+  })
+  
+  ipcMain.handle(PROJECT_CHANNELS.GET_CURRENT_PROJECT, async (): Promise<ProjectConfig | null> => {
+    return ProjectManager.getCurrentProject()
+  })
+      
+  ipcMain.handle(PROJECT_CHANNELS.GET_RECENT_PROJECTS, async (): Promise<ProjectMetadata[]> => {
+    return ProjectManager.getRecentProjects()
+  })
+  
+  ipcMain.handle(PROJECT_CHANNELS.DELETE_PROJECT, async (_, filePath: string): Promise<void> => {
+    return ProjectManager.deleteProject(filePath)
+  })
+  
+  ipcMain.handle(PROJECT_CHANNELS.SHOW_OPEN_DIALOG, async (): Promise<string | null> => {
+    return FileService.showOpenDialog()
+  })
+  
+  ipcMain.handle(PROJECT_CHANNELS.SHOW_SAVE_DIALOG, async (_, defaultName?: string): Promise<string | null> => {
+    return FileService.showSaveDialog(defaultName)
+  })
+  
+  ipcMain.handle(PROJECT_CHANNELS.ENABLE_AUTO_SAVE, async (_, intervalSeconds: number): Promise<void> => {
+    ProjectManager.enableAutoSave(intervalSeconds)
+  })
+  
+  ipcMain.handle(PROJECT_CHANNELS.DISABLE_AUTO_SAVE, async (): Promise<void> => {
+    ProjectManager.disableAutoSave()
+  })
+  
+  ipcMain.handle(PROJECT_CHANNELS.EXPORT_PROJECT, async (_, exportPath: string): Promise<void> => {
+    return ProjectManager.exportProject(exportPath)
+  })
+    
+  ipcMain.handle(PROJECT_CHANNELS.OPEN_PROJECT, async (_, filePath?: string): Promise<ProjectConfig | null> => {
+    try {
+      return await ProjectManager.openProject(filePath)
+    } catch (error) {
+      // Handle user cancellation gracefully
+      if (error instanceof Error && error.message === 'No file selected') {
+        return null // Return null instead of throwing for cancellation
+      }
+      throw error // Re-throw actual errors
     }
   })
 

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { ThemeProvider } from "@/renderer/components/theme-provider"
 import { ZoomProvider } from "@/renderer/components/zoom-provider"
+import { ProjectProvider } from "@/renderer/contexts/project-context"
 import AppLayoutPage from "@/renderer/pages/app-layout-page"
 import LoadingScreen from "@/renderer/components/loading-screen"
 
@@ -21,7 +22,9 @@ function App() {
   return (
     <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
       <ZoomProvider>
-        {isLoading ? <LoadingScreen /> : <AppLayoutPage />}
+      <ProjectProvider>
+          {isLoading ? <LoadingScreen /> : <AppLayoutPage />}
+        </ProjectProvider>
       </ZoomProvider>      
     </ThemeProvider>
   )

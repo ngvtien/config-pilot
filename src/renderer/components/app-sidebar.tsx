@@ -34,6 +34,7 @@ import {
 } from "@/renderer/components/ui/sidebar"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/renderer/components/ui/select"
 import KubernetesContextSelector from "@/renderer/components/kubernetes-context-selector"
+import { NavProjects } from "@/renderer/components/nav-projects"
 
 type UserRole = "developer" | "devops" | "operations"
 type ViewType =
@@ -214,6 +215,8 @@ export function AppSidebar({
       </SidebarHeader>
 
       <SidebarContent>
+        {/* Project Navigation */}
+        <NavProjects />
         {/* Kubernetes Context Selection */}
         <SidebarGroup className="group-data-[collapsible=icon]:hidden">
           <SidebarGroupLabel>KUBERNETES CONTEXT</SidebarGroupLabel>

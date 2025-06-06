@@ -68,6 +68,22 @@ contextBridge.exposeInMainWorld("electronAPI", {
       'helm-oci:inspectChart',
       'helm-oci:addRepository',
       'helm-oci:removeRepository',
+
+      // Project Management
+      'project:create',
+      'project:open',
+      'project:save',
+      'project:save-as',
+      'project:close',
+      'project:get-current',
+      'project:get-recent',
+      'project:delete',
+      'project:show-open-dialog',
+      'project:show-save-dialog',
+      'project:enable-auto-save',
+      'project:disable-auto-save',
+      'project:export',
+
     ]
     if (validChannels.includes(channel)) {
       return ipcRenderer.invoke(channel, ...args)
@@ -171,6 +187,35 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke('helm-oci:removeRepository', environment, name)
   },
 
+  // Project Management
+  project: {
+    create: (name: string, description?: string) =>
+      ipcRenderer.invoke('project:create', name, description),
+    open: (filePath?: string) =>
+      ipcRenderer.invoke('project:open', filePath),
+    save: () =>
+      ipcRenderer.invoke('project:save'),
+    saveAs: () =>
+      ipcRenderer.invoke('project:save-as'),
+    close: () =>
+      ipcRenderer.invoke('project:close'),
+    getCurrent: () => 
+      ipcRenderer.invoke('project:get-current'),
+    getRecent: () =>
+      ipcRenderer.invoke('project:get-recent'),
+    delete: (filePath: string) =>
+      ipcRenderer.invoke('project:delete', filePath),
+    showOpenDialog: () =>
+      ipcRenderer.invoke('project:show-open-dialog'),
+    showSaveDialog: (defaultName?: string) =>
+      ipcRenderer.invoke('project:show-save-dialog', defaultName),
+    enableAutoSave: (intervalSeconds: number) =>
+      ipcRenderer.invoke('project:enable-auto-save', intervalSeconds),
+    disableAutoSave: () =>
+      ipcRenderer.invoke('project:disable-auto-save'),
+    export: (exportPath: string) =>
+      ipcRenderer.invoke('project:export', exportPath)
+  },
   // Secure credential operations
   storeSecureCredentials: (key: string, data: string) =>
     ipcRenderer.invoke('credentials:store', key, data),
