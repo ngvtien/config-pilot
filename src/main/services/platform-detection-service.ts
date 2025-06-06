@@ -1,7 +1,6 @@
 import { KubeConfig, CoreV1Api, CustomObjectsApi, ApisApi, VersionApi } from '@kubernetes/client-node'
 import type { PlatformSettings } from '@/shared/types/settings-data'
 
-
 export interface PlatformInfo {
     type: 'kubernetes' | 'openshift'
     version?: string
@@ -102,29 +101,6 @@ export class PlatformDetectionService {
         }
     }
 
-    //   private async checkOpenShiftAPIGroups(): Promise<boolean> {
-    //     try {
-    //       const { groups } = await this.apisApi.getAPIVersions()
-
-    //       // Check for OpenShift-specific API groups
-    //       const openShiftGroups = [
-    //         'route.openshift.io',
-    //         'build.openshift.io',
-    //         'image.openshift.io',
-    //         'apps.openshift.io',
-    //         'project.openshift.io',
-    //         'security.openshift.io'
-    //       ]
-
-    //       return groups?.some((group: { name: string | string[] }) => 
-    //         openShiftGroups.some(osGroup => group.name.includes(osGroup))
-    //       ) || false
-    //     } catch (error) {
-    //       console.warn('Failed to check API groups:', error)
-    //       return false
-    //     }
-    //   }
-
     private async checkOpenShiftAPIGroups(): Promise<boolean> {
         try {
             const response = await this.apisApi.getAPIVersions()
@@ -134,7 +110,7 @@ export class PlatformDetectionService {
                 group.name === 'build.openshift.io' ||
                 group.name === 'image.openshift.io'
             )
-        } catch (error) {
+        } catch (error: any) {
             if (error.message && error.message.includes('HTTP protocol is not allowed')) {
                 console.warn('HTTP connection detected, skipping OpenShift API group check')
                 return false // Assume not OpenShift if we can't check securely

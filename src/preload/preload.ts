@@ -223,6 +223,17 @@ contextBridge.exposeInMainWorld("electronAPI", {
     clearCache: () => ipcRenderer.invoke('platform:clear-cache')
   },
 
+  // CRD Management operations
+  crd: {
+    import: (request: any) => ipcRenderer.invoke('crd:import', request),
+    list: () => ipcRenderer.invoke('crd:list'),
+    listByGroup: () => ipcRenderer.invoke('crd:listByGroup'),
+    delete: (id: string) => ipcRenderer.invoke('crd:delete', id),
+    update: (id: string, updates: any) => ipcRenderer.invoke('crd:update', id, updates),
+    discover: () => ipcRenderer.invoke('crd:discover'),
+    validate: (crdDefinition: any) => ipcRenderer.invoke('crd:validate', crdDefinition)
+  },
+    
   // Secure credential operations
   storeSecureCredentials: (key: string, data: string) =>
     ipcRenderer.invoke('credentials:store', key, data),

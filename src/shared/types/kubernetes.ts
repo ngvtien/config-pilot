@@ -74,6 +74,64 @@ export interface ContextNaming {
   validateNaming(name: string, context: ContextData): boolean
 }
 
+// CRD Management Types
+export interface CRDImportRequest {
+  name: string
+  description?: string
+  source: 'url' | 'file' | 'cluster'
+  url?: string
+  file?: File
+  namespace?: string // for cluster discovery
+}
+
+export interface CRDSchema {
+  id: string
+  name: string
+  description?: string
+  group: string
+  version: string
+  kind: string
+  plural: string
+  scope: 'Namespaced' | 'Cluster'
+  schema: any // OpenAPI v3 schema
+  source: CRDSource
+  importedAt: Date
+  lastUsed?: Date
+  isActive: boolean
+}
+
+export interface CRDSource {
+  type: 'url' | 'file' | 'cluster'
+  location: string // URL, file path, or cluster info
+  lastFetched?: Date
+}
+
+export interface ValidationResult {
+  isValid: boolean
+  errors: ValidationError[]
+  warnings: ValidationWarning[]
+}
+
+export interface ValidationError {
+  path: string
+  message: string
+  code: string
+}
+
+export interface ValidationWarning {
+  path: string
+  message: string
+  suggestion?: string
+}
+
+export interface GroupedCRDs {
+  [groupVersion: string]: {
+    group: string
+    version: string
+    crds: CRDSchema[]
+  }
+}
+
 // Resource templates for common Kubernetes resources
 export const KUBERNETES_RESOURCE_TEMPLATES: KubernetesResourceTemplate[] = [
   {

@@ -15,6 +15,8 @@ import { PROJECT_CHANNELS } from '../shared/ipc/project-channels'
 import type { ProjectConfig, ProjectMetadata } from '../shared/types/project'
 import { FileService } from "./file-service"
 import { PlatformDetectionService } from './services/platform-detection-service'
+import { crdManagementService } from './services/crd-management-service'
+import { CRDImportRequest, CRDSchema } from "@/shared/types/kubernetes"
 
 const execPromise = util.promisify(exec)
 
@@ -659,51 +661,51 @@ export function setupIpcHandlers(): void {
   ipcMain.handle(PROJECT_CHANNELS.CREATE_PROJECT, async (_, name: string, description?: string): Promise<ProjectConfig> => {
     return ProjectManager.createProject(name, description)
   })
-  
+
   ipcMain.handle(PROJECT_CHANNELS.SAVE_PROJECT, async (): Promise<string> => {
     return ProjectManager.saveProject()
   })
-  
+
   ipcMain.handle(PROJECT_CHANNELS.SAVE_PROJECT_AS, async (): Promise<string> => {
     return ProjectManager.saveProject(true)
   })
-  
+
   ipcMain.handle(PROJECT_CHANNELS.CLOSE_PROJECT, async (): Promise<void> => {
     return ProjectManager.closeProject()
   })
-  
+
   ipcMain.handle(PROJECT_CHANNELS.GET_CURRENT_PROJECT, async (): Promise<ProjectConfig | null> => {
     return ProjectManager.getCurrentProject()
   })
-      
+
   ipcMain.handle(PROJECT_CHANNELS.GET_RECENT_PROJECTS, async (): Promise<ProjectMetadata[]> => {
     return ProjectManager.getRecentProjects()
   })
-  
+
   ipcMain.handle(PROJECT_CHANNELS.DELETE_PROJECT, async (_, filePath: string): Promise<void> => {
     return ProjectManager.deleteProject(filePath)
   })
-  
+
   ipcMain.handle(PROJECT_CHANNELS.SHOW_OPEN_DIALOG, async (): Promise<string | null> => {
     return FileService.showOpenDialog()
   })
-  
+
   ipcMain.handle(PROJECT_CHANNELS.SHOW_SAVE_DIALOG, async (_, defaultName?: string): Promise<string | null> => {
     return FileService.showSaveDialog(defaultName)
   })
-  
+
   ipcMain.handle(PROJECT_CHANNELS.ENABLE_AUTO_SAVE, async (_, intervalSeconds: number): Promise<void> => {
     ProjectManager.enableAutoSave(intervalSeconds)
   })
-  
+
   ipcMain.handle(PROJECT_CHANNELS.DISABLE_AUTO_SAVE, async (): Promise<void> => {
     ProjectManager.disableAutoSave()
   })
-  
+
   ipcMain.handle(PROJECT_CHANNELS.EXPORT_PROJECT, async (_, exportPath: string): Promise<void> => {
     return ProjectManager.exportProject(exportPath)
   })
-    
+
   ipcMain.handle(PROJECT_CHANNELS.OPEN_PROJECT, async (_, filePath?: string): Promise<ProjectConfig | null> => {
     try {
       return await ProjectManager.openProject(filePath)
@@ -716,38 +718,94 @@ export function setupIpcHandlers(): void {
     }
   })
 
-// Platform detection handlers
-ipcMain.handle('platform:detect', async () => {
-  try {
-    if (!platformDetectionService) {
-      platformDetectionService = new PlatformDetectionService()
+  // Platform detection handlers
+  ipcMain.handle('platform:detect', async () => {
+    try {
+      if (!platformDetectionService) {
+        platformDetectionService = new PlatformDetectionService()
+      }
+      return await platformDetectionService.detectPlatform()
+    } catch (error) {
+      console.error('Platform detection failed:', error)
+      throw error
     }
-    return await platformDetectionService.detectPlatform()
-  } catch (error) {
-    console.error('Platform detection failed:', error)
-    throw error
-  }
-})
+  })
 
-ipcMain.handle('platform:update-kubeconfig', async (_, kubeConfigPath: string) => {
-  try {
-    if (!platformDetectionService) {
-      platformDetectionService = new PlatformDetectionService(kubeConfigPath)
-    } else {
-      platformDetectionService.updateKubeConfig(kubeConfigPath)
+  ipcMain.handle('platform:update-kubeconfig', async (_, kubeConfigPath: string) => {
+    try {
+      if (!platformDetectionService) {
+        platformDetectionService = new PlatformDetectionService(kubeConfigPath)
+      } else {
+        platformDetectionService.updateKubeConfig(kubeConfigPath)
+      }
+      return await platformDetectionService.detectPlatform()
+    } catch (error) {
+      console.error('Platform detection after kubeconfig update failed:', error)
+      throw error
     }
-    return await platformDetectionService.detectPlatform()
-  } catch (error) {
-    console.error('Platform detection after kubeconfig update failed:', error)
-    throw error
-  }
-})
+  })
 
-ipcMain.handle('platform:clear-cache', async () => {
-  if (platformDetectionService) {
-    platformDetectionService.clearCache()
-  }
-  return true
-})
-  
+  ipcMain.handle('platform:clear-cache', async () => {
+    if (platformDetectionService) {
+      platformDetectionService.clearCache()
+    }
+    return true
+  })
+
+  // CRD Management handlers
+  ipcMain.handle('crd:import', async (event, request: CRDImportRequest) => {
+    try {
+      return await crdManagementService.importCRD(request)
+    } catch (error) {
+      throw new Error(`Failed to import CRD: ${error}`)
+    }
+  })
+
+  ipcMain.handle('crd:list', async () => {
+    try {
+      return await crdManagementService.listImportedCRDs()
+    } catch (error) {
+      throw new Error(`Failed to list CRDs: ${error}`)
+    }
+  })
+
+  ipcMain.handle('crd:listByGroup', async () => {
+    try {
+      return await crdManagementService.getCRDsByGroup()
+    } catch (error) {
+      throw new Error(`Failed to list CRDs by group: ${error}`)
+    }
+  })
+
+  ipcMain.handle('crd:delete', async (event, id: string) => {
+    try {
+      return await crdManagementService.deleteCRD(id)
+    } catch (error) {
+      throw new Error(`Failed to delete CRD: ${error}`)
+    }
+  })
+
+  ipcMain.handle('crd:update', async (event, id: string, updates: Partial<CRDSchema>) => {
+    try {
+      return await crdManagementService.updateCRD(id, updates)
+    } catch (error) {
+      throw new Error(`Failed to update CRD: ${error}`)
+    }
+  })
+
+  ipcMain.handle('crd:discover', async () => {
+    try {
+      return await crdManagementService.discoverClusterCRDs()
+    } catch (error) {
+      throw new Error(`Failed to discover cluster CRDs: ${error}`)
+    }
+  })
+
+  ipcMain.handle('crd:validate', async (event, crdDefinition: any) => {
+    try {
+      return await crdManagementService.validateCRD(crdDefinition)
+    } catch (error) {
+      throw new Error(`Failed to validate CRD: ${error}`)
+    }
+  })
 }

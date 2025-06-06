@@ -24,6 +24,7 @@ import type { SettingsData } from '@/shared/types/settings-data'
 import type { ContextAwareKubernetesResource } from '@/shared/types/kubernetes'
 import yaml from 'js-yaml'
 import { joinPath } from '@/renderer/lib/path-utils'
+import { CRDManagementComponent } from "@/renderer/components/crd-management"
 
 interface KubernetesResourcePageProps {
   context: ContextData
@@ -41,24 +42,13 @@ interface SavedResource {
 }
 
 export function KubernetesResourcePage({ context, settings }: KubernetesResourcePageProps) {
-  const [activeTab, setActiveTab] = useState<'create' | 'manage'>('create')
+  const [activeTab, setActiveTab] = useState<'create' | 'manage' | 'crd'>('create')
   const [savedResources, setSavedResources] = useState<SavedResource[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedKind, setSelectedKind] = useState<string>('')
   const [isLoading, setIsLoading] = useState(false)
 
-  
-  // Add version state
-  //  const [selectedK8sVersion, setSelectedK8sVersion] = useState<string>(() => {
-  //    return localStorage.getItem('kubernetes-selected-version') || 'v1.27.0'
-  //  })
   const selectedK8sVersion = settings.kubernetesVersion || 'v1.31.0'
-
-  // // Add state for version information
-  // const [versionInfo, setVersionInfo] = useState<{
-  //   availableVersions: number
-  //   localVersions: number
-  // }>({ availableVersions: 0, localVersions: 0 })
 
   // Add userDataDir state
   const [userDataDir, setUserDataDir] = useState<string>('')
@@ -246,26 +236,14 @@ const contextKey = useMemo(() => {
       </div>
 
       {/* Main Tabs */}
-      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'create' | 'manage')}>
-        <TabsContent value="create" className="mt-6">
-          {/* Kubernetes Version Selector */}
-          {/* <Card className="mb-6">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <GitBranch className="h-5 w-5" />
-                Kubernetes Version
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <KubernetesVersionSelector
-                selectedVersion={selectedK8sVersion}
-                onVersionChange={setSelectedK8sVersion}
-                versionInfo={versionInfo}
-                onVersionInfoChange={setVersionInfo}
-              />
-            </CardContent>
-          </Card> */}
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'create' | 'manage' | 'crd')}>
+      <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="create">Create Resources</TabsTrigger>
+          <TabsTrigger value="manage">Manage Resources</TabsTrigger>
+          <TabsTrigger value="crd">CRD Management</TabsTrigger>
+        </TabsList>
 
+        <TabsContent value="create" className="mt-6">
           {/* Resource Creator Components */}
           <Tabs defaultValue="v2" className="w-full">
             <TabsContent value="v2">
@@ -382,6 +360,11 @@ const contextKey = useMemo(() => {
             </div>
           </div>
         </TabsContent>
+
+        <TabsContent value="crd" className="mt-6">
+          <CRDManagementComponent context={context} />
+        </TabsContent>
+                
       </Tabs>
     </div>
   )

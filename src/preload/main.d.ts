@@ -166,6 +166,24 @@ export interface ElectronAPI {
         removeRepository(environment: string, name: string): Promise<boolean>
     }
 
+    // Platform detection
+    platform: {
+        detect: () => Promise<any>
+        updateKubeConfig: (kubeConfigPath: string) => Promise<any>
+        clearCache: () => Promise<void>
+    }
+
+    // CRD Management operations
+    crd: {
+        import: (request: any) => Promise<any>
+        list: () => Promise<any[]>
+        listByGroup: () => Promise<any>
+        delete: (id: string) => Promise<boolean>
+        update: (id: string, updates: any) => Promise<any>
+        discover: () => Promise<any[]>
+        validate: (crdDefinition: any) => Promise<any>
+    }
+
     // Configuration management
     getAvailableConfigs?: () => Promise<any>
     getActiveConfigPath?: () => Promise<string>
