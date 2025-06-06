@@ -1,7 +1,6 @@
 import { app, BrowserWindow, nativeTheme, screen, session, ipcMain } from 'electron';
 import Store from 'electron-store';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { setupIpcHandlers } from './ipc-handlers';
 import waitOn from 'wait-on';
 import { initK8sService } from './k8s-service-client';
@@ -13,12 +12,6 @@ interface WindowState {
   y?: number;
   isMaximized: boolean;
 }
-
-
-// ES Modules compatible __dirname
-//const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-// console.log(__dirname)
 
 const store = new Store() as any;
 
@@ -39,12 +32,14 @@ let mainWindow: BrowserWindow;
 function getValidWindowState(): WindowState {
   const savedState = config.get('windowState');
   const displays = screen.getAllDisplays();
-  
+
   // If no position saved or single display, return basic dimensions
   if (!savedState.x || !savedState.y || displays.length === 1) {
     return {
       width: savedState.width,
       height: savedState.height,
+      x: savedState.x,
+      y: savedState.y,
       isMaximized: savedState.isMaximized
     };
   }
@@ -63,6 +58,8 @@ function getValidWindowState(): WindowState {
   return isVisible ? savedState : {
     width: savedState.width,
     height: savedState.height,
+    x: savedState.x,
+    y: savedState.y,
     isMaximized: savedState.isMaximized
   };
 }
@@ -89,7 +86,7 @@ async function createWindow() {
   // Window state persistence
   const saveState = () => {
     if (!mainWindow) return;
-    
+
     const bounds = mainWindow.getBounds();
     config.set('windowState', {
       ...bounds,
@@ -126,9 +123,9 @@ async function createWindow() {
     mainWindow.show();
   }
 
-    nativeTheme.on('updated', () => {
-        mainWindow?.webContents.send('system-theme-changed', nativeTheme.shouldUseDarkColors);
-    });
+  nativeTheme.on('updated', () => {
+    mainWindow?.webContents.send('system-theme-changed', nativeTheme.shouldUseDarkColors);
+  });
 
 }
 
@@ -139,7 +136,7 @@ app.whenReady().then(async () => {
   // Add window control handlers
   ipcMain.on('window:minimize', () => {
     if (mainWindow) mainWindow.minimize();
-  });  
+  });
 
   ipcMain.on('window:maximize', () => {
     if (mainWindow) {
@@ -154,25 +151,25 @@ app.whenReady().then(async () => {
   ipcMain.on('window:unmaximize', () => {
     if (mainWindow) mainWindow.unmaximize();
   });
-  
+
   ipcMain.on('window:close', () => {
     if (mainWindow) mainWindow.close();
   });
-  
+
   ipcMain.handle('window:isMaximized', () => {
     return mainWindow ? mainWindow.isMaximized() : false;
   });
-  
+
   // Add new setTitle handler
   ipcMain.on('window:setTitle', (_event, title: string) => {
     if (mainWindow) {
       mainWindow.setTitle(title);
     }
   });
-  
+
   initK8sService(savedConfigPath)
   createWindow();
-  
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
