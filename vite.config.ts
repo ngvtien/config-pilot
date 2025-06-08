@@ -68,6 +68,7 @@ export default defineConfig({
   base: './',
   build: {
     outDir: 'dist-react',
+    chunkSizeWarningLimit: 1000, // Increase from default 500KB to 1MB
     rollupOptions: {
       input: {
         main: path.resolve(__dirname, 'index.html'),
