@@ -19,6 +19,13 @@ class KubernetesSchemaIndexer {
   private schemaIndex: SchemaIndex | null = null
 
   /**
+   * Get the current schema index (for accessing definitions)
+   */
+  getSchemaIndex(): SchemaIndex | null {
+    return this.schemaIndex
+  }
+
+  /**
    * Load and index the schema definitions
    */
   async loadSchemaDefinitions(definitionsPath: string): Promise<SchemaIndex> {
@@ -26,7 +33,7 @@ class KubernetesSchemaIndexer {
       // Load the definitions file
       const definitionsContent = await window.electronAPI.readFile(definitionsPath)
       const definitions = JSON.parse(definitionsContent)
-      
+
       return this.indexDefinitions(definitions)
     } catch (error) {
       console.error('Failed to load schema definitions:', error)
@@ -41,7 +48,7 @@ class KubernetesSchemaIndexer {
     const byKind = new Map<string, KubernetesResourceSchema[]>()
     const byGroupVersionKind = new Map<string, KubernetesResourceSchema>()
     const byKey = new Map<string, any>()
-    
+
     // Store all definitions for $ref resolution
     Object.entries(definitions.definitions).forEach(([key, schema]) => {
       byKey.set(key, schema)
@@ -51,7 +58,7 @@ class KubernetesSchemaIndexer {
     Object.entries(definitions.definitions).forEach(([key, schema]: [string, any]) => {
       if (schema['x-kubernetes-group-version-kind']) {
         const gvkList = schema['x-kubernetes-group-version-kind']
-        
+
         gvkList.forEach((gvk: any) => {
           const resourceSchema: KubernetesResourceSchema = {
             key,
@@ -136,6 +143,11 @@ class KubernetesSchemaIndexer {
 
     const resolved = { ...schema }
 
+    // Remove description to prevent it from appearing in forms
+    if (resolved.description) {
+      delete resolved.description
+    }
+
     // Handle $ref
     if (resolved['$ref']) {
       const refPath = resolved['$ref']
@@ -144,7 +156,22 @@ class KubernetesSchemaIndexer {
         const referencedSchema = this.schemaIndex.byKey.get(definitionKey)
         if (referencedSchema) {
           // Merge the referenced schema, but don't resolve recursively to avoid infinite loops
-          return { ...referencedSchema, ...resolved, '$ref': undefined }
+          const { '$ref': _, ...rest } = resolved
+
+          // Also remove description from the referenced schema before merging
+          const { description: __, ...cleanReferencedSchema } = referencedSchema
+
+          return { ...cleanReferencedSchema, ...rest }
+        } else {
+          // If we can't resolve the reference, remove the $ref and provide a fallback
+          console.warn(`Could not resolve schema reference: ${refPath}`)
+          const { '$ref': _, ...rest } = resolved
+          return {
+            ...rest,
+            type: 'object',
+            //description: `Reference to ${definitionKey} (unresolved)`,
+            additionalProperties: true
+          }
         }
       }
     }
@@ -174,10 +201,10 @@ class KubernetesSchemaIndexer {
    */
   searchResources(query: string): KubernetesResourceSchema[] {
     if (!this.schemaIndex || !query.trim()) return []
-    
+
     const searchTerm = query.toLowerCase()
     const results: KubernetesResourceSchema[] = []
-    
+
     this.schemaIndex.byGroupVersionKind.forEach(resource => {
       if (
         resource.kind.toLowerCase().includes(searchTerm) ||
@@ -187,7 +214,7 @@ class KubernetesSchemaIndexer {
         results.push(resource)
       }
     })
-    
+
     return results.sort((a, b) => a.displayName.localeCompare(b.displayName))
   }
 
@@ -202,7 +229,7 @@ class KubernetesSchemaIndexer {
       properties: resolvedSchema.properties || {},
       required: resolvedSchema.required || [],
       type: resolvedSchema.type || 'object',
-      description: resolvedSchema.description,
+      //description: resolvedSchema.description,
       // Include any additional metadata that might be useful for form generation
       additionalProperties: resolvedSchema.additionalProperties,
       patternProperties: resolvedSchema.patternProperties
@@ -218,12 +245,12 @@ class KubernetesSchemaIndexer {
 
     const flattenProperties = (props: any, path: string = '', depth: number = 0): any => {
       if (depth >= maxDepth) return {}
-      
+
       const flattened: any = {}
-      
+
       Object.entries(props).forEach(([key, value]: [string, any]) => {
         const currentPath = path ? `${path}.${key}` : key
-        
+
         if (value.type === 'object' && value.properties) {
           // Recursively flatten nested objects
           Object.assign(flattened, flattenProperties(value.properties, currentPath, depth + 1))
@@ -231,7 +258,7 @@ class KubernetesSchemaIndexer {
           flattened[currentPath] = value
         }
       })
-      
+
       return flattened
     }
 
@@ -240,7 +267,7 @@ class KubernetesSchemaIndexer {
       required: schemaProperties.required,
       originalSchema: schemaProperties
     }
-  }  
+  }
 }
 
 export const kubernetesSchemaIndexer = new KubernetesSchemaIndexer()

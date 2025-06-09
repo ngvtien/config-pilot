@@ -19,7 +19,7 @@ import type { ContextData } from "@/shared/types/context-data"
 import type { SettingsData } from "@/shared/types/settings-data"
 import { KubernetesResourcePage } from "./kubernetes-resource-page"
 import { KubernetesDashboardPage } from './kubernetes-dashboard-page'
-
+import TemplateDesigner from "@/renderer/components/template-creator/TemplateDesigner"
 import { useWindowTitle } from '@/renderer/hooks/useWindowTitle'
 
 type UserRole = "developer" | "devops" | "operations"
@@ -307,6 +307,13 @@ export default function AppLayoutPage({
               localStorage.setItem(`value_editor_${context.environment}`, value)
               console.log(`Values updated for ${context.environment}:`, value)
             }}
+          />
+        )
+      case "template-editor":
+        return (
+          <TemplateDesigner
+            contextData={context}
+            settingsData={settings}
           />
         )
       // case "kubernetes":

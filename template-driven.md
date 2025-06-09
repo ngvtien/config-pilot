@@ -1217,3 +1217,356 @@ graph TD
 4. **Tailwind Compatibility**: 
    - Uses ShadCN primitives
    - Responsive layout
+
+---
+
+Clean implementation using **@rjsf/core** with **Tailwind CSS**, **Radix UI Tooltip**, and **Lucide Icons** to show descriptions as tooltips instead of displaying them inline:
+
+---
+
+### **1. Install Dependencies**
+```bash
+npm install @radix-ui/react-tooltip @rjsf/core lucide-react
+```
+
+---
+
+### **2. Create a Custom `TextWidget` with Tooltip**
+```tsx
+import { Info } from "lucide-react";
+import * as Tooltip from "@radix-ui/react-tooltip";
+
+export function TextWidgetWithTooltip(props) {
+  const { id, label, description, required, value, onChange } = props;
+
+  return (
+    <div className="mb-4">
+      <Tooltip.Provider>
+        <div className="flex items-center gap-1">
+          <label htmlFor={id} className="block text-sm font-medium text-gray-700">
+            {label}
+            {required && <span className="text-red-500 ml-1">*</span>}
+          </label>
+          {description && (
+            <Tooltip.Root>
+              <Tooltip.Trigger asChild>
+                <button className="text-gray-400 hover:text-gray-600">
+                  <Info className="h-4 w-4" />
+                </button>
+              </Tooltip.Trigger>
+              <Tooltip.Portal>
+                <Tooltip.Content
+                  side="top"
+                  align="center"
+                  sideOffset={4}
+                  className="max-w-xs p-2 text-sm bg-gray-800 text-white rounded shadow-lg"
+                >
+                  {description}
+                  <Tooltip.Arrow className="fill-gray-800" />
+                </Tooltip.Content>
+              </Tooltip.Portal>
+            </Tooltip.Root>
+          )}
+        </div>
+      </Tooltip.Provider>
+      <input
+        type="text"
+        id={id}
+        value={value || ""}
+        onChange={(e) => onChange(e.target.value)}
+        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+      />
+    </div>
+  );
+}
+```
+
+---
+
+### **3. Use the Custom Widget in `@rjsf/core` Form**
+```tsx
+import { Form } from "@rjsf/core";
+import { TextWidgetWithTooltip } from "./text-widget-with-tooltip";
+
+const schema = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      title: "Name",
+      description: "Your full name as it appears on official documents.",
+    },
+  },
+};
+
+const uiSchema = {
+  // Optional: Hide default descriptions globally
+  "ui:options": {
+    hideDescription: true,
+  },
+};
+
+const widgets = {
+  TextWidget: TextWidgetWithTooltip,
+};
+
+export function MyForm() {
+  return (
+    <Form
+      schema={schema}
+      uiSchema={uiSchema}
+      widgets={widgets}
+    />
+  );
+}
+```
+
+### **1. Reusable Tooltip Component (for all widgets)**
+```tsx
+// src/renderer/components/ui/description-tooltip.tsx
+import { Info } from "lucide-react";
+import * as Tooltip from "@radix-ui/react-tooltip";
+
+export function DescriptionTooltip({ description }: { description?: string }) {
+  if (!description) return null;
+
+  return (
+    <Tooltip.Provider>
+      <Tooltip.Root>
+        <Tooltip.Trigger asChild>
+          <button className="text-gray-400 hover:text-gray-600 ml-1">
+            <Info className="h-4 w-4" />
+          </button>
+        </Tooltip.Trigger>
+        <Tooltip.Portal>
+          <Tooltip.Content
+            side="top"
+            align="center"
+            sideOffset={4}
+            className="max-w-xs p-2 text-sm bg-gray-800 text-white rounded shadow-lg"
+          >
+            {description}
+            <Tooltip.Arrow className="fill-gray-800" />
+          </Tooltip.Content>
+        </Tooltip.Portal>
+      </Tooltip.Root>
+    </Tooltip.Provider>
+  );
+}
+```
+
+---
+
+### **2. Custom Widgets for All Field Types**
+
+#### **Text Widget (String/Number)**
+```tsx
+// src/renderer/components/ui/text-widget.tsx
+import { DescriptionTooltip } from "../components/ui/description-tooltip";
+
+export function TextWidget(props) {
+  const { id, label, description, required, value, onChange } = props;
+
+  return (
+    <div className="mb-4">
+      <div className="flex items-center gap-1">
+        <label htmlFor={id} className="block text-sm font-medium text-gray-700">
+          {label}
+          {required && <span className="text-red-500 ml-1">*</span>}
+        </label>
+        <DescriptionTooltip description={description} />
+      </div>
+      <input
+        type={props.type || "text"}
+        id={id}
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value)}
+        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+      />
+    </div>
+  );
+}
+```
+
+#### **Checkbox Widget (Boolean)**
+```tsx
+// src/renderer/components/ui/checkbox-widget.tsx
+import { DescriptionTooltip } from "../components/ui/description-tooltip";
+
+export function CheckboxWidget(props) {
+  const { id, label, description, value, onChange } = props;
+
+  return (
+    <div className="mb-4 flex items-center">
+      <input
+        type="checkbox"
+        id={id}
+        checked={value}
+        onChange={(e) => onChange(e.target.checked)}
+        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+      />
+      <div className="ml-2 flex items-center">
+        <label htmlFor={id} className="text-sm font-medium text-gray-700">
+          {label}
+        </label>
+        <DescriptionTooltip description={description} />
+      </div>
+    </div>
+  );
+}
+```
+
+#### **Select Widget (Enum)**
+```tsx
+// src/renderer/components/ui/select-widget.tsx
+import { DescriptionTooltip } from "../components/ui/description-tooltip";
+
+export function SelectWidget(props) {
+  const { id, label, description, required, options, value, onChange } = props;
+  const { enumOptions } = options;
+
+  return (
+    <div className="mb-4">
+      <div className="flex items-center gap-1">
+        <label htmlFor={id} className="block text-sm font-medium text-gray-700">
+          {label}
+          {required && <span className="text-red-500 ml-1">*</span>}
+        </label>
+        <DescriptionTooltip description={description} />
+      </div>
+      <select
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+      >
+        {enumOptions?.map(({ value, label }) => (
+          <option key={value} value={value}>
+            {label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+```
+
+#### **Array Field (with Tooltips in Each Item)**
+```tsx
+// src/renderer/components/ui/array-field.tsx
+import { DescriptionTooltip } from "../components/ui/description-tooltip";
+import { Plus, Trash2 } from "lucide-react";
+
+export function ArrayField(props) {
+  const { id, title, description, required, items, formData = [], onAddClick, onDropIndexClick } = props;
+
+  return (
+    <div className="mb-4">
+      <div className="flex items-center gap-1">
+        <label className="block text-sm font-medium text-gray-700">
+          {title}
+          {required && <span className="text-red-500 ml-1">*</span>}
+        </label>
+        <DescriptionTooltip description={description} />
+      </div>
+
+      {formData.map((item, index) => (
+        <div key={index} className="mt-2 flex items-center gap-2">
+          {props.children}
+          <button
+            type="button"
+            onClick={() => onDropIndexClick(index)}
+            className="text-red-500 hover:text-red-700"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+      ))}
+
+      <button
+        type="button"
+        onClick={onAddClick}
+        className="mt-2 flex items-center text-sm text-blue-600 hover:text-blue-800"
+      >
+        <Plus className="mr-1 h-4 w-4" /> Add Item
+      </button>
+    </div>
+  );
+}
+```
+
+---
+
+### **3. Usage in Form**
+```tsx
+import { Form } from "@rjsf/core";
+import { TextWidget, CheckboxWidget, SelectWidget, ArrayField } from "./widgets";
+
+const schema = {
+  type: "object",
+  properties: {
+    name: { type: "string", title: "Name", description: "Full name" },
+    active: { type: "boolean", title: "Active", description: "Account status" },
+    color: { 
+      type: "string", 
+      title: "Color", 
+      description: "Preferred color", 
+      enum: ["Red", "Green", "Blue"] 
+    },
+    tags: {
+      type: "array",
+      title: "Tags",
+      description: "Add relevant tags",
+      items: { type: "string" },
+    },
+  },
+};
+
+const uiSchema = {
+  "ui:options": { hideDescription: true }, // Hide default descriptions
+};
+
+const widgets = {
+  TextWidget,
+  CheckboxWidget,
+  SelectWidget,
+};
+
+const fields = {
+  ArrayFieldTemplate: ArrayField, // Custom array field
+};
+
+export function MyForm() {
+  return (
+    <Form
+      schema={schema}
+      uiSchema={uiSchema}
+      widgets={widgets}
+      fields={fields}
+    />
+  );
+}
+```
+
+---
+
+### **Key Features**
+- Descriptions **do not** appear inline.
+- **Consistent Tooltips**: All fields use the same `<DescriptionTooltip>` component.
+- **Tailwind Styling**: Clean, responsive UI with Tailwind.
+- **Radix Accessibility**: Keyboard-friendly tooltips and interactions.
+- They **only** show in a tooltip when hovering the **ℹ️ icon**.
+- The UI remains **accessible** (Radix handles keyboard navigation & screen readers).
+
+✅ **Radix UI Tooltip** – Accessible, keyboard-friendly tooltips  
+✅ **Lucide Icons** – Clean `Info` icon for tooltip trigger  
+✅ **Tailwind CSS** – Styled inputs and tooltips  
+✅ **Hides Default Descriptions** – Uses `hideDescription` in `uiSchema`  
+
+- **Coverage**:
+  - ✅ Text/Number inputs
+  - ✅ Checkboxes
+  - ✅ Select dropdowns (enums)
+  - ✅ Array fields (add/remove items)
+---
+
