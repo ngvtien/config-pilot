@@ -6,7 +6,7 @@ import { Button } from '@/renderer/components/ui/button'
 import { Badge } from '@/renderer/components/ui/badge'
 import { Alert, AlertDescription } from '@/renderer/components/ui/alert'
 import { Skeleton } from '@/renderer/components/ui/skeleton'
-import { Search, FileText, ChevronDown, TrashIcon } from 'lucide-react'
+import { Search, FileText, ChevronDown, TrashIcon, Download, Eye, Save, FileJson, FileCode } from 'lucide-react'
 import { kubernetesSchemaIndexer } from '@/renderer/services/kubernetes-schema-indexer'
 import type { KubernetesResourceSchema } from '@/renderer/services/kubernetes-schema-indexer'
 import type { SettingsData } from '@/shared/types/settings-data'
@@ -55,7 +55,7 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
   const [kinds, setKinds] = React.useState<string[]>([]);
   const [selectedResources, setSelectedResources] = useState<TemplateResource[]>([]);
   const [selectedResource, setSelectedResource] = useState<KubernetesResourceSchema | null>(null);
-  
+
   const [isSchemaModalOpen, setIsSchemaModalOpen] = useState(false)
   const [selectedResourceForSchema, setSelectedResourceForSchema] = useState<KubernetesResourceSchema | null>(null)
   const [selectedResourceIndex, setSelectedResourceIndex] = useState<number | null>(null)
@@ -501,7 +501,7 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
 
   // Filter search results to exclude already selected resources
   const filteredSearchResults = useMemo(() => {
-    return searchResults.filter(resource =>
+    return searchResults.filter((resource: { kind: any; group: any; version: any }) =>
       !selectedResources.some(selected =>
         selected.kind === resource.kind &&
         selected.apiVersion === `${resource.group}/${resource.version}`
@@ -531,18 +531,100 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
     }
   }
 
+  /**
+   * Generate YAML preview of the template
+   */
+  const generateYamlPreview = () => {
+    // Implementation for YAML generation
+    console.log('Generating YAML preview for template:', template)
+    // This would generate YAML based on selected resources and fields
+  }
+
+  /**
+   * Generate JSON preview of the template
+   */
+  const generateJsonPreview = () => {
+    // Implementation for JSON generation
+    console.log('Generating JSON preview for template:', template)
+    // This would generate JSON based on selected resources and fields
+  }
+
+  /**
+   * Save template to file
+   */
+  const saveTemplate = () => {
+    // Implementation for saving template
+    console.log('Saving template:', template)
+    // This would save the template to the file system
+  }
+
+  /**
+   * Check if template has data to enable buttons
+   */
+  const hasTemplateData = template.name.trim() !== '' && selectedResources.length > 0
+
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Header with Action Buttons */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            Template Designer
-          </CardTitle>
-          <CardDescription>
-            Select a Kubernetes resource kind to create a template (using Kubernetes {kubernetesVersion})
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                Template Designer
+              </CardTitle>
+              <CardDescription>
+                Select a Kubernetes resource kind to create a template (using Kubernetes {kubernetesVersion})
+              </CardDescription>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={generateYamlPreview}
+                disabled={!hasTemplateData}
+                className="flex items-center gap-2"
+              >
+                <FileCode className="h-4 w-4" />
+                Preview YAML
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={generateJsonPreview}
+                disabled={!hasTemplateData}
+                className="flex items-center gap-2"
+              >
+                <FileJson className="h-4 w-4" />
+                Preview JSON
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => console.log('Export template')}
+                disabled={!hasTemplateData}
+                className="flex items-center gap-2"
+              >
+                <Download className="h-4 w-4" />
+                Export
+              </Button>
+
+              <Button
+                size="sm"
+                onClick={saveTemplate}
+                disabled={!hasTemplateData}
+                className="flex items-center gap-2"
+              >
+                <Save className="h-4 w-4" />
+                Save Template
+              </Button>
+            </div>
+          </div>
         </CardHeader>
       </Card>
 
@@ -726,9 +808,9 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
                     badge: 'bg-orange-100 text-orange-800'
                   }
                 ];
-                
+
                 const scheme = colorSchemes[index % colorSchemes.length];
-                
+
                 return (
                   <div
                     key={`${resource.apiVersion}-${resource.kind}-${index}`}
@@ -745,7 +827,7 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
                   >
                     {/* Subtle accent line */}
                     <div className={`absolute top-0 left-0 right-0 h-1 ${scheme.accent.replace('text-', 'bg-')}`}></div>
-                    
+
                     <div className="flex justify-between items-start mb-4">
                       <div className="flex-1">
                         <h3 className={`font-semibold text-lg ${scheme.accent} mb-1`}>{resource.kind}</h3>
@@ -787,7 +869,7 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
                         </div>
                       </div>
                     )}
-                    
+
                     {/* Click indicator */}
                     <div className="text-xs text-gray-500 text-center mt-2 opacity-70">
                       Click to configure
@@ -845,7 +927,7 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
         selectedFields={selectedResourceIndex !== null ? selectedResources[selectedResourceIndex]?.selectedFields || [] : []}
         onFieldsChange={handleFieldSelectionChange}
       />
-            
+
     </div>
   )
 }

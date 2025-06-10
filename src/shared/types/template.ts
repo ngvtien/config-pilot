@@ -1,23 +1,53 @@
 /**
- * Represents a field selected from a resource schema
+ * Represents a field in a template with extensible format support
+ * Supports Kubernetes, Terraform, Ansible, Kustomize, and future formats
  */
 interface TemplateField {
-  path: string // JSON path to the field (e.g., "spec.replicas")
-  title: string // Display name for the field
-  description?: string // Optional description
-  type: string // Field type (string, number, boolean, etc.)
-  required: boolean // Whether the field is required
-  defaultValue?: any // Optional default value
-}
+    path: string // Field path (e.g., "spec.containers[].image")
+    title: string // Human-readable field name
+    type: string // Field type (string, number, boolean, object, array)
+    required: boolean // Whether field is required
+    description?: string // Field description for tooltips/help
+    format?: string // Format hint (e.g., "email", "uri", "date-time")
+    templateType?: 'kubernetes' | 'terraform' | 'ansible' | 'kustomize' | 'helm' | 'docker-compose' // Extensible format support
+    constraints?: {
+      minimum?: number
+      maximum?: number
+      pattern?: string
+      enum?: string[]
+      minLength?: number
+      maxLength?: number
+    } // Validation constraints for different formats
+    metadata?: Record<string, any> // Format-specific metadata
+  }
+  
 
 /**
- * Represents a resource included in a template
+ * Template resource with multi-format support
  */
 interface TemplateResource {
-  apiVersion: string // e.g., "apps/v1"
-  kind: string // e.g., "Deployment"
-  namespace?: string // Optional namespace
-  fields: TemplateField[] // Selected fields for this resource
+  kind: string
+  apiVersion: string
+  namespace?: string
+  selectedFields: TemplateField[]
+  templateType: 'kubernetes' | 'terraform' | 'ansible' | 'kustomize' | 'helm' | 'docker-compose'
+  formatSpecific?: {
+    terraform?: {
+      provider?: string
+      resource?: string
+    }
+    ansible?: {
+      module?: string
+      collection?: string
+    }
+    kustomize?: {
+      patchType?: 'strategic' | 'merge' | 'json'
+    }
+    helm?: {
+      chart?: string
+      version?: string
+    }
+  }
 }
 
 /**
