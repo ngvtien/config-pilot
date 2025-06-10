@@ -14,8 +14,6 @@ import type { ContextData } from '@/shared/types/context-data'
 import Form from '@rjsf/core'
 import validator from '@rjsf/validator-ajv8'
 import { RJSFSchema } from '@rjsf/utils'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/renderer/components/ui/collapsible'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/renderer/components/ui/tooltip'
 import { TextWidget, TextareaWidget, CheckboxWidget, SelectWidget } from './custom-widgets'
 import { Template, TemplateResource, TemplateField } from '@/shared/types/template'
 import { Textarea } from '@/renderer/components/ui/textarea'
@@ -34,9 +32,26 @@ interface TemplateDesignerProps {
  * Gets Kubernetes version from settings data instead of manual selection
  */
 export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsData, contextData }: TemplateDesignerProps) {
-  const [template, setTemplate] = useState<Template>(initialTemplate || {
-    name: '',
-    resources: []
+  // Update the template state initialization with persistence
+  const [template, setTemplate] = useState<Template>(() => {
+    try {
+      const saved = localStorage.getItem('template-designer-template-data')
+      if (saved) {
+        const parsedTemplate = JSON.parse(saved)
+        return {
+          name: parsedTemplate.name || '',
+          description: parsedTemplate.description || '',
+          resources: [] // Resources are handled separately
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to load persisted template data:', error)
+    }
+
+    return initialTemplate || {
+      name: '',
+      resources: []
+    }
   })
 
   const [selectedFields, setSelectedFields] = useState<{
@@ -53,7 +68,17 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
   const [formData, setFormData] = useState<any>({})
   const [searchInput, setSearchInput] = React.useState('');
   const [kinds, setKinds] = React.useState<string[]>([]);
-  const [selectedResources, setSelectedResources] = useState<TemplateResource[]>([]);
+
+  const [selectedResources, setSelectedResources] = useState<TemplateResource[]>(() => {
+    try {
+      const saved = localStorage.getItem('template-designer-selected-resources')
+      return saved ? JSON.parse(saved) : []
+    } catch (error) {
+      console.warn('Failed to load persisted selected resources:', error)
+      return []
+    }
+  });
+
   const [selectedResource, setSelectedResource] = useState<KubernetesResourceSchema | null>(null);
 
   const [isSchemaModalOpen, setIsSchemaModalOpen] = useState(false)
@@ -62,6 +87,31 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
 
   // Get Kubernetes version from settings data
   const kubernetesVersion = settingsData.kubernetesVersion
+
+  // Persist template name and description
+  useEffect(() => {
+    try {
+      const templateData = {
+        name: template.name,
+        description: template.description
+      }
+      localStorage.setItem('template-designer-template-data', JSON.stringify(templateData))
+      console.log('Persisted template data:', templateData)
+    } catch (error) {
+      console.warn('Failed to persist template data:', error)
+    }
+  }, [template.name, template.description])
+
+  // Persist selectedResources changes
+  useEffect(() => {
+    try {
+      localStorage.setItem('template-designer-selected-resources', JSON.stringify(selectedResources))
+      console.log('Persisted selected resources:', selectedResources.length, 'resources')
+    } catch (error) {
+      console.warn('Failed to persist selected resources:', error)
+    }
+  }, [selectedResources])
+
 
   const filteredKinds = React.useMemo(() => {
     return kinds.filter(kind =>

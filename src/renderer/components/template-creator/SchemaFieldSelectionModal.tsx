@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import {
     Dialog,
     DialogContent,
@@ -35,13 +35,81 @@ interface SchemaProperty {
     properties?: SchemaProperty[]
     items?: SchemaProperty
     hasChildren: boolean
-    format?: string // For future format support (terraform, ansible, etc.)
-    templateType?: 'kubernetes' | 'terraform' | 'ansible' | 'kustomize' // Future format support
+    format?: string
+    templateType?: 'kubernetes' | 'terraform' | 'ansible' | 'kustomize'
+    isReference: boolean
+    level?: number
+}
+
+// Persistence keys for localStorage
+const STORAGE_KEYS = {
+    SELECTED_FIELDS: 'schema-field-selection-selected-fields',
+    EXPANDED_NODES: 'schema-field-selection-expanded-nodes'
+}
+
+/**
+ * Get persisted selected fields from localStorage
+ */
+function getPersistedSelectedFields(resourceKey: string): TemplateField[] {
+    try {
+        const stored = localStorage.getItem(STORAGE_KEYS.SELECTED_FIELDS)
+        if (stored) {
+            const allSelections = JSON.parse(stored)
+            return allSelections[resourceKey] || []
+        }
+    } catch (error) {
+        console.warn('Failed to load persisted selected fields:', error)
+    }
+    return []
+}
+
+/**
+ * Persist selected fields to localStorage
+ */
+function persistSelectedFields(resourceKey: string, fields: TemplateField[]) {
+    try {
+        const stored = localStorage.getItem(STORAGE_KEYS.SELECTED_FIELDS)
+        const allSelections = stored ? JSON.parse(stored) : {}
+        allSelections[resourceKey] = fields
+        localStorage.setItem(STORAGE_KEYS.SELECTED_FIELDS, JSON.stringify(allSelections))
+    } catch (error) {
+        console.warn('Failed to persist selected fields:', error)
+    }
+}
+
+/**
+ * Get persisted expanded nodes from sessionStorage (session-only)
+ */
+function getPersistedExpandedNodes(resourceKey: string): Set<string> {
+    try {
+        const stored = sessionStorage.getItem(STORAGE_KEYS.EXPANDED_NODES)
+        if (stored) {
+            const allExpanded = JSON.parse(stored)
+            return new Set(allExpanded[resourceKey] || [])
+        }
+    } catch (error) {
+        console.warn('Failed to load persisted expanded nodes:', error)
+    }
+    return new Set()
+}
+
+/**
+ * Persist expanded nodes to sessionStorage
+ */
+function persistExpandedNodes(resourceKey: string, expandedNodes: Set<string>) {
+    try {
+        const stored = sessionStorage.getItem(STORAGE_KEYS.EXPANDED_NODES)
+        const allExpanded = stored ? JSON.parse(stored) : {}
+        allExpanded[resourceKey] = Array.from(expandedNodes)
+        sessionStorage.setItem(STORAGE_KEYS.EXPANDED_NODES, JSON.stringify(allExpanded))
+    } catch (error) {
+        console.warn('Failed to persist expanded nodes:', error)
+    }
 }
 
 /**
  * Modal component for selecting schema fields with tooltips and hierarchical display
- * Supports multiple template formats: Kubernetes, Terraform, Ansible, Kustomize, etc.
+ * Supports multiple template formats and state persistence
  */
 export function SchemaFieldSelectionModal({
     isOpen,
@@ -53,137 +121,231 @@ export function SchemaFieldSelectionModal({
     const [localSelectedFields, setLocalSelectedFields] = useState<TemplateField[]>(selectedFields)
     const [expandedObjects, setExpandedObjects] = useState<Set<string>>(new Set())
     const [showSchemaPreview, setShowSchemaPreview] = useState(false)
-    // Clear previous selections when resource changes
-    useEffect(() => {
-        if (resource) {
-            console.log('🔄 Resource changed, clearing selections:', resource.kind)
-            setLocalSelectedFields([])
-            setExpandedObjects(new Set())
-        }
-    }, [resource?.kind, resource?.apiVersion])
 
-    // Update local state when selectedFields prop changes
+    // Generate resource key for persistence (fix undefined apiVersion)
+    const resourceKey = resource ? `${resource.kind}-${resource.apiVersion || 'v1'}` : ''
+
+    // Load persisted state when resource changes (fix dependency array)
     useEffect(() => {
-        setLocalSelectedFields(selectedFields)
-    }, [selectedFields])
+        if (resource && resourceKey) {
+            console.log('🔄 Resource changed, loading persisted state:', resourceKey)
+
+            // Load persisted selected fields
+            const persistedFields = getPersistedSelectedFields(resourceKey)
+            console.log('📥 Loaded persisted selected fields:', persistedFields.length)
+            setLocalSelectedFields(persistedFields) // Always set, even if empty
+
+            // Load persisted expanded nodes
+            const persistedExpanded = getPersistedExpandedNodes(resourceKey)
+            console.log('📥 Loaded persisted expanded nodes:', persistedExpanded.size)
+            setExpandedObjects(persistedExpanded)
+        }
+    }, [resourceKey]) // Fixed: use only resourceKey to avoid array size changes
+
+    // Only update from props if we're opening modal fresh and no persisted data exists
+    useEffect(() => {
+        if (isOpen && selectedFields.length > 0 && resourceKey) {
+            const persistedFields = getPersistedSelectedFields(resourceKey)
+            // Only use props if no persisted data exists
+            if (persistedFields.length === 0) {
+                console.log('📝 Using props as no persisted data found')
+                setLocalSelectedFields(selectedFields)
+            }
+        }
+    }, [isOpen, selectedFields.length, resourceKey]) // Fixed: use length instead of array
+
+    // Persist state changes
+    useEffect(() => {
+        if (resourceKey && localSelectedFields.length >= 0) {
+            persistSelectedFields(resourceKey, localSelectedFields)
+        }
+    }, [localSelectedFields, resourceKey])
+
+
+    useEffect(() => {
+        if (resourceKey) {
+            persistExpandedNodes(resourceKey, expandedObjects)
+        }
+    }, [expandedObjects, resourceKey])
 
     /**
-     * Recursively parse schema properties into a flat structure for easier rendering
-     * Auto-expand object types even without explicit properties
+     * Resolve schema references recursively
+     * @param property - The schema property that might contain $ref
+     * @param fullSchema - The complete schema for reference resolution
+     * @param visited - Set to prevent circular references
      */
-    const parseSchemaProperties = (schema: any, basePath = '', level = 0): SchemaProperty[] => {
-        if (!schema || !schema.properties) {
-            console.log('❌ No schema or properties found at level', level, 'basePath:', basePath)
-            return []
+    const resolveSchemaReference = (
+        property: any,
+        fullSchema: any,
+        visited: Set<string> = new Set()
+    ): { resolved: any; isReference: boolean } => {
+        if (!property || typeof property !== 'object') {
+            return { resolved: property, isReference: false }
         }
 
-        console.log('📋 Parsing schema at level', level, 'basePath:', basePath, 'properties count:', Object.keys(schema.properties).length)
+        // Handle $ref properties
+        if (property.$ref && typeof property.$ref === 'string') {
+            const refPath = property.$ref.replace('#/', '').split('/')
+
+            // Prevent circular references
+            if (visited.has(property.$ref)) {
+                return {
+                    resolved: {
+                        type: 'object',
+                        description: `Circular reference: ${property.$ref}`
+                    },
+                    isReference: true
+                }
+            }
+
+            visited.add(property.$ref)
+
+            // Navigate to the referenced schema
+            let resolved = fullSchema
+            for (const segment of refPath) {
+                resolved = resolved?.[segment]
+            }
+
+            if (resolved) {
+                // Recursively resolve the referenced schema
+                const result = resolveSchemaReference(resolved, fullSchema, visited)
+                return { resolved: result.resolved, isReference: true }
+            }
+
+            return {
+                resolved: { type: 'unknown', description: `Unresolved reference: ${property.$ref}` },
+                isReference: true
+            }
+        }
+
+        // Handle object properties
+        if (property.type === 'object' && property.properties) {
+            const resolvedProperties: any = {}
+            Object.keys(property.properties).forEach(key => {
+                const result = resolveSchemaReference(
+                    property.properties[key],
+                    fullSchema,
+                    new Set(visited)
+                )
+                resolvedProperties[key] = result.resolved
+            })
+            return {
+                resolved: { ...property, properties: resolvedProperties },
+                isReference: false
+            }
+        }
+
+        // Handle array items
+        if (property.type === 'array' && property.items) {
+            const result = resolveSchemaReference(property.items, fullSchema, new Set(visited))
+            return {
+                resolved: { ...property, items: result.resolved },
+                isReference: result.isReference
+            }
+        }
+
+        return { resolved: property, isReference: false }
+    }
+
+    /**
+     * Parse schema properties with reference resolution
+     * @param schema - The schema to parse
+     * @param prefix - Field path prefix
+     * @param level - Nesting level for UI indentation
+     */
+    const parseSchemaProperties = (
+        schema: any,
+        prefix: string = '',
+        level: number = 0
+    ): SchemaProperty[] => {
+        if (!schema?.properties) return []
+
         const properties: SchemaProperty[] = []
-        const required = schema.required || []
 
-        Object.entries(schema.properties).forEach(([key, value]: [string, any]) => {
-            const currentPath = basePath ? `${basePath}.${key}` : key
-            
-            // Simplified logic: object types are expandable, arrays with object items are expandable
-            const isObjectType = value.type === 'object'
-            const isArrayWithObjectItems = value.type === 'array' && value.items && value.items.type === 'object'
-            const hasChildren = isObjectType || isArrayWithObjectItems
+        Object.entries(schema.properties).forEach(([key, property]: [string, any]) => {
+            const fieldPath = prefix ? `${prefix}.${key}` : key
 
-            // Enhanced debug logging
-            console.log('🔍 Processing property:', {
-                key,
-                path: currentPath,
-                type: value.type,
-                isObjectType,
-                isArrayWithObjectItems,
+            // Resolve references before processing
+            const { resolved: resolvedProperty, isReference } = resolveSchemaReference(
+                property,
+                resource?.schema
+            )
+
+            // Determine if this property has children
+            const hasChildren = (
+                (resolvedProperty.type === 'object' && resolvedProperty.properties) ||
+                (resolvedProperty.type === 'array' &&
+                    resolvedProperty.items?.type === 'object' &&
+                    resolvedProperty.items?.properties)
+            )
+
+            properties.push({
+                name: key,
+                path: fieldPath,
+                type: resolvedProperty.type || 'unknown',
+                description: resolvedProperty.description || '',
+                required: schema.required?.includes(key) || false,
                 hasChildren,
-                hasExplicitProperties: !!value.properties,
+                isReference, // Set the reference flag
                 level
             })
 
-            const property: SchemaProperty = {
-                name: key,
-                path: currentPath,
-                type: value.type || 'object',
-                description: value.description,
-                required: required.includes(key),
-                hasChildren,
-                format: value.format,
-                templateType: 'kubernetes'
-            }
-
-            properties.push(property)
-
-            // Parse nested objects if they have explicit properties
-            if (isObjectType && value.properties) {
-                console.log('🔧 Parsing nested object with explicit properties:', currentPath)
-                property.properties = parseSchemaProperties(value, currentPath, level + 1)
-            }
-
-            // Handle array items with object properties
-            if (isArrayWithObjectItems && value.items.properties) {
-                const itemsPath = `${currentPath}[]`
-                console.log('🔧 Parsing array items with explicit properties:', itemsPath)
-                property.items = {
-                    name: 'items',
-                    path: itemsPath,
-                    type: value.items.type || 'object',
-                    description: value.items.description,
-                    hasChildren: true, // Array items with object type are always expandable
-                    templateType: 'kubernetes'
+            // Recursively process nested objects
+            if (hasChildren && expandedObjects[fieldPath]) {
+                if (resolvedProperty.type === 'object') {
+                    properties.push(...parseSchemaProperties(
+                        resolvedProperty,
+                        fieldPath,
+                        level + 1
+                    ))
+                } else if (resolvedProperty.type === 'array' && resolvedProperty.items) {
+                    properties.push(...parseSchemaProperties(
+                        resolvedProperty.items,
+                        `${fieldPath}[]`,
+                        level + 1
+                    ))
                 }
-                property.items.properties = parseSchemaProperties(value.items, itemsPath, level + 1)
             }
         })
 
-        console.log('✅ Parsed', properties.length, 'properties at level', level, 'with', properties.filter(p => p.hasChildren).length, 'having children')
         return properties
     }
 
     const schemaProperties = useMemo(() => {
         if (!resource?.schema) {
-            console.log('❌ No resource schema available')
             return []
         }
-        console.log('🚀 Parsing schema for resource:', resource.kind, resource.apiVersion)
-        const parsed = parseSchemaProperties(resource.schema)
-        console.log('📊 Total parsed properties:', parsed.length, 'with children:', parsed.filter(p => p.hasChildren).length)
-        return parsed
+        return parseSchemaProperties(resource.schema)
     }, [resource])
 
     /**
-     * Toggle expansion of object properties
+     * Toggle expansion of object properties with persistence
      */
     const toggleObjectExpansion = (path: string) => {
-        console.log('🔄 Toggling expansion for path:', path)
         setExpandedObjects(prev => {
             const newSet = new Set(prev)
             if (newSet.has(path)) {
-                console.log('➖ Collapsing:', path)
                 newSet.delete(path)
             } else {
-                console.log('➕ Expanding:', path)
                 newSet.add(path)
             }
-            console.log('📂 All expanded objects:', Array.from(newSet))
             return newSet
         })
     }
 
     /**
-     * Handle schema preview - shows raw schema structure
+     * Handle schema preview
      */
     const handlePreviewSchema = () => {
         if (resource?.schema) {
             console.log('🔍 Raw Schema Structure:', JSON.stringify(resource.schema, null, 2))
-            console.log('🔍 Schema Properties:', resource.schema.properties)
             console.log('🔍 Parsed Schema Properties:', schemaProperties)
             setShowSchemaPreview(true)
         }
-    }    
+    }
+
     /**
-     * Handle field selection with smart object handling
-     * Supports extensible template formats
+     * Handle field selection with persistence
      */
     const handleFieldToggle = (property: SchemaProperty, checked: boolean) => {
         const field: TemplateField = {
@@ -192,8 +354,8 @@ export function SchemaFieldSelectionModal({
             type: property.type,
             required: property.required || false,
             description: property.description,
-            format: property.format, // For future format-specific handling
-            templateType: property.templateType || 'kubernetes' // Extensible for other formats
+            format: property.format,
+            templateType: property.templateType || 'kubernetes'
         }
 
         if (checked) {
@@ -261,25 +423,13 @@ export function SchemaFieldSelectionModal({
     }
 
     /**
-     * Render a schema property with expandable object support
-     * Auto-expands object type fields for better UX
+     * Render a schema property with improved expand/collapse functionality
      */
     const renderProperty = (property: SchemaProperty, level = 0) => {
         const isSelected = isFieldSelected(property.path)
         const isPartial = isPartiallySelected(property)
         const isExpanded = expandedObjects.has(property.path)
         const indent = level * 20
-
-        // Debug logging for rendering
-        if (property.hasChildren) {
-            console.log('🎨 Rendering property with children:', {
-                name: property.name,
-                path: property.path,
-                hasChildren: property.hasChildren,
-                isExpanded,
-                level
-            })
-        }
 
         return (
             <div key={property.path} className="space-y-1">
@@ -288,15 +438,12 @@ export function SchemaFieldSelectionModal({
                     style={{ marginLeft: `${indent}px` }}
                 >
                     {/* Expansion toggle for objects */}
-                    {property.hasChildren && (
+                    {property.hasChildren ? (
                         <Button
                             variant="ghost"
                             size="sm"
-                            className="h-6 w-6 p-0"
-                            onClick={() => {
-                                console.log('🖱️ Expansion button clicked for:', property.path)
-                                toggleObjectExpansion(property.path)
-                            }}
+                            className="h-6 w-6 p-0 hover:bg-gray-200 dark:hover:bg-gray-700"
+                            onClick={() => toggleObjectExpansion(property.path)}
                         >
                             {isExpanded ? (
                                 <ChevronDown className="h-3 w-3" />
@@ -304,10 +451,9 @@ export function SchemaFieldSelectionModal({
                                 <ChevronRight className="h-3 w-3" />
                             )}
                         </Button>
+                    ) : (
+                        <div className="w-6" />
                     )}
-
-                    {/* Spacer for non-expandable items */}
-                    {!property.hasChildren && <div className="w-6" />}
 
                     <Checkbox
                         id={property.path}
@@ -336,22 +482,30 @@ export function SchemaFieldSelectionModal({
                         >
                             {property.type}
                         </Badge>
+                        {property.hasChildren && (
+                            <Badge variant="outline" className="text-xs px-1 py-0">
+                                {property.properties?.length || 0} fields
+                            </Badge>
+                        )}
+                        {property.isReference && (
+                            <Badge variant="outline" className="ml-2 text-xs">
+                                ref
+                            </Badge>
+                        )}
                         <DescriptionTooltip description={property.description} />
                     </div>
                 </div>
 
                 {/* Render nested properties when expanded */}
                 {property.hasChildren && isExpanded && property.properties && (
-                    <div className="ml-4">
-                        {console.log('🌳 Rendering nested properties for:', property.path, property.properties.length)}
+                    <div className="ml-4 border-l-2 border-gray-200 dark:border-gray-700 pl-2">
                         {property.properties.map(nestedProp =>
                             renderProperty(nestedProp, level + 1)
                         )}
                     </div>
                 )}
                 {property.hasChildren && isExpanded && property.items && (
-                    <div className="ml-4">
-                        {console.log('🌳 Rendering array items for:', property.path)}
+                    <div className="ml-4 border-l-2 border-gray-200 dark:border-gray-700 pl-2">
                         {renderProperty(property.items, level + 1)}
                     </div>
                 )}
@@ -360,7 +514,7 @@ export function SchemaFieldSelectionModal({
     }
 
     /**
-     * Handle save and close
+     * Handle save with persistence
      */
     const handleSave = () => {
         onFieldsChange(localSelectedFields)
@@ -386,7 +540,7 @@ export function SchemaFieldSelectionModal({
                         <Badge variant="outline">{resource.apiVersion}</Badge>
                     </DialogTitle>
                     <DialogDescription>
-                        Select the fields you want to include in your template. Use the tooltips to understand each field's purpose.
+                        Select the fields you want to include in your template. Selections are automatically saved and restored.
                     </DialogDescription>
                 </DialogHeader>
 
@@ -452,8 +606,8 @@ export function SchemaFieldSelectionModal({
 
                 <DialogFooter className="flex-shrink-0 justify-between">
                     <div className="flex space-x-2">
-                        <Button 
-                            variant="outline" 
+                        <Button
+                            variant="outline"
                             size="sm"
                             onClick={handlePreviewSchema}
                             className="text-xs"
@@ -493,7 +647,7 @@ export function SchemaFieldSelectionModal({
                             </DialogFooter>
                         </DialogContent>
                     </Dialog>
-                )}                
+                )}
             </DialogContent>
         </Dialog>
     )
