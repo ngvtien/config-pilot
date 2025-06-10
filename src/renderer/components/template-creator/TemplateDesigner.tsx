@@ -19,7 +19,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/rend
 import { TextWidget, TextareaWidget, CheckboxWidget, SelectWidget } from './custom-widgets'
 import { Template, TemplateResource, TemplateField } from '@/shared/types/template'
 import { Textarea } from '@/renderer/components/ui/textarea'
-
+import { SchemaFieldSelectionModal } from './SchemaFieldSelectionModal'
 
 interface TemplateDesignerProps {
   initialTemplate?: Template
@@ -55,6 +55,11 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
   const [kinds, setKinds] = React.useState<string[]>([]);
   const [selectedResources, setSelectedResources] = useState<TemplateResource[]>([]);
   const [selectedResource, setSelectedResource] = useState<KubernetesResourceSchema | null>(null);
+  
+  const [isSchemaModalOpen, setIsSchemaModalOpen] = useState(false)
+  const [selectedResourceForSchema, setSelectedResourceForSchema] = useState<KubernetesResourceSchema | null>(null)
+  const [selectedResourceIndex, setSelectedResourceIndex] = useState<number | null>(null)
+
   // Get Kubernetes version from settings data
   const kubernetesVersion = settingsData.kubernetesVersion
 
@@ -504,201 +509,27 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
     )
   }, [searchResults, selectedResources])
 
-  //   return (
-  //     <div className="space-y-6">
-  //       {/* Header */}
-  //       <Card>
-  //         <CardHeader>
-  //           <CardTitle className="flex items-center gap-2">
-  //             <FileText className="h-5 w-5" />
-  //             Template Designer
-  //           </CardTitle>
-  //           <CardDescription>
-  //             Select a Kubernetes resource kind to create a template (using Kubernetes {kubernetesVersion})
-  //           </CardDescription>
-  //         </CardHeader>
-  //       </Card>
+  /**
+ * Handle field selection changes from the modal
+ */
+  const handleFieldSelectionChange = (fields: TemplateField[]) => {
+    if (selectedResourceIndex !== null) {
+      const updatedResources = [...selectedResources]
+      updatedResources[selectedResourceIndex] = {
+        ...updatedResources[selectedResourceIndex],
+        selectedFields: fields
+      }
+      setSelectedResources(updatedResources)
 
-  //       {/* Error Display */}
-  //       {error && (
-  //         <Alert variant="destructive">
-  //           <AlertDescription>{error}</AlertDescription>
-  //         </Alert>
-  //       )}
-
-  // <Card>
-  //         <CardHeader>
-  //           <CardTitle>Template Details</CardTitle>
-  //         </CardHeader>
-  //         <CardContent>
-  //           <div className="space-y-4">
-  //             <div>
-  //               <Label htmlFor="template-name">Template Name</Label>
-  //               <Input 
-  //                 id="template-name"
-  //                 value={template.name}
-  //                 onChange={(e) => setTemplate({...template, name: e.target.value})}
-  //                 placeholder="Enter template name"
-  //               />
-  //             </div>
-  //             <div>
-  //               <Label htmlFor="template-description">Description (Optional)</Label>
-  //               <Textarea 
-  //                 id="template-description"
-  //                 value={template.description || ''}
-  //                 onChange={(e) => setTemplate({...template, description: e.target.value})}
-  //                 placeholder="Enter template description"
-  //               />
-  //             </div>
-  //           </div>
-  //         </CardContent>
-  //       </Card>
-
-  //       {/* Searchable Kind Selector */}
-  //       <Card>
-  //         <CardHeader>
-  //           <CardTitle className="text-lg">Kubernetes Resource Kind</CardTitle>
-  //           <CardDescription>
-  //             Search and select a Kubernetes resource type ({availableKinds.length} kinds available)
-  //           </CardDescription>
-  //         </CardHeader>
-  //         <CardContent className="space-y-4">
-  //           {/* Searchable Dropdown */}
-  //           <div className="relative">
-  //             <Label htmlFor="kind-search">Select Resource Kind:</Label>
-  //             <div className="relative mt-2">
-  //               <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-  //               <Input
-  //                 id="kind-search"
-  //                 placeholder="Search for Kubernetes kinds (e.g., Pod, Deployment, Service)..."
-  //                 value={searchTerm}
-  //                 onChange={(e) => {
-  //                   setSearchTerm(e.target.value)
-  //                   setIsDropdownOpen(true)
-  //                 }}
-  //                 onFocus={() => setIsDropdownOpen(true)}
-  //                 className="pl-10 pr-10"
-  //                 disabled={isLoading}
-  //               />
-  //               <ChevronDown
-  //                 className="absolute right-3 top-3 h-4 w-4 text-muted-foreground cursor-pointer"
-  //                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-  //               />
-  //             </div>
-
-  //             {/* Dropdown Results */}
-  //             {isDropdownOpen && !isLoading && !error && (
-  //               <div className="absolute z-10 w-full mt-1 bg-background border border-border rounded-md shadow-lg max-h-60 overflow-auto">
-  //                 {searchResults.length > 0 ? (
-  //                   searchResults.map((resource) => (
-  //                     <div
-  //                       key={`${resource.group}-${resource.version}-${resource.kind}`}
-  //                       className="px-3 py-2 hover:bg-accent hover:text-accent-foreground cursor-pointer border-b border-border last:border-b-0"
-  //                       onClick={() => handleKindSelect(resource)}
-  //                     >
-  //                       <div className="flex items-center justify-between">
-  //                         <span className="font-medium">{resource.kind}</span>
-  //                         <div className="flex gap-1">
-  //                           <Badge variant="secondary" className="text-xs">
-  //                             {resource.version}
-  //                           </Badge>
-  //                           {resource.group !== 'core' && (
-  //                             <Badge variant="outline" className="text-xs">
-  //                               {resource.group}
-  //                             </Badge>
-  //                           )}
-  //                         </div>
-  //                       </div>
-  //                       {resource.description && (
-  //                         <p className="text-sm text-muted-foreground mt-1">
-  //                           {resource.description}
-  //                         </p>
-  //                       )}
-  //                     </div>
-  //                   ))
-  //                 ) : (
-  //                   <div className="px-3 py-4 text-center text-muted-foreground">
-  //                     {searchTerm ? `No kinds found matching "${searchTerm}"` : 'No kinds available'}
-  //                   </div>
-  //                 )}
-  //               </div>
-  //             )}
-  //           </div>
-
-  //           {/* Loading State */}
-  //           {isLoading && (
-  //             <div className="space-y-2">
-  //               <Skeleton className="h-10 w-full" />
-  //               <Skeleton className="h-10 w-full" />
-  //               <Skeleton className="h-10 w-full" />
-  //             </div>
-  //           )}
-  //         </CardContent>
-  //       </Card>
-
-  //       <div className="grid grid-cols-3 gap-4 p-4">
-  //   {selectedResources.map((resource) => (
-  //     <div 
-  //       key={`${resource.apiVersion}-${resource.kind}-${resource.namespace}`}
-  //       className="bg-gray-100 rounded-lg p-4 shadow-md hover:shadow-lg transition-shadow"
-  //     >
-  //       <div className="flex justify-between items-start">
-  //         <div>
-  //           <h3 className="font-medium">{resource.kind}</h3>
-  //           <p className="text-sm text-gray-600">{resource.apiVersion}</p>
-  //           {resource.namespace && (
-  //             <p className="text-xs text-gray-500">Namespace: {resource.namespace}</p>
-  //           )}
-  //         </div>
-  //         <button 
-  //           onClick={() => removeResource(resource)}
-  //           className="text-red-500 hover:text-red-700"
-  //           aria-label="Remove resource"
-  //         >
-  //           <TrashIcon className="h-5 w-5" />
-  //         </button>
-  //       </div>
-
-  //       {resource.selectedFields.length > 0 && (
-  //         <div className="mt-3">
-  //           <h4 className="text-sm font-medium mb-1">Selected Fields:</h4>
-  //           <ul className="space-y-1">
-  //             {resource.selectedFields.map((field) => (
-  //               <li key={field.path} className="text-xs text-gray-700">
-  //                 {field.title || field.path}
-  //               </li>
-  //             ))}
-  //           </ul>
-  //         </div>
-  //       )}
-  //     </div>
-  //   ))}
-  // </div>
-
-  //       {/* Selected Kind Form */}
-  //       {selectedKind && rjsfSchema && (
-  //         <Card>
-  //           <CardHeader>
-  //             <CardTitle>Configure {selectedKind.kind}</CardTitle>
-  //             <CardDescription>
-  //               Fill in the configuration for your {selectedKind.kind} resource
-  //             </CardDescription>
-  //           </CardHeader>
-  //           <CardContent>
-  //             <Form
-  //               schema={rjsfSchema}
-  //               uiSchema={generateUISchema(selectedKind)}
-  //               formData={formData}
-  //               onChange={handleFormChange}
-  //               validator={validator}
-  //               widgets={customWidgets}
-  //             />
-  //           </CardContent>
-  //         </Card>
-  //       )}
-  //     </div>
-  //   )
-
+      // Update template
+      const updatedTemplate = {
+        ...template,
+        resources: updatedResources
+      }
+      setTemplate(updatedTemplate)
+      onTemplateChange?.(updatedTemplate)
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -905,7 +736,10 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
                     onClick={() => {
                       const resourceSchema = kubernetesSchemaIndexer.getKindVersions(resource.kind)?.[0]
                       if (resourceSchema) {
+                        setSelectedResourceForSchema(resourceSchema)
+                        setSelectedResourceIndex(index)
                         setSelectedResource(resourceSchema)
+                        setIsSchemaModalOpen(true)
                       }
                     }}
                   >
@@ -998,6 +832,20 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
           </CardContent>
         </Card>
       )}
+
+      {/* Schema Field Selection Modal */}
+      <SchemaFieldSelectionModal
+        isOpen={isSchemaModalOpen}
+        onClose={() => {
+          setIsSchemaModalOpen(false)
+          setSelectedResourceForSchema(null)
+          setSelectedResourceIndex(null)
+        }}
+        resource={selectedResourceForSchema}
+        selectedFields={selectedResourceIndex !== null ? selectedResources[selectedResourceIndex]?.selectedFields || [] : []}
+        onFieldsChange={handleFieldSelectionChange}
+      />
+            
     </div>
   )
 }
