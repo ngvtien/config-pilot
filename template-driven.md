@@ -1570,3 +1570,76 @@ export function MyForm() {
   - ✅ Array fields (add/remove items)
 ---
 
+## @apidevtools/json-schema-ref-parser
+
+`@apidevtools/json-schema-ref-parser` **flattens** the schema, I mean that it **resolves all `$ref` references** and replaces them **in-place** with the actual referenced content. This produces a fully expanded schema that no longer relies on external definitions.
+
+---
+
+### 🔁 Before `dereference()`: With `$ref`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "spec": {
+      "$ref": "#/definitions/io.k8s.api.core.v1.ServiceSpec"
+    }
+  },
+  "definitions": {
+    "io.k8s.api.core.v1.ServiceSpec": {
+      "type": "object",
+      "properties": {
+        "type": { "type": "string" },
+        "ports": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/Port" }
+        }
+      }
+    },
+    "Port": {
+      "type": "object",
+      "properties": {
+        "port": { "type": "integer" },
+        "targetPort": { "type": "integer" }
+      }
+    }
+  }
+}
+```
+
+---
+
+### ✅ After `dereference()`: Flattened Schema
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "spec": {
+      "type": "object",
+      "properties": {
+        "type": { "type": "string" },
+        "ports": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "port": { "type": "integer" },
+              "targetPort": { "type": "integer" }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+---
+
+### 💡 Key Points:
+
+* `$ref`s are **replaced recursively** with their actual target content.
+* All references — internal (`#/definitions/...`) or external (like from a separate file) — are **inlined**.
+* The output is ideal for UI libraries like `@rjsf/core` that don’t handle `$ref` very well on their own.
