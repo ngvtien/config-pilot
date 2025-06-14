@@ -166,6 +166,79 @@ public class SensitiveDataLoggingMessageInspector : IDispatchMessageInspector
 }
 ```
 
+or the updated version:
+```csharp
+private static List<(string Name, string Namespace)> GetSensitiveFieldsFromAction(string action)
+{
+    if (string.IsNullOrEmpty(action)) return null;
+
+    try
+    {
+        var operationName = action.Split('/').Last();
+        var assembly = AppDomain.CurrentDomain.GetAssemblies()
+            .FirstOrDefault(a => a.FullName.Contains("YourContractAssembly"));
+
+        if (assembly == null) return null;
+
+        var serviceContractType = assembly.GetTypes()
+            .FirstOrDefault(t => t.IsDefined(typeof(ServiceContractAttribute)));
+
+        if (serviceContractType == null) return null;
+
+        var method = serviceContractType.GetMethods()
+            .FirstOrDefault(m => m.Name == operationName);
+
+        if (method == null) return null;
+
+        var sensitiveFields = new List<(string, string)>();
+
+        // Process request type (input parameters)
+        foreach (var parameter in method.GetParameters())
+        {
+            var requestDto = parameter.ParameterType;
+            AddSensitiveFieldsFromType(requestDto, sensitiveFields);
+        }
+
+        // Process response type (return value)
+        var responseDto = method.ReturnType;
+        
+        // Handle Task<T> for async methods
+        if (responseDto.IsGenericType && responseDto.GetGenericTypeDefinition() == typeof(Task<>))
+        {
+            responseDto = responseDto.GetGenericArguments()[0];
+        }
+        
+        AddSensitiveFieldsFromType(responseDto, sensitiveFields);
+
+        return sensitiveFields.Any() ? sensitiveFields : null;
+    }
+    catch
+    {
+        return null;
+    }
+}
+
+private static void AddSensitiveFieldsFromType(Type dtoType, List<(string, string)> sensitiveFields)
+{
+    var contractAttribute = dtoType.GetCustomAttribute<DataContractAttribute>();
+    if (contractAttribute == null) return;
+
+    var properties = dtoType.GetProperties()
+        .Where(p => p.IsDefined(typeof(SensitiveAttribute), true));
+
+    foreach (var property in properties)
+    {
+        // Handle potential property overrides in derived types
+        var dataMember = property.GetCustomAttribute<DataMemberAttribute>();
+        var elementName = dataMember?.Name ?? property.Name;
+        
+        sensitiveFields.Add((elementName, contractAttribute.Namespace));
+    }
+}
+
+``
+
+
 ### 2. Service Behavior Extension
 
 ```csharp
