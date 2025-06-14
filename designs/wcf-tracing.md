@@ -192,23 +192,15 @@ private static List<(string Name, string Namespace)> GetSensitiveFieldsFromActio
 
         var sensitiveFields = new List<(string, string)>();
 
-        // Process request type (input parameters)
+        // Process all input parameters
         foreach (var parameter in method.GetParameters())
         {
-            var requestDto = parameter.ParameterType;
-            AddSensitiveFieldsFromType(requestDto, sensitiveFields);
+            InspectTypeForSensitiveFields(parameter.ParameterType, sensitiveFields);
         }
 
-        // Process response type (return value)
-        var responseDto = method.ReturnType;
-        
-        // Handle Task<T> for async methods
-        if (responseDto.IsGenericType && responseDto.GetGenericTypeDefinition() == typeof(Task<>))
-        {
-            responseDto = responseDto.GetGenericArguments()[0];
-        }
-        
-        AddSensitiveFieldsFromType(responseDto, sensitiveFields);
+        // Process return type
+        var returnType = method.ReturnType;
+        InspectTypeForSensitiveFields(returnType, sensitiveFields);
 
         return sensitiveFields.Any() ? sensitiveFields : null;
     }
@@ -218,22 +210,68 @@ private static List<(string Name, string Namespace)> GetSensitiveFieldsFromActio
     }
 }
 
-private static void AddSensitiveFieldsFromType(Type dtoType, List<(string, string)> sensitiveFields)
+private static void InspectTypeForSensitiveFields(Type type, List<(string, string)> sensitiveFields, string parentNamespace = null)
 {
-    var contractAttribute = dtoType.GetCustomAttribute<DataContractAttribute>();
-    if (contractAttribute == null) return;
-
-    var properties = dtoType.GetProperties()
-        .Where(p => p.IsDefined(typeof(SensitiveAttribute), true));
-
-    foreach (var property in properties)
+    // Handle Task<T>
+    if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Task<>))
     {
-        // Handle potential property overrides in derived types
-        var dataMember = property.GetCustomAttribute<DataMemberAttribute>();
-        var elementName = dataMember?.Name ?? property.Name;
-        
-        sensitiveFields.Add((elementName, contractAttribute.Namespace));
+        InspectTypeForSensitiveFields(type.GetGenericArguments()[0], sensitiveFields, parentNamespace);
+        return;
     }
+
+    // Handle arrays
+    if (type.IsArray)
+    {
+        InspectTypeForSensitiveFields(type.GetElementType(), sensitiveFields, parentNamespace);
+        return;
+    }
+
+    // Handle generic collections (List<T>, IEnumerable<T>, etc.)
+    if (type.IsGenericType && typeof(IEnumerable).IsAssignableFrom(type))
+    {
+        InspectTypeForSensitiveFields(type.GetGenericArguments()[0], sensitiveFields, parentNamespace);
+        return;
+    }
+
+    // Get DataContract attribute for the current type
+    var contractAttribute = type.GetCustomAttribute<DataContractAttribute>();
+    var currentNamespace = contractAttribute?.Namespace ?? parentNamespace;
+
+    // Skip if no namespace could be determined
+    if (currentNamespace == null) return;
+
+    // Process all properties
+    foreach (var property in type.GetProperties())
+    {
+        // Check if property is marked as sensitive
+        if (property.IsDefined(typeof(SensitiveAttribute), true))
+        {
+            var dataMember = property.GetCustomAttribute<DataMemberAttribute>();
+            var elementName = dataMember?.Name ?? property.Name;
+            sensitiveFields.Add((elementName, currentNamespace));
+        }
+
+        // Recursively inspect complex properties
+        if (IsComplexType(property.PropertyType))
+        {
+            InspectTypeForSensitiveFields(property.PropertyType, sensitiveFields, currentNamespace);
+        }
+    }
+}
+
+private static bool IsComplexType(Type type)
+{
+    if (type == typeof(string)) return false;
+    if (type.IsPrimitive) return false;
+    if (type == typeof(decimal)) return false;
+    if (type == typeof(DateTime)) return false;
+    if (type == typeof(Guid)) return false;
+    if (type.IsEnum) return false;
+    if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Nullable<>))
+    {
+        return IsComplexType(Nullable.GetUnderlyingType(type));
+    }
+    return true;
 }
 ```
 
