@@ -235,8 +235,7 @@ private static void AddSensitiveFieldsFromType(Type dtoType, List<(string, strin
         sensitiveFields.Add((elementName, contractAttribute.Namespace));
     }
 }
-
-``
+```
 
 
 ### 2. Service Behavior Extension
