@@ -1,7 +1,7 @@
 import { app, BrowserWindow, nativeTheme, screen, session, ipcMain } from 'electron';
 import Store from 'electron-store';
 import path from 'path';
-import { setupIpcHandlers } from './ipc-handlers';
+import { initializeSchemaHandlers, setupIpcHandlers } from './ipc-handlers';
 import waitOn from 'wait-on';
 import { initK8sService } from './k8s-service-client';
 
@@ -132,7 +132,7 @@ async function createWindow() {
 app.whenReady().then(async () => {
   const savedConfigPath = store.get('kubeConfigPath') as string | undefined;
   setupIpcHandlers();
-
+  initializeSchemaHandlers();
   // Add window control handlers
   ipcMain.on('window:minimize', () => {
     if (mainWindow) mainWindow.minimize();

@@ -17,6 +17,8 @@ import { ChevronRight, ChevronDown } from 'lucide-react'
 import { DescriptionTooltip } from './DescriptionTooltip'
 import type { KubernetesResourceSchema } from '@/renderer/services/kubernetes-schema-indexer'
 import type { TemplateField } from '@/shared/types/template'
+import { SchemaTreeNode } from '../../../shared/types/schema';
+import { SchemaTreeView } from './SchemaTreeView';
 
 interface SchemaFieldSelectionModalProps {
     isOpen: boolean
@@ -46,6 +48,45 @@ const STORAGE_KEYS = {
     SELECTED_FIELDS: 'schema-field-selection-selected-fields',
     EXPANDED_NODES: 'schema-field-selection-expanded-nodes'
 }
+
+const convertToTreeNodes = (properties: SchemaProperty[]): SchemaTreeNode[] => {
+    const nodeMap = new Map<string, SchemaTreeNode>();
+    const rootNodes: SchemaTreeNode[] = [];
+
+    // First pass: create all nodes
+    properties.forEach(prop => {
+        const node: SchemaTreeNode = {
+            name: prop.name,
+            path: prop.path,
+            type: prop.type,
+            description: prop.description,
+            required: prop.required,
+            children: []
+        };
+        nodeMap.set(prop.path, node);
+    });
+
+    // Second pass: build hierarchy
+    properties.forEach(prop => {
+        const node = nodeMap.get(prop.path)!;
+        const pathParts = prop.path.split('.');
+
+        if (pathParts.length === 1) {
+            // Root level node
+            rootNodes.push(node);
+        } else {
+            // Find parent
+            const parentPath = pathParts.slice(0, -1).join('.');
+            const parent = nodeMap.get(parentPath);
+            if (parent) {
+                parent.children = parent.children || [];
+                parent.children.push(node);
+            }
+        }
+    });
+
+    return rootNodes;
+};
 
 /**
  * Get persisted selected fields from localStorage
@@ -121,9 +162,37 @@ export function SchemaFieldSelectionModal({
     const [localSelectedFields, setLocalSelectedFields] = useState<TemplateField[]>(selectedFields)
     const [expandedObjects, setExpandedObjects] = useState<Set<string>>(new Set())
     const [showSchemaPreview, setShowSchemaPreview] = useState(false)
+    const [schemaTree, setSchemaTree] = useState<SchemaTreeNode[]>([]);
+    const [isLoadingSchema, setIsLoadingSchema] = useState(false);
 
     // Generate resource key for persistence (fix undefined apiVersion)
-    const resourceKey = resource ? `${resource.kind}-${resource.apiVersion || 'v1'}` : ''
+    const resourceKey = resource ?
+        `io.k8s.api.${resource.group ? `${resource.group}.` : ''}${resource.version}.${resource.kind}` :
+        ''
+
+    useEffect(() => {
+        if (resource && isOpen) {
+            setIsLoadingSchema(true);
+
+            // Fix: Use 'kubernetes' as the source since KubernetesResourceSchema doesn't have a source property
+            const sourceId = 'kubernetes';
+
+            console.log('Getting schema tree for resource:', { sourceId, resourceKey });
+
+            // Pass the correct source parameter
+            window.electronAPI.invoke('schema:getResourceSchemaTree', sourceId, resourceKey)
+                .then((tree: SchemaTreeNode[]) => {
+                    console.log('Schema tree received:', tree);
+                    setSchemaTree(tree);
+                    setIsLoadingSchema(false);
+                })
+                .catch((error: any) => {
+                    console.error('Failed to fetch schema tree:', error);
+                    setSchemaTree([]); // Set empty array instead of leaving it null
+                    setIsLoadingSchema(false);
+                });
+        }
+    }, [resource, isOpen]);
 
     // Load persisted state when resource changes (fix dependency array)
     useEffect(() => {
@@ -458,12 +527,12 @@ export function SchemaFieldSelectionModal({
                     <Checkbox
                         id={property.path}
                         checked={isSelected}
-                        ref={(el) => {
+                        ref={(el: { indeterminate: boolean }) => {
                             if (el && isPartial) {
                                 el.indeterminate = true
                             }
                         }}
-                        onCheckedChange={(checked) => handleFieldToggle(property, checked as boolean)}
+                        onCheckedChange={(checked: boolean) => handleFieldToggle(property, checked as boolean)}
                     />
 
                     <div className="flex-1 flex items-center space-x-2">
@@ -544,29 +613,55 @@ export function SchemaFieldSelectionModal({
                     </DialogDescription>
                 </DialogHeader>
 
-                <div className="flex-1 grid grid-cols-2 gap-6 overflow-hidden">
+                <div className="flex-1 grid grid-cols-2 gap-6 min-h-0">
                     {/* Left Panel - Schema Display */}
-                    <Card className="flex flex-col">
+                    <Card className="flex flex-col min-h-0">
                         <CardHeader className="flex-shrink-0">
                             <CardTitle className="text-lg">Schema Structure</CardTitle>
                         </CardHeader>
-                        <CardContent className="flex-1 overflow-hidden">
+                        <CardContent className="flex-1 min-h-0 p-0">
                             <ScrollArea className="h-full">
-                                <div className="space-y-1">
-                                    {schemaProperties.map(property => renderProperty(property))}
+                                <div className="p-4">
+                                    {isLoadingSchema ? (
+                                        <div className="flex items-center justify-center h-32">
+                                            <div className="text-gray-500">Loading schema...</div>
+                                        </div>
+                                    ) : (
+                                        <SchemaTreeView
+                                            nodes={schemaTree}
+                                            onFieldSelect={(path, type, name, description, required) => {
+                                                const field: TemplateField = {
+                                                    path,
+                                                    title: name,
+                                                    type,
+                                                    description: description || '',
+                                                    required: required || false
+                                                };
+
+                                                // Toggle selection
+                                                const isSelected = localSelectedFields.some(f => f.path === path);
+                                                if (isSelected) {
+                                                    setLocalSelectedFields(prev => prev.filter(f => f.path !== path));
+                                                } else {
+                                                    setLocalSelectedFields(prev => [...prev, field]);
+                                                }
+                                            }}
+                                            selectedPaths={new Set(localSelectedFields.map(f => f.path))}
+                                        />
+                                    )}
                                 </div>
                             </ScrollArea>
                         </CardContent>
                     </Card>
 
                     {/* Right Panel - Selected Fields Summary */}
-                    <Card className="flex flex-col">
+                    <Card className="flex flex-col min-h-0">
                         <CardHeader className="flex-shrink-0">
                             <CardTitle className="text-lg">
                                 Selected Fields ({localSelectedFields.length})
                             </CardTitle>
                         </CardHeader>
-                        <CardContent className="flex-1 overflow-hidden">
+                        <CardContent className="flex-1 min-h-0 overflow-hidden">
                             <ScrollArea className="h-full">
                                 {localSelectedFields.length === 0 ? (
                                     <div className="text-center text-gray-500 mt-8">

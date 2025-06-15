@@ -343,7 +343,7 @@ export const KubernetesVersionSelector = React.memo(({
                 <p>Available versions: {availableVersions.length}</p>
                 <p>Downloaded versions: {localVersions.length}</p>
                 {userDataDir && (
-                    <p className="text-xs">Schema directory: {joinPath(userDataDir, 'schemas')}</p>
+                    <p className="text-xs">Schema directory: {joinPath(userDataDir, 'schemas', 'k8s')}</p>
                 )}
             </div>
         </div>

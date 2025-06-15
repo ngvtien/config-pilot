@@ -32,3 +32,4 @@ src/**/*.js
 !src/**/*.d.ts  # Keep intentional declaration files if any
 
 designs/rjsf-tooltips-demo/*
+data

@@ -20,6 +20,7 @@ import type { SettingsData } from "@/shared/types/settings-data"
 import { KubernetesResourcePage } from "./kubernetes-resource-page"
 import { KubernetesDashboardPage } from './kubernetes-dashboard-page'
 import TemplateDesigner from "@/renderer/components/template-creator/TemplateDesigner"
+import { SourceSpecificSearch } from "@/renderer/components/template-creator/SourceSpecificSearch"
 import { useWindowTitle } from '@/renderer/hooks/useWindowTitle'
 
 type UserRole = "developer" | "devops" | "operations"
@@ -315,6 +316,7 @@ export default function AppLayoutPage({
             contextData={context}
             settingsData={settings}
           />
+          // <SourceSpecificSearch />
         )
       // case "kubernetes":
       //   return (

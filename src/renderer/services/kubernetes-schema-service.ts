@@ -1,5 +1,6 @@
 import type { KubernetesSchema } from '@/shared/types/kubernetes'
 import type { SchemaSettings } from '@/shared/types/settings-data'
+import { joinPath } from '@/renderer/lib/path-utils';
 
 export interface SchemaDownloadOptions {
   k8sVersion: string
@@ -147,60 +148,56 @@ export class KubernetesSchemaService {
   }
 
   async downloadSchema(k8sVersion: string, userDataDir: string, force = false): Promise<void> {
-    if (!this.isElectronAPIAvailable()) {
-      throw new Error('ElectronAPI not available, cannot download schemas')
+    if (!k8sVersion || !userDataDir) {
+      throw new Error('Kubernetes version and user data directory are required')
     }
+
+    const version = k8sVersion.startsWith('v') ? k8sVersion.substring(1) : k8sVersion
     
-    // Ensure version always has 'v' prefix
-    let version = k8sVersion
-    if (!version.startsWith('v')) {
-      version = `v${version}`
-    }
-    
-    const schemaDir = this.joinPath(userDataDir, 'schemas', version)
-    const definitionsPath = this.joinPath(schemaDir, '_definitions.json')
-  
-    // Check if schema already exists
-    if (!force && await this.schemaExists(definitionsPath)) {
-      console.log(`Schema for ${version} already exists, skipping download`)
-      return
-    }
-  
-    try {
-      // Ensure directory exists
-      await window.electronAPI.ensureDirectory(schemaDir)
-  
-      // Use version directly since it already has 'v' prefix
-      const schemaUrl = `${this.getSchemaBaseUrl()}/${version}-standalone-strict/_definitions.json`
-      console.log('Downloading schema from:', schemaUrl)
-  
-      const response = await fetch(schemaUrl)
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+    // Use new path structure
+    const schemaDir = this.getSchemaDirectory(userDataDir, 'k8s', version);
+    const definitionsPath = this.getDefinitionsPath(userDataDir, 'k8s', version);
+
+    // Check if schema already exists and force is not set
+    if (!force) {
+      try {
+        const exists = await window.electronAPI.fileExists(definitionsPath)
+        if (exists) {
+          console.log(`Schema for v${version} already exists at ${definitionsPath}`)
+          return
+        }
+      } catch (error) {
+        // File doesn't exist, continue with download
       }
-  
-      // Get the schema content and save it
-      const schemaContent = await response.text()
-      await window.electronAPI.writeFile(definitionsPath, schemaContent)
+    }
+
+    // Ensure directory exists
+    await window.electronAPI.ensureDirectory(schemaDir)
+
+    // Download schema
+    const schemaUrl = `${this.getSchemaBaseUrl()}/${version}-standalone-strict/_definitions.json`
+    
+    try {
+      console.log(`Downloading schema from: ${schemaUrl}`)
+      const response = await fetch(schemaUrl)
+      
+      if (!response.ok) {
+        throw new Error(`Failed to download schema: ${response.status} ${response.statusText}`)
+      }
+      
+      const schemaData = await response.text()
+      
+      // Save to new path structure
+      await window.electronAPI.writeFile(definitionsPath, schemaData)
+      
+      console.log(`Schema downloaded successfully to: ${definitionsPath}`)
       
       // Save metadata
-      const metadata: SchemaMetadata = {
-        version: version,
-        downloadedAt: new Date().toISOString(),
-        size: schemaContent.length,
-        checksum: await this.calculateChecksum(schemaContent)
-      }
-      
-      // Store metadata in the service's metadata map
-      this.schemaMetadata.set(version, metadata)
-      
       await this.saveSchemaMetadata(version, userDataDir)
       
-      console.log(`Successfully downloaded schema for ${version} to ${definitionsPath}`)
-      
-    } catch (error) {
-      console.error(`Failed to download schema for ${version}:`, error)
-      throw error
+    } catch (error: any) {
+      console.error(`Failed to download schema for v${version}:`, error)
+      throw new Error(`Schema download failed: ${error.message}`)
     }
   }
   
@@ -249,12 +246,13 @@ export class KubernetesSchemaService {
 
     return null
   }
+
   private async getLocalSchemaFromDefinitions(kind: string, apiVersion: string, version: string, userDataDir?: string): Promise<KubernetesSchema | null> {
     try {
-      // Use userDataDir if provided, otherwise fall back to relative path
+      // Use new path structure
       const definitionsPath = userDataDir
-        ? this.joinPath(userDataDir, 'schemas', version, '_definitions.json')
-        : this.joinPath('schemas', version, '_definitions.json')
+        ? this.getDefinitionsPath(userDataDir, 'k8s', version)
+        : joinPath('schemas', 'k8s', version, '_definitions.json');
 
       const definitionsContent = await window.electronAPI.readFile(definitionsPath)
       const definitions = JSON.parse(definitionsContent)
@@ -345,21 +343,43 @@ export class KubernetesSchemaService {
 /**
  * Get available Kubernetes versions from local schemas directory
  */
-async getAvailableVersions(userDataDir: string): Promise<string[]> {
+// async getAvailableVersions(userDataDir: string): Promise<string[]> {
+//   try {
+//     if (!this.isElectronAPIAvailable()) {
+//       console.warn('ElectronAPI not available, cannot list local schema versions')
+//       return []
+//     }
+    
+//     const schemasDir = this.joinPath(userDataDir, 'schemas')
+//     const directories = await window.electronAPI.listDirectories(schemasDir)
+    
+//     // Filter to only include valid version directories (starting with 'v')
+//     return directories.filter(dir => /^v\d+\.\d+\.\d+/.test(dir))
+//   } catch (error) {
+//     console.error('Failed to get available schema versions:', error)
+//     return []
+//   }
+// }
+
+// async getAvailableVersions(userDataDir: string, platform: 'k8s' | 'openshift' | 'argocd' = 'k8s'): Promise<string[]> {
+//   try {
+//     const schemasDir = joinPath(userDataDir, 'schemas', platform);
+//     const directories = await window.electronAPI.listDirectories(schemasDir);
+//     return directories.filter(dir => dir.match(/^v?\d+\.\d+/));
+//   } catch (error) {
+//     console.warn(`Failed to get available ${platform} versions:`, error);
+//     return [];
+//   }
+// }
+
+async getAvailableVersions(userDataDir: string, platform: 'k8s' | 'openshift' | 'argocd' = 'k8s'): Promise<string[]> {
   try {
-    if (!this.isElectronAPIAvailable()) {
-      console.warn('ElectronAPI not available, cannot list local schema versions')
-      return []
-    }
-    
-    const schemasDir = this.joinPath(userDataDir, 'schemas')
-    const directories = await window.electronAPI.listDirectories(schemasDir)
-    
-    // Filter to only include valid version directories (starting with 'v')
-    return directories.filter(dir => /^v\d+\.\d+\.\d+/.test(dir))
+    const schemasDir = joinPath(userDataDir, 'schemas', platform);
+    const directories = await window.electronAPI.listDirectories(schemasDir);
+    return directories.filter(dir => dir.match(/^v?\d+\.\d+/));
   } catch (error) {
-    console.error('Failed to get available schema versions:', error)
-    return []
+    console.warn(`Failed to get available ${platform} versions:`, error);
+    return [];
   }
 }
 
@@ -413,7 +433,8 @@ async getAvailableVersions(userDataDir: string): Promise<string[]> {
   }
 
   private async downloadResourceSchema(resource: string, k8sVersion: string, userDataDir: string): Promise<void> {
-    const schemaDir = this.joinPath(userDataDir, 'schemas', k8sVersion)
+    //const schemaDir = this.joinPath(userDataDir, 'schemas', k8sVersion)
+    const schemaDir = this.getSchemaDirectory(userDataDir, 'k8s', k8sVersion);
     const schemaPath = this.joinPath(schemaDir, `${resource}-v1.json`)
 
     // Use standalone-strict variant for individual resource schemas
@@ -465,11 +486,65 @@ async getAvailableVersions(userDataDir: string): Promise<string[]> {
     }
   }
 
-  private async saveSchemaMetadata(userDataDir: string): Promise<void> {
-    const metadataPath = this.joinPath(userDataDir, 'schemas', 'metadata.json')
-    const metadata = Object.fromEntries(this.schemaMetadata)
-    await window.electronAPI.writeFile(metadataPath, JSON.stringify(metadata, null, 2))
+  // private async saveSchemaMetadata(userDataDir: string): Promise<void> {
+  //   const metadataPath = this.joinPath(userDataDir, 'schemas', 'metadata.json')
+  //   const metadata = Object.fromEntries(this.schemaMetadata)
+  //   await window.electronAPI.writeFile(metadataPath, JSON.stringify(metadata, null, 2))
+  // }
+
+  // private async saveSchemaMetadata(version: string, userDataDir: string): Promise<void> {
+  //   const metadataPath = joinPath(userDataDir, 'schemas', 'metadata.json');
+  //   const metadata = Object.fromEntries(this.schemaMetadata)
+  //   await window.electronAPI.writeFile(metadataPath, JSON.stringify(metadata, null, 2))
+  // }
+
+  private async saveSchemaMetadata(version: string, userDataDir: string): Promise<void> {
+    const metadataPath = joinPath(userDataDir, 'schemas', 'k8s', 'metadata.json');
+    
+    try {
+      let metadata: any = {};
+      
+      // Try to read existing metadata
+      try {
+        const existingContent = await window.electronAPI.readFile(metadataPath);
+        metadata = JSON.parse(existingContent);
+      } catch {
+        // File doesn't exist, start with empty metadata
+      }
+      
+      // Update metadata
+      metadata.versions = metadata.versions || [];
+      if (!metadata.versions.includes(version)) {
+        metadata.versions.push(version);
+      }
+      metadata.lastUpdated = new Date().toISOString();
+      
+      // Ensure directory exists
+      const metadataDir = joinPath(userDataDir, 'schemas', 'k8s');
+      await window.electronAPI.ensureDirectory(metadataDir);
+      
+      // Save metadata
+      await window.electronAPI.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
+      
+    } catch (error) {
+      console.warn('Failed to save schema metadata:', error);
+    }
+  }  
+
+  /**
+   * Get schema directory path following the new structure with OS-agnostic paths
+   */
+  private getSchemaDirectory(userDataDir: string, platform: 'k8s' | 'openshift' | 'argocd', version: string): string {
+    return joinPath(userDataDir, 'schemas', platform, version);
   }
+
+  /**
+   * Get definitions file path following the new structure with OS-agnostic paths
+   */
+  private getDefinitionsPath(userDataDir: string, platform: 'k8s' | 'openshift' | 'argocd', version: string): string {
+    return joinPath(this.getSchemaDirectory(userDataDir, platform, version), '_definitions.json');
+  }
+
 }
 
 export const kubernetesSchemaService = new KubernetesSchemaService()

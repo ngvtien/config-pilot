@@ -1,6 +1,6 @@
 import { ipcMain, dialog, app, type OpenDialogOptions } from "electron"
 import fs from "fs/promises"
-import path from "path"
+import * as path from 'path';
 import { exec } from "child_process"
 import util from "util"
 import yaml from "js-yaml"
@@ -17,10 +17,110 @@ import { FileService } from "./file-service"
 import { PlatformDetectionService } from './services/platform-detection-service'
 import { crdManagementService } from './services/crd-management-service'
 import { CRDImportRequest, CRDSchema } from "@/shared/types/kubernetes"
+import { schemaService } from './services/schema-service';
 
 const execPromise = util.promisify(exec)
 
 let platformDetectionService: PlatformDetectionService | null = null
+
+/**
+ * Initialize schema service handlers
+ */
+export function initializeSchemaHandlers(): void {
+
+  // Auto-initialize schema service immediately
+  const initializeSchemas = async () => {
+    try {
+      const appDataPath = app.getPath('userData');
+      console.log('=== AUTO-INITIALIZING SCHEMA SERVICE ===');
+      console.log('App data path:', appDataPath);
+
+      // Register Kubernetes schema sources using Node.js path.join for main process
+      schemaService.registerSchemaSource({
+        id: 'kubernetes',
+        name: 'Kubernetes Core API',
+        path: path.join(appDataPath, 'schemas', 'k8s'),
+        enabled: true
+      });
+
+      // Register OpenShift schema sources
+      schemaService.registerSchemaSource({
+        id: 'openshift',
+        name: 'OpenShift API',
+        path: path.join(appDataPath, 'schemas', 'openshift'),
+        enabled: false
+      });
+
+      // Register ArgoCD schema sources
+      schemaService.registerSchemaSource({
+        id: 'argocd',
+        name: 'ArgoCD API',
+        path: path.join(appDataPath, 'schemas', 'argocd'),
+        enabled: false
+      });
+
+      await schemaService.initialize();
+      console.log('✅ Schema service auto-initialized successfully');
+    } catch (error: any) {
+      console.error('❌ Schema auto-initialization failed:', error);
+    }
+  };
+
+  // Initialize immediately
+  initializeSchemas();
+
+  // Keep the IPC handler for manual re-initialization if needed
+  ipcMain.handle('schema:initialize', async () => {
+    try {
+      await initializeSchemas();
+      return { success: true };
+    } catch (error: any) {
+      console.error('Schema initialization failed:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Search within a specific source
+  ipcMain.handle('schema:searchInSource', async (_, sourceId: string, query: string) => {
+    return schemaService.searchInSource(sourceId, query);
+  });
+
+  // Get all resources from a specific source
+  ipcMain.handle('schema:getResourcesFromSource', async (_, sourceId: string) => {
+    return schemaService.getResourcesFromSource(sourceId);
+  });
+
+  // Get available schema sources
+  ipcMain.handle('schema:getAvailableSources', async () => {
+    return schemaService.getAvailableSources();
+  });
+
+  // Get source statistics
+  ipcMain.handle('schema:getSourceStats', async (_, sourceId: string) => {
+    return schemaService.getSourceStats(sourceId);
+  });
+
+  // Check if schema service is ready
+  ipcMain.handle('schema:isReady', async () => {
+    return schemaService.isReady();
+  });
+
+  // Dereference specific resource on-demand
+  ipcMain.handle('schema:dereferenceResource', async (_, sourceId: string, resourceKey: string) => {
+    return schemaService.dereferenceResource(sourceId, resourceKey);
+  });
+
+  // Get raw schema for resource (with $ref intact)
+  ipcMain.handle('schema:getRawResourceSchema', async (_, sourceId: string, resourceKey: string) => {
+    return schemaService.getRawResourceSchema(sourceId, resourceKey);
+  });
+
+  // NEW: Get schema tree for resource (replaces dereferencing for UI)
+  ipcMain.handle('schema:getResourceSchemaTree', async (_, sourceId: string, resourceKey: string) => {
+    return schemaService.getResourceSchemaTree(sourceId, resourceKey);
+  });
+
+}
 
 /**
  * Registers all IPC handlers for the Electron main process.

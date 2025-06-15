@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { kubernetesSchemaIndexer } from '@/renderer/services/kubernetes-schema-indexer'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/renderer/components/ui/select'
 import { Input } from '@/renderer/components/ui/input'
 import { Badge } from '@/renderer/components/ui/badge'
+import { joinPath } from '@/renderer/lib/path-utils'
 
 interface KubernetesResourceSelectorProps {
   onSchemaSelect: (schema: any, resourceInfo: any) => void
@@ -35,7 +36,7 @@ export function KubernetesResourceSelector({ onSchemaSelect, schemaVersion }: Ku
     setIsLoading(true)
     try {
       const userDataDir = await window.electronAPI.getUserDataPath()
-      const definitionsPath = `${userDataDir}/schemas/${schemaVersion}/_definitions.json`
+      const definitionsPath = joinPath(userDataDir, 'schemas', 'k8s', schemaVersion, '_definitions.json');
       
       await kubernetesSchemaIndexer.loadSchemaDefinitions(definitionsPath)
       const kinds = kubernetesSchemaIndexer.getAvailableKinds()

@@ -18,6 +18,7 @@ import { TextWidget, TextareaWidget, CheckboxWidget, SelectWidget } from './cust
 import { Template, TemplateResource, TemplateField } from '@/shared/types/template'
 import { Textarea } from '@/renderer/components/ui/textarea'
 import { SchemaFieldSelectionModal } from './SchemaFieldSelectionModal'
+import { joinPath } from '@/renderer/lib/path-utils'
 
 interface TemplateDesignerProps {
   initialTemplate?: Template
@@ -420,7 +421,8 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
     setError(null)
 
     try {
-      const definitionsPath = `${userDataDir}/schemas/${version}/_definitions.json`
+      //const definitionsPath = `${userDataDir}/schemas/${version}/_definitions.json`
+      const definitionsPath = joinPath(userDataDir, 'schemas', 'k8s', version, '_definitions.json');
 
       // Check if file exists
       const fileExists = await window.electronAPI.fileExists(definitionsPath)
@@ -966,6 +968,7 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
       )}
 
       {/* Schema Field Selection Modal */}
+      {/* <SourceSpecificSearch /> */}
       <SchemaFieldSelectionModal
         isOpen={isSchemaModalOpen}
         onClose={() => {
@@ -976,6 +979,8 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
         resource={selectedResourceForSchema}
         selectedFields={selectedResourceIndex !== null ? selectedResources[selectedResourceIndex]?.selectedFields || [] : []}
         onFieldsChange={handleFieldSelectionChange}
+        userDataDir={userDataDir}
+        k8sVersion={kubernetesVersion}
       />
 
     </div>

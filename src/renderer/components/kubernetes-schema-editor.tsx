@@ -797,7 +797,8 @@ export default function KubernetesSchemaEditor({
 
             setIsLoadingKinds(true)
             try {
-                const definitionsPath = `${userDataDir}/schemas/${k8sVersion}/_definitions.json`
+                //const definitionsPath = `${userDataDir}/schemas/${k8sVersion}/_definitions.json`
+                const definitionsPath = joinPath(userDataDir, 'schemas', 'k8s', k8sVersion, '_definitions.json');
                 await kubernetesSchemaIndexer.loadSchemaDefinitions(definitionsPath)
                 const kinds = kubernetesSchemaIndexer.getAvailableKinds()
                 setAvailableKinds(kinds)

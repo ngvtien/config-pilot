@@ -13,6 +13,7 @@ import YamlEditor  from "@/renderer/components/yaml-editor"
 import { kubernetesSchemaIndexer } from "@/renderer/services/kubernetes-schema-indexer"
 import type { ContextData } from "@/shared/types/context-data"
 import yaml from "js-yaml"
+import { joinPath } from '@/renderer/lib/path-utils';
 
 interface KubernetesResourceCreatorV2Props {
   context: ContextData
@@ -91,7 +92,7 @@ prevPropsRef.current = { context, k8sVersion, onSave, onClose };
       try {
       // Get user data directory and construct proper schema path
       const userDataDir = await window.electronAPI.getUserDataPath()
-      const definitionsPath = `${userDataDir}/schemas/${safeK8sVersion}/_definitions.json`
+      const definitionsPath = joinPath(userDataDir, 'schemas', 'k8s', safeK8sVersion, '_definitions.json');
       
       await schemaIndexer.loadSchemaDefinitions(definitionsPath)
       setIsSchemaIndexerReady(true)

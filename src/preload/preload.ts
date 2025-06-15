@@ -83,6 +83,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
       'project:enable-auto-save',
       'project:disable-auto-save',
       'project:export',
+      
+      'schema:initialize',
+      'schema:searchInSource',
+      'schema:getResourcesFromSource',
+      'schema:getAvailableSources',
+      'schema:getSourceStats',
+      'schema:isReady',
+      'schema:dereferenceResource',
+      'schema:getResourceSchemaTree',
+      'schema:getRawResourceSchema',
 
     ]
     if (validChannels.includes(channel)) {
