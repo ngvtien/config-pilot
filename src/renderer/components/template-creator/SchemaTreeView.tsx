@@ -7,8 +7,9 @@ interface SchemaTreeViewProps {
     nodes: SchemaTreeNode[] | null;
     onFieldSelect?: (path: string, type: string, name: string, description?: string, required?: boolean) => void;
     selectedPaths?: Set<string>;
-    expandedPaths?: Set<string>; // Add this prop
-    onToggleExpand?: (path: string) => void; // Add this prop
+    expandedPaths?: Set<string>;
+    onToggleExpand?: (path: string) => void;
+    highlightedPath?: string | null;
     className?: string;
 }
 
@@ -21,7 +22,8 @@ export const SchemaTreeView: React.FC<SchemaTreeViewProps> = ({
     onFieldSelect,
     selectedPaths = new Set(),
     expandedPaths = new Set(), // Add this
-    onToggleExpand, // Add this
+    onToggleExpand,
+    highlightedPath = null,
     className = ""
 }) => {
     // const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
@@ -78,6 +80,11 @@ export const SchemaTreeView: React.FC<SchemaTreeViewProps> = ({
                         }
                     }}
                 >
+                    {/* Add a highlight indicator */}
+                    {currentPath === highlightedPath && (       
+                        <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse flex-shrink-0" />
+                    )}
+
                     {/* Expansion toggle */}
                     {hasChildren ? (
                         <div className="w-4 h-4 flex items-center justify-center">

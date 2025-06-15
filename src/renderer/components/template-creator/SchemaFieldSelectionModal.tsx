@@ -191,6 +191,7 @@ export function SchemaFieldSelectionModal({
     const [showSchemaPreview, setShowSchemaPreview] = useState(false)
     const [schemaTree, setSchemaTree] = useState<SchemaTreeNode[]>([]);
     const [isLoadingSchema, setIsLoadingSchema] = useState(false);
+    const [highlightedFieldPath, setHighlightedFieldPath] = useState<string | null>(null);
 
     // Generate resource key for persistence (fix undefined apiVersion)
     const resourceKey = resource ? resource.key : '';
@@ -199,17 +200,17 @@ export function SchemaFieldSelectionModal({
         if (resource && isOpen) {
             setIsLoadingSchema(true);
             const sourceId = 'kubernetes';
-    
+
             console.log('Getting schema tree for resource:', { sourceId, resourceKey });
-    
+
             window.electronAPI.invoke('schema:getResourceSchemaTree', sourceId, resourceKey)
                 .then((tree: SchemaTreeNode[]) => {
                     console.log('Schema tree received:', tree);
                     setSchemaTree(tree);
-    
+
                     // Check if we have any persisted data for this resource
                     const hasPersistedData = sessionStorage.getItem(`expandedNodes_${resourceKey}`) !== null;
-                    
+
                     if (!hasPersistedData) {
                         // This is a fresh resource - auto-expand first level
                         const firstLevelPaths = new Set<string>();
@@ -218,7 +219,7 @@ export function SchemaFieldSelectionModal({
                                 firstLevelPaths.add(node.path);
                             }
                         });
-    
+
                         console.log('🌳 Auto-expanding first level nodes for fresh resource:', Array.from(firstLevelPaths));
                         setExpandedObjects(firstLevelPaths);
                     } else {
@@ -227,7 +228,7 @@ export function SchemaFieldSelectionModal({
                         console.log('📥 Loading persisted expanded nodes:', persistedExpanded.size);
                         setExpandedObjects(persistedExpanded);
                     }
-    
+
                     setIsLoadingSchema(false);
                 })
                 .catch((error: any) => {
@@ -512,8 +513,13 @@ export function SchemaFieldSelectionModal({
 
         setExpandedObjects(newExpanded);
 
-        // Scroll to the field in the tree (optional enhancement)
-        // You could add a ref to the tree and scroll to the specific element
+        // Set the highlighted field
+        setHighlightedFieldPath(fieldPath);
+
+        // Optional: Clear highlight after a few seconds
+        setTimeout(() => {
+            setHighlightedFieldPath(null);
+        }, 3000);
     };
 
     const handleToggleExpand = (path: string) => {
@@ -727,8 +733,9 @@ export function SchemaFieldSelectionModal({
                                                 }
                                             }}
                                             selectedPaths={new Set(localSelectedFields.map(f => f.path))}
-                                            expandedPaths={expandedObjects} // Add this
-                                            onToggleExpand={handleToggleExpand} // Add this
+                                            expandedPaths={expandedObjects}
+                                            onToggleExpand={handleToggleExpand}
+                                            highlightedPath={highlightedFieldPath} // Add this prop
                                         />
                                     )}
                                 </div>
