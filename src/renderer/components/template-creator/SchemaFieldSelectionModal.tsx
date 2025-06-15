@@ -149,33 +149,6 @@ function persistExpandedNodes(resourceKey: string, expandedNodes: Set<string>) {
 }
 
 /**
- * Build the schema key based on Kubernetes naming convention
- * Handles both regular APIs and apimachinery patterns
- */
-function buildResourceKey(resource: KubernetesResourceSchema): string {
-    if (!resource) return '';
-
-    //const { kind, version } = resource;
-
-    // Handle core API (v1) vs other APIs (apps/v1, etc.)
-    return resource.key;
-    // if (version === 'v1') {
-    //     return `io.k8s.api.core.v1.${kind}`;
-    // } else {
-    //     // For APIs like apps/v1, networking.k8s.io/v1, etc.
-    //     const [group, apiVersion] = version.includes('/')
-    //         ? version.split('/')
-    //         : ['core', version];
-
-    //     if (group === 'core') {
-    //         return `io.k8s.api.core.${apiVersion}.${kind}`;
-    //     } else {
-    //         return `io.k8s.api.${group}.${apiVersion}.${kind}`;
-    //     }
-    // }
-}
-
-/**
  * Modal component for selecting schema fields with tooltips and hierarchical display
  * Supports multiple template formats and state persistence
  */
@@ -772,44 +745,48 @@ export function SchemaFieldSelectionModal({
                                     </div>
                                 ) : (
                                     <div className="space-y-2">
-                                        {localSelectedFields.map((field, index) => (
-                                            <div
-                                                key={field.path}
-                                                className="p-3 border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors"
-                                                onClick={() => handleSelectedFieldClick(field.path)}
-                                            >
-                                                <div className="flex items-center justify-between">
-                                                    <div className="flex items-center space-x-2">
-                                                        <span className="font-medium">{field.title}</span>
-                                                        {field.required && (
-                                                            <Badge variant="destructive" className="text-xs">Required</Badge>
-                                                        )}
-                                                    </div>
-                                                    <div className="flex items-center space-x-2">
-                                                        <Badge variant="secondary" className="text-xs">
-                                                            {field.type}
-                                                        </Badge>
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation(); // Prevent triggering the field click
-                                                                handleRemoveField(field.path);
-                                                            }}
-                                                            className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
-                                                            title="Remove field"
-                                                        >
-                                                            ×
-                                                        </Button>
-                                                    </div>
-                                                </div>
-                                                <div className="text-xs text-gray-500 mt-1">{field.path}</div>
-                                                {field.description && (
-                                                    <div className="text-sm text-gray-600 dark:text-gray-300 mt-1">{field.description}</div>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
+    {localSelectedFields.map((field, index) => (
+        <div
+            key={field.path}
+            className={`p-3 border rounded-lg cursor-pointer transition-all duration-300 ${
+                highlightedFieldPath === field.path
+                    ? 'hover:bg-gray-50 dark:hover:bg-gray-800 transform scale-105 shadow-lg'
+                    : 'hover:bg-gray-50 dark:hover:bg-gray-800'
+            }`}
+            onClick={() => handleSelectedFieldClick(field.path)}
+        >
+            <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                    <span className="font-medium">{field.title}</span>
+                    {field.required && (
+                        <Badge variant="destructive" className="text-xs">Required</Badge>
+                    )}
+                </div>
+                <div className="flex items-center space-x-2">
+                    <Badge variant="secondary" className="text-xs">
+                        {field.type}
+                    </Badge>
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemoveField(field.path);
+                        }}
+                        className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                        title="Remove field"
+                    >
+                        <span className="text-lg font-medium">×</span>
+                    </Button>
+                </div>
+            </div>
+            <div className="text-xs text-gray-500 mt-1">{field.path}</div>
+            {field.description && (
+                <div className="text-sm text-gray-600 dark:text-gray-300 mt-1">{field.description}</div>
+            )}
+        </div>
+    ))}
+</div>
                                 )}
                             </ScrollArea>
                         </CardContent>
