@@ -199,34 +199,35 @@ export function SchemaFieldSelectionModal({
         if (resource && isOpen) {
             setIsLoadingSchema(true);
             const sourceId = 'kubernetes';
-
+    
             console.log('Getting schema tree for resource:', { sourceId, resourceKey });
-
+    
             window.electronAPI.invoke('schema:getResourceSchemaTree', sourceId, resourceKey)
                 .then((tree: SchemaTreeNode[]) => {
                     console.log('Schema tree received:', tree);
                     setSchemaTree(tree);
-
-                    // Load persisted expanded nodes first
-                    const persistedExpanded = getPersistedExpandedNodes(resourceKey);
-
-                    if (persistedExpanded.size === 0) {
-                        // Only auto-expand if no previous state exists
+    
+                    // Check if we have any persisted data for this resource
+                    const hasPersistedData = sessionStorage.getItem(`expandedNodes_${resourceKey}`) !== null;
+                    
+                    if (!hasPersistedData) {
+                        // This is a fresh resource - auto-expand first level
                         const firstLevelPaths = new Set<string>();
                         tree.forEach(node => {
                             if (node.children && node.children.length > 0) {
                                 firstLevelPaths.add(node.path);
                             }
                         });
-
-                        console.log('🌳 Auto-expanding first level nodes:', Array.from(firstLevelPaths));
+    
+                        console.log('🌳 Auto-expanding first level nodes for fresh resource:', Array.from(firstLevelPaths));
                         setExpandedObjects(firstLevelPaths);
                     } else {
-                        // Use persisted expanded state
+                        // Load persisted expanded state
+                        const persistedExpanded = getPersistedExpandedNodes(resourceKey);
                         console.log('📥 Loading persisted expanded nodes:', persistedExpanded.size);
                         setExpandedObjects(persistedExpanded);
                     }
-
+    
                     setIsLoadingSchema(false);
                 })
                 .catch((error: any) => {
@@ -494,6 +495,37 @@ export function SchemaFieldSelectionModal({
         setLocalSelectedFields([]);
     };
 
+    const handleRemoveField = (fieldPath: string) => {
+        setLocalSelectedFields(prev => prev.filter(f => f.path !== fieldPath));
+    };
+
+    const handleSelectedFieldClick = (fieldPath: string) => {
+        // Find the field in the schema tree and expand its parent path
+        const pathParts = fieldPath.split('.');
+        const newExpanded = new Set(expandedObjects);
+
+        // Expand all parent paths
+        for (let i = 1; i <= pathParts.length; i++) {
+            const parentPath = pathParts.slice(0, i).join('.');
+            newExpanded.add(parentPath);
+        }
+
+        setExpandedObjects(newExpanded);
+
+        // Scroll to the field in the tree (optional enhancement)
+        // You could add a ref to the tree and scroll to the specific element
+    };
+
+    const handleToggleExpand = (path: string) => {
+        const newExpanded = new Set(expandedObjects);
+        if (newExpanded.has(path)) {
+            newExpanded.delete(path);
+        } else {
+            newExpanded.add(path);
+        }
+        setExpandedObjects(newExpanded);
+    };
+
     /**
      * Check if a field is currently selected
      */
@@ -695,6 +727,8 @@ export function SchemaFieldSelectionModal({
                                                 }
                                             }}
                                             selectedPaths={new Set(localSelectedFields.map(f => f.path))}
+                                            expandedPaths={expandedObjects} // Add this
+                                            onToggleExpand={handleToggleExpand} // Add this
                                         />
                                     )}
                                 </div>
@@ -732,7 +766,11 @@ export function SchemaFieldSelectionModal({
                                 ) : (
                                     <div className="space-y-2">
                                         {localSelectedFields.map((field, index) => (
-                                            <div key={field.path} className="p-3 border rounded-lg">
+                                            <div
+                                                key={field.path}
+                                                className="p-3 border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors"
+                                                onClick={() => handleSelectedFieldClick(field.path)}
+                                            >
                                                 <div className="flex items-center justify-between">
                                                     <div className="flex items-center space-x-2">
                                                         <span className="font-medium">{field.title}</span>
@@ -740,9 +778,23 @@ export function SchemaFieldSelectionModal({
                                                             <Badge variant="destructive" className="text-xs">Required</Badge>
                                                         )}
                                                     </div>
-                                                    <Badge variant="secondary" className="text-xs">
-                                                        {field.type}
-                                                    </Badge>
+                                                    <div className="flex items-center space-x-2">
+                                                        <Badge variant="secondary" className="text-xs">
+                                                            {field.type}
+                                                        </Badge>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation(); // Prevent triggering the field click
+                                                                handleRemoveField(field.path);
+                                                            }}
+                                                            className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                                            title="Remove field"
+                                                        >
+                                                            ×
+                                                        </Button>
+                                                    </div>
                                                 </div>
                                                 <div className="text-xs text-gray-500 mt-1">{field.path}</div>
                                                 {field.description && (

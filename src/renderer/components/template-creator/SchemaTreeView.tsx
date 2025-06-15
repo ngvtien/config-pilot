@@ -7,6 +7,8 @@ interface SchemaTreeViewProps {
     nodes: SchemaTreeNode[] | null;
     onFieldSelect?: (path: string, type: string, name: string, description?: string, required?: boolean) => void;
     selectedPaths?: Set<string>;
+    expandedPaths?: Set<string>; // Add this prop
+    onToggleExpand?: (path: string) => void; // Add this prop
     className?: string;
 }
 
@@ -18,9 +20,11 @@ export const SchemaTreeView: React.FC<SchemaTreeViewProps> = ({
     nodes,
     onFieldSelect,
     selectedPaths = new Set(),
+    expandedPaths = new Set(), // Add this
+    onToggleExpand, // Add this
     className = ""
 }) => {
-    const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
+    // const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
 
     // Handle null or empty nodes
     if (!nodes || nodes.length === 0) {
@@ -37,13 +41,9 @@ export const SchemaTreeView: React.FC<SchemaTreeViewProps> = ({
      * Toggle expansion state of a tree node
      */
     const toggleNode = (path: string) => {
-        const newExpanded = new Set(expandedNodes);
-        if (newExpanded.has(path)) {
-            newExpanded.delete(path);
-        } else {
-            newExpanded.add(path);
+        if (onToggleExpand) {
+            onToggleExpand(path);
         }
-        setExpandedNodes(newExpanded);
     };
 
     /**
@@ -52,7 +52,7 @@ export const SchemaTreeView: React.FC<SchemaTreeViewProps> = ({
     const renderNode = (node: SchemaTreeNode, path: string = '', level: number = 0) => {
         const currentPath = path ? `${path}.${node.name}` : node.name;
         const hasChildren = node.children && node.children.length > 0;
-        const isExpanded = expandedNodes.has(currentPath);
+        const isExpanded = expandedPaths.has(currentPath); // Use expandedPaths instead
         const isSelected = selectedPaths.has(currentPath);
         const indent = level * 16;
 
