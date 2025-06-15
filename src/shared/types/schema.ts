@@ -3,7 +3,10 @@
  */
 export interface SchemaTreeNode {
   name: string;
+  path: string;           // Add path field
   type?: string;
+  description?: string;   // Add description field
+  required?: boolean;     // Add required field
   children?: SchemaTreeNode[];
 }
 

@@ -65,49 +65,118 @@ class SchemaService {
   }
 
   /**
-   * Build a hierarchical tree of schema properties by following $ref inline
-   * This replaces the complex dereferencing approach with a simpler recursive method
+   * Build a hierarchical tree structure from JSON schema with full field information
    */
   buildSchemaTree(
     schema: JSONSchema7,
     definitions: Record<string, JSONSchema7>,
-    name: string = ""
+    name: string = "",
+    path: string = "",
+    requiredFields: string[] = []
   ): SchemaTreeNode[] {
+    // Filter out unwanted nodes
+    if (name === 'selfLink' || name === '*') {
+      return [];
+    }
+
     // Handle $ref by resolving inline
     if (schema.$ref) {
       const refKey = schema.$ref.replace("#/definitions/", "");
       const resolved = definitions[refKey];
       if (!resolved) {
         console.warn(`Unresolved reference: ${schema.$ref}`);
-        return [{ name, type: "unresolved:$ref" }];
+        return [{
+          name,
+          type: "unresolved:$ref",
+          path: path || name,
+          description: `Unresolved reference: ${schema.$ref}`
+        }];
       }
-      return this.buildSchemaTree(resolved, definitions, name);
+      return this.buildSchemaTree(resolved, definitions, name, path, requiredFields);
     }
 
     // Handle object types with properties
     if (schema.type === "object" && schema.properties) {
       const children: SchemaTreeNode[] = [];
+      const currentPath = path ? `${path}.${name}` : name;
+      const objectRequired = schema.required || [];
+
       for (const [key, propSchema] of Object.entries(schema.properties)) {
-        const subTree = this.buildSchemaTree(propSchema as JSONSchema7, definitions, key);
+        // Filter out selfLink properties
+        if (key === 'selfLink') {
+          continue;
+        }
+
+        const childPath = currentPath ? `${currentPath}.${key}` : key;
+        const subTree = this.buildSchemaTree(
+          propSchema as JSONSchema7,
+          definitions,
+          key,
+          childPath,
+          objectRequired
+        );
         children.push(...subTree);
       }
-      return [{ name, type: "object", children }];
+
+      return [{
+        name,
+        type: "object",
+        path: currentPath || name,
+        description: schema.description,
+        required: requiredFields.includes(name),
+        children
+      }];
     }
 
     // Handle array types
     if (schema.type === "array" && schema.items) {
-      const items = this.buildSchemaTree(schema.items as JSONSchema7, definitions, "[]");
-      return [{ name, type: "array", children: items }];
+      const currentPath = path ? `${path}.${name}` : name;
+      const items = this.buildSchemaTree(
+        schema.items as JSONSchema7,
+        definitions,
+        "[]",
+        `${currentPath}[]`,
+        []
+      );
+      return [{
+        name,
+        type: "array",
+        path: currentPath,
+        description: schema.description,
+        required: requiredFields.includes(name),
+        children: items
+      }];
     }
 
     // Handle additionalProperties for dynamic object keys
     if (schema.type === "object" && schema.additionalProperties && typeof schema.additionalProperties === "object") {
-      const additionalTree = this.buildSchemaTree(schema.additionalProperties as JSONSchema7, definitions, "*");
-      return [{ name, type: "object", children: additionalTree }];
+      const currentPath = path ? `${path}.${name}` : name;
+      const additionalTree = this.buildSchemaTree(
+        schema.additionalProperties as JSONSchema7,
+        definitions,
+        "*",
+        `${currentPath}.*`,
+        []
+      );
+      return [{
+        name,
+        type: "object",
+        path: currentPath,
+        description: schema.description,
+        required: requiredFields.includes(name),
+        children: additionalTree
+      }];
     }
 
     // Handle primitive types
-    return [{ name, type: Array.isArray(schema.type) ? schema.type[0] : (schema.type || "unknown") }];
+    const currentPath = path ? `${path}.${name}` : name;
+    return [{
+      name,
+      type: Array.isArray(schema.type) ? schema.type[0] : (schema.type || "unknown"),
+      path: currentPath,
+      description: schema.description,
+      required: requiredFields.includes(name)
+    }];
   }
 
   /**

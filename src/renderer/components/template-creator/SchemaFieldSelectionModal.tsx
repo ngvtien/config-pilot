@@ -149,6 +149,33 @@ function persistExpandedNodes(resourceKey: string, expandedNodes: Set<string>) {
 }
 
 /**
+ * Build the schema key based on Kubernetes naming convention
+ * Handles both regular APIs and apimachinery patterns
+ */
+function buildResourceKey(resource: KubernetesResourceSchema): string {
+    if (!resource) return '';
+
+    //const { kind, version } = resource;
+
+    // Handle core API (v1) vs other APIs (apps/v1, etc.)
+    return resource.key;
+    // if (version === 'v1') {
+    //     return `io.k8s.api.core.v1.${kind}`;
+    // } else {
+    //     // For APIs like apps/v1, networking.k8s.io/v1, etc.
+    //     const [group, apiVersion] = version.includes('/')
+    //         ? version.split('/')
+    //         : ['core', version];
+
+    //     if (group === 'core') {
+    //         return `io.k8s.api.core.${apiVersion}.${kind}`;
+    //     } else {
+    //         return `io.k8s.api.${group}.${apiVersion}.${kind}`;
+    //     }
+    // }
+}
+
+/**
  * Modal component for selecting schema fields with tooltips and hierarchical display
  * Supports multiple template formats and state persistence
  */
@@ -166,50 +193,64 @@ export function SchemaFieldSelectionModal({
     const [isLoadingSchema, setIsLoadingSchema] = useState(false);
 
     // Generate resource key for persistence (fix undefined apiVersion)
-    const resourceKey = resource ?
-        `io.k8s.api.${resource.group ? `${resource.group}.` : ''}${resource.version}.${resource.kind}` :
-        ''
+    const resourceKey = resource ? resource.key : '';
 
     useEffect(() => {
         if (resource && isOpen) {
             setIsLoadingSchema(true);
-
-            // Fix: Use 'kubernetes' as the source since KubernetesResourceSchema doesn't have a source property
             const sourceId = 'kubernetes';
 
             console.log('Getting schema tree for resource:', { sourceId, resourceKey });
 
-            // Pass the correct source parameter
             window.electronAPI.invoke('schema:getResourceSchemaTree', sourceId, resourceKey)
                 .then((tree: SchemaTreeNode[]) => {
                     console.log('Schema tree received:', tree);
                     setSchemaTree(tree);
+
+                    // Load persisted expanded nodes first
+                    const persistedExpanded = getPersistedExpandedNodes(resourceKey);
+
+                    if (persistedExpanded.size === 0) {
+                        // Only auto-expand if no previous state exists
+                        const firstLevelPaths = new Set<string>();
+                        tree.forEach(node => {
+                            if (node.children && node.children.length > 0) {
+                                firstLevelPaths.add(node.path);
+                            }
+                        });
+
+                        console.log('🌳 Auto-expanding first level nodes:', Array.from(firstLevelPaths));
+                        setExpandedObjects(firstLevelPaths);
+                    } else {
+                        // Use persisted expanded state
+                        console.log('📥 Loading persisted expanded nodes:', persistedExpanded.size);
+                        setExpandedObjects(persistedExpanded);
+                    }
+
                     setIsLoadingSchema(false);
                 })
                 .catch((error: any) => {
                     console.error('Failed to fetch schema tree:', error);
-                    setSchemaTree([]); // Set empty array instead of leaving it null
+                    setSchemaTree([]);
                     setIsLoadingSchema(false);
                 });
         }
-    }, [resource, isOpen]);
+    }, [resource, isOpen, resourceKey]);
 
-    // Load persisted state when resource changes (fix dependency array)
     useEffect(() => {
         if (resource && resourceKey) {
             console.log('🔄 Resource changed, loading persisted state:', resourceKey)
 
-            // Load persisted selected fields
+            // Always clear current selections first when switching resources
+            setLocalSelectedFields([]);
+            // DON'T clear expandedObjects here - let the schema loading useEffect handle it
+
+            // Load persisted data for this specific resource
             const persistedFields = getPersistedSelectedFields(resourceKey)
             console.log('📥 Loaded persisted selected fields:', persistedFields.length)
-            setLocalSelectedFields(persistedFields) // Always set, even if empty
-
-            // Load persisted expanded nodes
-            const persistedExpanded = getPersistedExpandedNodes(resourceKey)
-            console.log('📥 Loaded persisted expanded nodes:', persistedExpanded.size)
-            setExpandedObjects(persistedExpanded)
+            setLocalSelectedFields(persistedFields)
         }
-    }, [resourceKey]) // Fixed: use only resourceKey to avoid array size changes
+    }, [resourceKey])
 
     // Only update from props if we're opening modal fresh and no persisted data exists
     useEffect(() => {
@@ -447,6 +488,13 @@ export function SchemaFieldSelectionModal({
     }
 
     /**
+     * Clear all selected fields
+     */
+    const handleClearAll = () => {
+        setLocalSelectedFields([]);
+    };
+
+    /**
      * Check if a field is currently selected
      */
     const isFieldSelected = (path: string) => {
@@ -657,9 +705,21 @@ export function SchemaFieldSelectionModal({
                     {/* Right Panel - Selected Fields Summary */}
                     <Card className="flex flex-col min-h-0">
                         <CardHeader className="flex-shrink-0">
-                            <CardTitle className="text-lg">
-                                Selected Fields ({localSelectedFields.length})
-                            </CardTitle>
+                            <div className="flex items-center justify-between">
+                                <CardTitle className="text-lg">
+                                    Selected Fields ({localSelectedFields.length})
+                                </CardTitle>
+                                {localSelectedFields.length > 0 && (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={handleClearAll}
+                                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                    >
+                                        Clear All
+                                    </Button>
+                                )}
+                            </div>
                         </CardHeader>
                         <CardContent className="flex-1 min-h-0 overflow-hidden">
                             <ScrollArea className="h-full">
