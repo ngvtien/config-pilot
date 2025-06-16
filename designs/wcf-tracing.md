@@ -1815,3 +1815,272 @@ This final version should completely resolve the "cannot access a closed Stream"
 1. Read the response before starting to send it
 2. Properly managed all stream positions
 3. Cleaned up resources correctly
+
+---
+
+# Bridging Middleware and Message Inspection in CoreWCF
+
+The middleware lacks direct access to WCF-specific message details. Here's a comprehensive solution to smoothly transition while maintaining access to WCF metadata:
+
+## Hybrid Approach: Middleware + Message Inspection
+
+### 1. CoreWCF Service Behavior Extension
+
+```csharp
+public class WcfMetadataCaptureBehavior : IServiceBehavior
+{
+    private readonly IActionContextAccessor _actionAccessor;
+
+    public WcfMetadataCaptureBehavior(IActionContextAccessor actionAccessor)
+    {
+        _actionAccessor = actionAccessor;
+    }
+
+    public void ApplyDispatchBehavior(ServiceDescription serviceDescription, ServiceHostBase serviceHostBase)
+    {
+        foreach (var channelDispatcher in serviceHostBase.ChannelDispatchers.OfType<ChannelDispatcher>())
+        {
+            foreach (var endpointDispatcher in channelDispatcher.Endpoints)
+            {
+                endpointDispatcher.DispatchRuntime.MessageInspectors.Add(
+                    new WcfMetadataInspector(_actionAccessor));
+            }
+        }
+    }
+
+    // Other required IServiceBehavior methods
+    public void AddBindingParameters(...) { }
+    public void Validate(...) { }
+}
+
+public class WcfMetadataInspector : IDispatchMessageInspector
+{
+    private readonly IActionContextAccessor _actionAccessor;
+
+    public WcfMetadataInspector(IActionContextAccessor actionAccessor)
+    {
+        _actionAccessor = actionAccessor;
+    }
+
+    public object AfterReceiveRequest(ref Message request, IClientChannel channel, InstanceContext instanceContext)
+    {
+        var action = request.Headers.Action;
+        var operation = request.Headers.To?.PathAndQuery;
+        
+        _actionAccessor.ActionContext = new WcfActionContext
+        {
+            Action = action,
+            Operation = operation,
+            RequestMessage = request
+        };
+
+        return null; // No correlation state needed
+    }
+
+    public void BeforeSendReply(ref Message reply, object correlationState)
+    {
+        // Clean up if needed
+    }
+}
+
+public class WcfActionContext
+{
+    public string Action { get; set; }
+    public string Operation { get; set; }
+    public Message RequestMessage { get; set; }
+}
+
+public interface IActionContextAccessor
+{
+    WcfActionContext ActionContext { get; set; }
+}
+
+public class ActionContextAccessor : IActionContextAccessor
+{
+    private static readonly AsyncLocal<WcfActionContext> _currentContext = new AsyncLocal<WcfActionContext>();
+
+    public WcfActionContext ActionContext
+    {
+        get => _currentContext.Value;
+        set => _currentContext.Value = value;
+    }
+}
+```
+
+### 2. Enhanced Logging Middleware
+
+```csharp
+public class WcfLoggingMiddleware
+{
+    private readonly RequestDelegate _next;
+    private readonly CoreWcfSvcLogger _logger;
+    private readonly IActionContextAccessor _actionAccessor;
+
+    public WcfLoggingMiddleware(
+        RequestDelegate next,
+        CoreWcfSvcLogger logger,
+        IActionContextAccessor actionAccessor)
+    {
+        _next = next;
+        _logger = logger;
+        _actionAccessor = actionAccessor;
+    }
+
+    public async Task Invoke(HttpContext context)
+    {
+        var wcfContext = _actionAccessor.ActionContext;
+        
+        // Log request with WCF metadata
+        var requestContent = await FormatRequest(context.Request);
+        _logger.LogMessage(
+            $"Action: {wcfContext?.Action}\n" +
+            $"Operation: {wcfContext?.Operation}\n" +
+            $"Request: {requestContent}");
+
+        // Process response
+        var originalBody = context.Response.Body;
+        using var responseBuffer = new MemoryStream();
+        context.Response.Body = responseBuffer;
+
+        try
+        {
+            await _next(context);
+
+            // Log response
+            var responseContent = await FormatResponse(responseBuffer, context.Response);
+            _logger.LogMessage($"Response: {responseContent}");
+            
+            responseBuffer.Position = 0;
+            await responseBuffer.CopyToAsync(originalBody);
+        }
+        finally
+        {
+            context.Response.Body = originalBody;
+        }
+    }
+
+    private async Task<string> FormatRequest(HttpRequest request)
+    {
+        request.EnableBuffering();
+        using var reader = new StreamReader(request.Body, leaveOpen: true);
+        var content = await reader.ReadToEndAsync();
+        request.Body.Position = 0;
+        return content;
+    }
+
+    private async Task<string> FormatResponse(MemoryStream responseBuffer, HttpResponse response)
+    {
+        responseBuffer.Position = 0;
+        using var reader = new StreamReader(responseBuffer, leaveOpen: true);
+        return await reader.ReadToEndAsync();
+    }
+}
+```
+
+### 3. Startup Configuration
+
+```csharp
+public void ConfigureServices(IServiceCollection services)
+{
+    // Register WCF metadata services
+    services.AddSingleton<IActionContextAccessor, ActionContextAccessor>();
+    services.AddSingleton<WcfMetadataCaptureBehavior>();
+
+    // Configure logging
+    services.AddSingleton<CoreWcfSvcLogger>(provider => 
+        new CoreWcfSvcLogger("E:\\Logs\\CAI\\ACF_Debug.svclog"));
+
+    // Add CoreWCF with behaviors
+    services.AddServiceModelServices()
+        .AddServiceModelMetadata()
+        .ConfigureServiceHostBase(serviceHost =>
+        {
+            var behavior = serviceHost.ServiceProvider
+                .GetRequiredService<WcfMetadataCaptureBehavior>();
+            serviceHost.Description.Behaviors.Add(behavior);
+        });
+}
+
+public void Configure(IApplicationBuilder app)
+{
+    // Middleware ordering is critical
+    app.UseMiddleware<WcfLoggingMiddleware>();
+    app.UseServiceModel(builder =>
+    {
+        builder.AddService<YourService>();
+    });
+}
+```
+
+## Key Benefits
+
+1. **Full WCF Metadata Access**:
+   - Action names
+   - Operation contracts
+   - Message headers
+   - Service endpoints
+
+2. **Seamless Integration**:
+   - Works alongside existing middleware
+   - No changes required to service implementations
+   - Preserves .svclog compatibility
+
+3. **Thread-Safe Context**:
+   - Uses `AsyncLocal` for proper async flow
+   - Maintains context throughout request pipeline
+
+4. **Gradual Transition**:
+   - Start with basic metadata
+   - Add more WCF-specific details as needed
+   - Eventually replace middleware with pure inspectors
+
+## Advanced Usage Patterns
+
+### 1. Redaction with WCF Context
+
+```csharp
+public class SensitiveDataRedactor
+{
+    private readonly IActionContextAccessor _actionAccessor;
+
+    public string Redact(string content)
+    {
+        var context = _actionAccessor.ActionContext;
+        if (context?.Action == null) return content;
+        
+        var sensitiveFields = GetSensitiveFields(context.Action);
+        // Apply redaction logic...
+        return redactedContent;
+    }
+}
+```
+
+### 2. Operation-Specific Logging
+
+```csharp
+// In middleware:
+var operation = _actionAccessor.ActionContext?.Operation;
+if (operation?.Contains("Payment") == true)
+{
+    _logger.EnableVerboseLogging();
+}
+```
+
+### 3. Message Transformation
+
+```csharp
+// In message inspector:
+public object AfterReceiveRequest(ref Message request, ...)
+{
+    var transformed = TransformMessage(request);
+    _actionAccessor.ActionContext.OriginalMessage = request;
+    request = transformed;
+    return null;
+}
+```
+
+This hybrid approach gives you the best of both worlds:
+- Middleware for HTTP-level processing
+- Message inspectors for WCF-specific details
+- Shared context between both worlds
+- Smooth migration path to pure CoreWCF patterns
