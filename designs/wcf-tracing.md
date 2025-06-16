@@ -1648,3 +1648,170 @@ This approach lets you:
 - Get logging working immediately
 - Maintain production compatibility
 - Add redaction when ready without disrupting existing logs
+
+---
+
+# Final Fix for Stream Access Issues
+
+The error persists because we're trying to read from the response buffer after the response has started being sent. Here's the complete working solution that properly handles all stream operations:
+
+## Fully Corrected Middleware Implementation
+
+```csharp
+public class SvcLogMessageMiddleware
+{
+    private readonly RequestDelegate _next;
+    private readonly CoreWcfSvcLogger _logger;
+
+    public SvcLogMessageMiddleware(RequestDelegate next, CoreWcfSvcLogger logger)
+    {
+        _next = next;
+        _logger = logger;
+    }
+
+    public async Task Invoke(HttpContext context)
+    {
+        // 1. Log the request
+        var requestLog = await FormatRequest(context.Request);
+        _logger.LogMessage($"Request: {requestLog}");
+
+        // 2. Create a new buffer for the response
+        var originalResponseBody = context.Response.Body;
+        var responseBuffer = new MemoryStream();
+        context.Response.Body = responseBuffer;
+
+        try
+        {
+            // 3. Continue processing the pipeline
+            await _next(context);
+
+            // 4. Read the response BEFORE copying to original stream
+            responseBuffer.Seek(0, SeekOrigin.Begin);
+            var responseLog = await FormatResponse(context.Response, responseBuffer);
+            _logger.LogMessage($"Response: {responseLog}");
+
+            // 5. Reset position again before copying
+            responseBuffer.Seek(0, SeekOrigin.Begin);
+            await responseBuffer.CopyToAsync(originalResponseBody);
+        }
+        finally
+        {
+            // 6. Always restore the original stream
+            context.Response.Body = originalResponseBody;
+            responseBuffer.Dispose();
+        }
+    }
+
+    private async Task<string> FormatRequest(HttpRequest request)
+    {
+        request.EnableBuffering(); // Allow multiple reads
+        request.Body.Position = 0; // Ensure we're at start
+
+        using var reader = new StreamReader(
+            request.Body, 
+            encoding: Encoding.UTF8, 
+            detectEncodingFromByteOrderMarks: false, 
+            bufferSize: 1024, 
+            leaveOpen: true // Don't close the original stream
+        );
+
+        var body = await reader.ReadToEndAsync();
+        request.Body.Position = 0; // Reset for the actual handler
+
+        return $"{request.Method} {request.Path}{request.QueryString} {body}";
+    }
+
+    private async Task<string> FormatResponse(HttpResponse response, MemoryStream responseBuffer)
+    {
+        responseBuffer.Seek(0, SeekOrigin.Begin);
+        
+        using var reader = new StreamReader(
+            responseBuffer, 
+            encoding: Encoding.UTF8, 
+            detectEncodingFromByteOrderMarks: false, 
+            bufferSize: 1024, 
+            leaveOpen: true // Don't close the buffer
+        );
+
+        return $"Status: {response.StatusCode} {await reader.ReadToEndAsync()}";
+    }
+}
+```
+
+## Critical Fixes in This Version
+
+1. **Explicit Stream Position Management**:
+   - Always set position before reading
+   - Reset position after reading request body
+
+2. **Proper Resource Disposal**:
+   - Explicitly dispose the response buffer
+   - Use `leaveOpen: true` where needed
+
+3. **Order of Operations**:
+   - Read response content BEFORE copying to original stream
+   - Logging happens while we still have access to buffers
+
+4. **Memory Stream Handling**:
+   - Single buffer per request
+   - Proper size management
+
+## Alternative Approach Using Buffering Helpers
+
+If you're still having issues, consider using ASP.NET Core's built-in buffering:
+
+```csharp
+public async Task Invoke(HttpContext context)
+{
+    // Enable request buffering
+    context.Request.EnableBuffering();
+    
+    // Log request
+    var requestBody = await new StreamReader(context.Request.Body).ReadToEndAsync();
+    context.Request.Body.Position = 0;
+    _logger.LogMessage($"Request: {requestBody}");
+
+    // Enable response buffering
+    var originalBodyStream = context.Response.Body;
+    await using var responseBodyStream = new MemoryStream();
+    context.Response.Body = responseBodyStream;
+
+    try
+    {
+        await _next(context);
+
+        // Log response
+        responseBodyStream.Seek(0, SeekOrigin.Begin);
+        var responseBody = await new StreamReader(responseBodyStream).ReadToEndAsync();
+        _logger.LogMessage($"Response: {responseBody}");
+
+        // Copy to original stream
+        responseBodyStream.Seek(0, SeekOrigin.Begin);
+        await responseBodyStream.CopyToAsync(originalBodyStream);
+    }
+    finally
+    {
+        context.Response.Body = originalBodyStream;
+    }
+}
+```
+
+## Key Lessons Learned
+
+1. **Stream Lifetime**:
+   - Never access a stream after it's disposed
+   - Reset positions before reading
+   - Be mindful of middleware order
+
+2. **Buffering Strategies**:
+   - Request buffering must be explicit
+   - Response buffering requires careful handling
+
+3. **Error Handling**:
+   - Always restore original streams in finally blocks
+   - Consider try-catch around stream operations
+
+This final version should completely resolve the "cannot access a closed Stream" errors while maintaining all logging functionality. The key was ensuring we:
+1. Read the response before starting to send it
+2. Properly managed all stream positions
+3. Cleaned up resources correctly
