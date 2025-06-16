@@ -1473,3 +1473,178 @@ public void Configure(IApplicationBuilder app)
    - Monitor disk space with your rotation settings
 
 This solution gives you equivalent functionality while working within CoreWCF's modern architecture. The main tradeoff is losing some of the WCF-specific filtering granularity, but you gain more flexibility in how you process and store logs.
+
+---
+
+# Simplified Logging Solution Without Redaction
+
+Since we're having challenges with the sensitive data redaction, let's implement a simplified solution that:
+
+1. Focuses on getting all messages logged to `.svclog` files
+2. Maintains compatibility with existing log analysis tools
+3. Provides a clear path to add redaction later
+
+## Core Implementation
+
+### 1. Basic Trace Listener Setup
+
+```csharp
+public class CoreWcfSvcLogger : IDisposable
+{
+    private readonly XmlWriterTraceListener _listener;
+    private readonly string _logFilePath;
+    
+    public CoreWcfSvcLogger(string logFilePath)
+    {
+        _logFilePath = logFilePath;
+        Directory.CreateDirectory(Path.GetDirectoryName(_logFilePath));
+        _listener = new XmlWriterTraceListener(_logFilePath);
+        
+        // Configure default trace source
+        var traceSource = new TraceSource("System.ServiceModel", SourceLevels.All);
+        traceSource.Listeners.Add(_listener);
+        traceSource.Listeners.Remove("Default");
+    }
+
+    public void LogMessage(string message, TraceEventType eventType = TraceEventType.Information)
+    {
+        _listener.TraceEvent(null, "CoreWCF", eventType, 0, message);
+        _listener.Flush();
+    }
+
+    public void Dispose()
+    {
+        _listener?.Flush();
+        _listener?.Close();
+        _listener?.Dispose();
+    }
+}
+```
+
+### 2. Service Registration (Startup.cs)
+
+```csharp
+public void ConfigureServices(IServiceCollection services)
+{
+    // Register the logger as singleton
+    services.AddSingleton<CoreWcfSvcLogger>(provider => 
+        new CoreWcfSvcLogger("E:\\Logs\\CAI\\ACF_Debug.svclog"));
+    
+    // Add CoreWCF services
+    services.AddServiceModelServices();
+}
+```
+
+### 3. Message Logging Middleware
+
+```csharp
+public class SvcLogMessageMiddleware
+{
+    private readonly RequestDelegate _next;
+    private readonly CoreWcfSvcLogger _logger;
+
+    public SvcLogMessageMiddleware(RequestDelegate next, CoreWcfSvcLogger logger)
+    {
+        _next = next;
+        _logger = logger;
+    }
+
+    public async Task Invoke(HttpContext context)
+    {
+        // Log request
+        var request = await FormatRequest(context.Request);
+        _logger.LogMessage($"Request: {request}", TraceEventType.Verbose);
+
+        // Capture and log response
+        var originalBody = context.Response.Body;
+        using var responseBody = new MemoryStream();
+        context.Response.Body = responseBody;
+
+        await _next(context);
+
+        var response = await FormatResponse(context.Response);
+        _logger.LogMessage($"Response: {response}", TraceEventType.Verbose);
+
+        await responseBody.CopyToAsync(originalBody);
+    }
+
+    private async Task<string> FormatRequest(HttpRequest request)
+    {
+        request.EnableBuffering();
+        var body = await new StreamReader(request.Body).ReadToEndAsync();
+        request.Body.Position = 0;
+        
+        return $"{request.Method} {request.Path}{request.QueryString} {body}";
+    }
+
+    private async Task<string> FormatResponse(HttpResponse response)
+    {
+        response.Body.Seek(0, SeekOrigin.Begin);
+        var body = await new StreamReader(response.Body).ReadToEndAsync();
+        response.Body.Seek(0, SeekOrigin.Begin);
+        
+        return $"Status: {response.StatusCode} {body}";
+    }
+}
+```
+
+### 4. Enable in Startup
+
+```csharp
+public void Configure(IApplicationBuilder app)
+{
+    app.UseMiddleware<SvcLogMessageMiddleware>();
+    
+    app.UseServiceModel(builder =>
+    {
+        builder.AddService<YourService>();
+    });
+}
+```
+
+## Key Features
+
+1. **Guaranteed svclog Compatibility**:
+   - Uses the standard `XmlWriterTraceListener`
+   - Generates files that work with SvcTraceViewer.exe
+   - Maintains proper XML structure and schema
+
+2. **Simple Implementation**:
+   - No complex redaction logic
+   - Minimal dependencies
+   - Easy to debug
+
+3. **Future-Proof Design**:
+   - Clear insertion point for redaction later
+   - Separates logging from message processing
+
+4. **Automatic File Management**:
+   - Creates directory if needed
+   - Proper flushing and disposal
+
+## Next Steps for Redaction
+
+When ready to implement redaction:
+
+1. Create a `IMessageRedactor` interface:
+   ```csharp
+   public interface IMessageRedactor
+   {
+       string Redact(string message, string action);
+   }
+   ```
+
+2. Modify the middleware:
+   ```csharp
+   // In Invoke() method:
+   var redactor = context.RequestServices.GetService<IMessageRedactor>();
+   var redactedRequest = redactor?.Redact(request, context.Request.Path) ?? request;
+   _logger.LogMessage($"Request: {redactedRequest}");
+   ```
+
+3. Implement your redaction logic separately
+
+This approach lets you:
+- Get logging working immediately
+- Maintain production compatibility
+- Add redaction when ready without disrupting existing logs
