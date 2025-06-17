@@ -3005,3 +3005,503 @@ This approach is:
 - Easier to debug
 - Handles all edge cases (null values, empty lists, etc.)
 - Produces clean, compilable output
+
+---
+
+```csharp
+// TraceRedactionAttribute.cs
+[AttributeUsage(AttributeTargets.Property | AttributeTargets.Field | AttributeTargets.Parameter)]
+public class RedactAttribute : Attribute
+{
+    public string RedactionValue { get; set; } = "[REDACTED]";
+}
+
+// Metadata models
+public class ServiceContractMetadata
+{
+    public string ContractName { get; set; }
+    public string Namespace { get; set; }
+    public List<OperationMetadata> Operations { get; set; } = new();
+}
+
+public class OperationMetadata
+{
+    public string OperationName { get; set; }
+    public string Action { get; set; }
+    public string ReplyAction { get; set; }
+    public List<ParameterMetadata> Parameters { get; set; } = new();
+    public TypeMetadata ReturnType { get; set; }
+}
+
+public class ParameterMetadata
+{
+    public string Name { get; set; }
+    public string TypeName { get; set; }
+    public bool IsOut { get; set; }
+    public bool IsRef { get; set; }
+    public TypeMetadata TypeMetadata { get; set; }
+}
+
+public class TypeMetadata
+{
+    public string TypeName { get; set; }
+    public string FullTypeName { get; set; }
+    public bool IsDataContract { get; set; }
+    public List<PropertyRedactionInfo> Properties { get; set; } = new();
+}
+
+public class PropertyRedactionInfo
+{
+    public string PropertyName { get; set; }
+    public string TypeName { get; set; }
+    public bool ShouldRedact { get; set; }
+    public string RedactionValue { get; set; }
+    public bool IsDataMember { get; set; }
+}
+
+// Generated metadata interface
+public interface IServiceContractTracing
+{
+    ServiceContractMetadata GetServiceMetadata();
+    string SerializeRequestForTracing(string operationName, object[] parameters);
+    string SerializeResponseForTracing(string operationName, object response);
+}
+
+// Incremental Source Generator
+[Generator]
+public class WcfTracingIncrementalGenerator : IIncrementalGenerator
+{
+    public void Initialize(IncrementalGeneratorInitializationContext context)
+    {
+        // Pipeline for ServiceContract types
+        var serviceContractProvider = context.SyntaxProvider
+            .CreateSyntaxProvider(
+                predicate: static (s, _) => IsServiceContractCandidate(s),
+                transform: static (ctx, _) => GetServiceContractSemanticTarget(ctx))
+            .Where(static m => m is not null);
+
+        // Pipeline for DataContract types
+        var dataContractProvider = context.SyntaxProvider
+            .CreateSyntaxProvider(
+                predicate: static (s, _) => IsDataContractCandidate(s),
+                transform: static (ctx, _) => GetDataContractSemanticTarget(ctx))
+            .Where(static m => m is not null);
+
+        // Combine both providers
+        var combinedProvider = serviceContractProvider
+            .Combine(dataContractProvider.Collect());
+
+        context.RegisterSourceOutput(combinedProvider, 
+            static (spc, source) => Execute(spc, source.Left, source.Right));
+    }
+
+    private static bool IsServiceContractCandidate(SyntaxNode node)
+    {
+        return node is InterfaceDeclarationSyntax interfaceDecl &&
+               interfaceDecl.AttributeLists.Count > 0;
+    }
+
+    private static bool IsDataContractCandidate(SyntaxNode node)
+    {
+        return node is ClassDeclarationSyntax classDecl &&
+               classDecl.AttributeLists.Count > 0;
+    }
+
+    private static INamedTypeSymbol GetServiceContractSemanticTarget(GeneratorSyntaxContext context)
+    {
+        var interfaceDecl = (InterfaceDeclarationSyntax)context.Node;
+        var symbol = context.SemanticModel.GetDeclaredSymbol(interfaceDecl) as INamedTypeSymbol;
+        
+        if (symbol?.GetAttributes().Any(a => 
+            a.AttributeClass?.Name == "ServiceContractAttribute") == true)
+        {
+            return symbol;
+        }
+        
+        return null;
+    }
+
+    private static INamedTypeSymbol GetDataContractSemanticTarget(GeneratorSyntaxContext context)
+    {
+        var classDecl = (ClassDeclarationSyntax)context.Node;
+        var symbol = context.SemanticModel.GetDeclaredSymbol(classDecl) as INamedTypeSymbol;
+        
+        if (symbol?.GetAttributes().Any(a => 
+            a.AttributeClass?.Name == "DataContractAttribute") == true)
+        {
+            return symbol;
+        }
+        
+        return null;
+    }
+
+    private static void Execute(SourceProductionContext context, INamedTypeSymbol serviceContract, 
+        ImmutableArray<INamedTypeSymbol> dataContracts)
+    {
+        if (serviceContract == null) return;
+
+        var serviceMetadata = ExtractServiceContractMetadata(serviceContract);
+        var dataContractMetadata = dataContracts.ToDictionary(
+            dc => dc.ToDisplayString(), 
+            ExtractDataContractMetadata);
+
+        GenerateServiceContractTracing(context, serviceContract, serviceMetadata, dataContractMetadata);
+    }
+
+    private static ServiceContractMetadata ExtractServiceContractMetadata(INamedTypeSymbol serviceContract)
+    {
+        var serviceAttr = serviceContract.GetAttributes()
+            .First(a => a.AttributeClass?.Name == "ServiceContractAttribute");
+
+        var contractName = serviceContract.Name;
+        var contractNamespace = "http://tempuri.org/";
+
+        // Extract Name and Namespace from ServiceContract attribute
+        foreach (var namedArg in serviceAttr.NamedArguments)
+        {
+            if (namedArg.Key == "Name" && namedArg.Value.Value != null)
+                contractName = namedArg.Value.Value.ToString();
+            else if (namedArg.Key == "Namespace" && namedArg.Value.Value != null)
+                contractNamespace = namedArg.Value.Value.ToString();
+        }
+
+        var operations = new List<OperationMetadata>();
+
+        foreach (var member in serviceContract.GetMembers().OfType<IMethodSymbol>())
+        {
+            var operationAttr = member.GetAttributes()
+                .FirstOrDefault(a => a.AttributeClass?.Name == "OperationContractAttribute");
+            
+            if (operationAttr == null) continue;
+
+            var operationName = member.Name;
+            var action = $"{contractNamespace.TrimEnd('/')}/{contractName}/{operationName}";
+            var replyAction = $"{contractNamespace.TrimEnd('/')}/{contractName}/{operationName}Response";
+
+            // Extract custom Action and ReplyAction from OperationContract
+            foreach (var namedArg in operationAttr.NamedArguments)
+            {
+                if (namedArg.Key == "Action" && namedArg.Value.Value != null)
+                    action = namedArg.Value.Value.ToString();
+                else if (namedArg.Key == "ReplyAction" && namedArg.Value.Value != null)
+                    replyAction = namedArg.Value.Value.ToString();
+                else if (namedArg.Key == "Name" && namedArg.Value.Value != null)
+                    operationName = namedArg.Value.Value.ToString();
+            }
+
+            var parameters = member.Parameters.Select(p => new ParameterMetadata
+            {
+                Name = p.Name,
+                TypeName = p.Type.ToDisplayString(),
+                IsOut = p.RefKind == RefKind.Out,
+                IsRef = p.RefKind == RefKind.Ref,
+                TypeMetadata = ExtractTypeMetadata(p.Type)
+            }).ToList();
+
+            var returnTypeMetadata = member.ReturnType.SpecialType != SpecialType.System_Void 
+                ? ExtractTypeMetadata(member.ReturnType) 
+                : null;
+
+            operations.Add(new OperationMetadata
+            {
+                OperationName = operationName,
+                Action = action,
+                ReplyAction = replyAction,
+                Parameters = parameters,
+                ReturnType = returnTypeMetadata
+            });
+        }
+
+        return new ServiceContractMetadata
+        {
+            ContractName = contractName,
+            Namespace = contractNamespace,
+            Operations = operations
+        };
+    }
+
+    private static TypeMetadata ExtractDataContractMetadata(INamedTypeSymbol dataContract)
+    {
+        return ExtractTypeMetadata(dataContract);
+    }
+
+    private static TypeMetadata ExtractTypeMetadata(ITypeSymbol type)
+    {
+        var namedType = type as INamedTypeSymbol;
+        if (namedType == null) 
+            return new TypeMetadata { TypeName = type.ToDisplayString(), FullTypeName = type.ToDisplayString() };
+
+        var isDataContract = namedType.GetAttributes()
+            .Any(a => a.AttributeClass?.Name == "DataContractAttribute");
+
+        var properties = new List<PropertyRedactionInfo>();
+
+        foreach (var property in namedType.GetMembers().OfType<IPropertySymbol>())
+        {
+            if (property.DeclaredAccessibility != Accessibility.Public) continue;
+
+            var isDataMember = property.GetAttributes()
+                .Any(a => a.AttributeClass?.Name == "DataMemberAttribute");
+
+            // Skip non-DataMember properties in DataContract types
+            if (isDataContract && !isDataMember) continue;
+
+            var redactAttr = property.GetAttributes()
+                .FirstOrDefault(a => a.AttributeClass?.Name == "RedactAttribute");
+
+            var shouldRedact = redactAttr != null;
+            var redactionValue = "[REDACTED]";
+
+            if (redactAttr != null)
+            {
+                var redactionValueArg = redactAttr.NamedArguments
+                    .FirstOrDefault(na => na.Key == "RedactionValue");
+                if (redactionValueArg.Value.Value != null)
+                    redactionValue = redactionValueArg.Value.Value.ToString();
+            }
+
+            properties.Add(new PropertyRedactionInfo
+            {
+                PropertyName = property.Name,
+                TypeName = property.Type.ToDisplayString(),
+                ShouldRedact = shouldRedact,
+                RedactionValue = redactionValue,
+                IsDataMember = isDataMember
+            });
+        }
+
+        return new TypeMetadata
+        {
+            TypeName = namedType.Name,
+            FullTypeName = namedType.ToDisplayString(),
+            IsDataContract = isDataContract,
+            Properties = properties
+        };
+    }
+
+    private static void GenerateServiceContractTracing(SourceProductionContext context, 
+        INamedTypeSymbol serviceContract, ServiceContractMetadata serviceMetadata,
+        Dictionary<string, TypeMetadata> dataContractMetadata)
+    {
+        var namespaceName = serviceContract.ContainingNamespace.ToDisplayString();
+        var contractName = serviceContract.Name;
+        
+        var sourceBuilder = new StringBuilder();
+        sourceBuilder.AppendLine($@"
+// <auto-generated />
+using System;
+using System.Collections.Generic;
+using System.Text.Json;
+using System.Linq;
+
+namespace {namespaceName}
+{{
+    public partial class {contractName}TracingMetadata : IServiceContractTracing
+    {{
+        private static readonly ServiceContractMetadata _serviceMetadata = new ServiceContractMetadata
+        {{
+            ContractName = ""{serviceMetadata.ContractName}"",
+            Namespace = ""{serviceMetadata.Namespace}"",
+            Operations = new List<OperationMetadata>
+            {{");
+
+        foreach (var operation in serviceMetadata.Operations)
+        {
+            sourceBuilder.AppendLine($@"
+                new OperationMetadata
+                {{
+                    OperationName = ""{operation.OperationName}"",
+                    Action = ""{operation.Action}"",
+                    ReplyAction = ""{operation.ReplyAction}"",
+                    Parameters = new List<ParameterMetadata>
+                    {{");
+
+            foreach (var param in operation.Parameters)
+            {
+                sourceBuilder.AppendLine($@"
+                        new ParameterMetadata
+                        {{
+                            Name = ""{param.Name}"",
+                            TypeName = ""{param.TypeName}"",
+                            IsOut = {param.IsOut.ToString().ToLower()},
+                            IsRef = {param.IsRef.ToString().ToLower()}
+                        }},");
+            }
+
+            sourceBuilder.AppendLine($@"
+                    }}
+                }},");
+        }
+
+        sourceBuilder.AppendLine($@"
+            }}
+        }};
+
+        private static readonly Dictionary<string, TypeMetadata> _typeMetadata = new Dictionary<string, TypeMetadata>
+        {{");
+
+        foreach (var kvp in dataContractMetadata)
+        {
+            var typeMetadata = kvp.Value;
+            sourceBuilder.AppendLine($@"
+            [""{kvp.Key}""] = new TypeMetadata
+            {{
+                TypeName = ""{typeMetadata.TypeName}"",
+                FullTypeName = ""{typeMetadata.FullTypeName}"",
+                IsDataContract = {typeMetadata.IsDataContract.ToString().ToLower()},
+                Properties = new List<PropertyRedactionInfo>
+                {{");
+
+            foreach (var prop in typeMetadata.Properties)
+            {
+                sourceBuilder.AppendLine($@"
+                    new PropertyRedactionInfo
+                    {{
+                        PropertyName = ""{prop.PropertyName}"",
+                        TypeName = ""{prop.TypeName}"",
+                        ShouldRedact = {prop.ShouldRedact.ToString().ToLower()},
+                        RedactionValue = ""{prop.RedactionValue}"",
+                        IsDataMember = {prop.IsDataMember.ToString().ToLower()}
+                    }},");
+            }
+
+            sourceBuilder.AppendLine($@"
+                }}
+            }},");
+        }
+
+        sourceBuilder.AppendLine($@"
+        }};
+
+        public ServiceContractMetadata GetServiceMetadata() => _serviceMetadata;
+
+        public string SerializeRequestForTracing(string operationName, object[] parameters)
+        {{
+            var operation = _serviceMetadata.Operations.FirstOrDefault(o => o.OperationName == operationName);
+            if (operation == null) return ""Unknown operation"";
+
+            var requestData = new Dictionary<string, object>
+            {{
+                [""Operation""] = operationName,
+                [""Action""] = operation.Action,
+                [""Parameters""] = new Dictionary<string, object>()
+            }};
+
+            var paramDict = (Dictionary<string, object>)requestData[""Parameters""];
+            
+            for (int i = 0; i < parameters?.Length && i < operation.Parameters.Count; i++)
+            {{
+                var param = operation.Parameters[i];
+                var value = parameters[i];
+                
+                if (value != null && _typeMetadata.ContainsKey(param.TypeName))
+                {{
+                    paramDict[param.Name] = SerializeWithRedaction(value, _typeMetadata[param.TypeName]);
+                }}
+                else
+                {{
+                    paramDict[param.Name] = value;
+                }}
+            }}
+
+            return JsonSerializer.Serialize(requestData);
+        }}
+
+        public string SerializeResponseForTracing(string operationName, object response)
+        {{
+            var operation = _serviceMetadata.Operations.FirstOrDefault(o => o.OperationName == operationName);
+            if (operation == null) return ""Unknown operation"";
+
+            var responseData = new Dictionary<string, object>
+            {{
+                [""Operation""] = operationName,
+                [""ReplyAction""] = operation.ReplyAction,
+                [""Response""] = response
+            }};
+
+            if (response != null && operation.ReturnType != null && 
+                _typeMetadata.ContainsKey(operation.ReturnType.FullTypeName))
+            {{
+                responseData[""Response""] = SerializeWithRedaction(response, 
+                    _typeMetadata[operation.ReturnType.FullTypeName]);
+            }}
+
+            return JsonSerializer.Serialize(responseData);
+        }}
+
+        private object SerializeWithRedaction(object instance, TypeMetadata typeMetadata)
+        {{
+            if (instance == null) return null;
+            
+            var redactedObject = new Dictionary<string, object>();
+            var instanceType = instance.GetType();
+            
+            foreach (var prop in typeMetadata.Properties)
+            {{
+                var propInfo = instanceType.GetProperty(prop.PropertyName);
+                if (propInfo == null) continue;
+                
+                var value = propInfo.GetValue(instance);
+                redactedObject[prop.PropertyName] = prop.ShouldRedact ? prop.RedactionValue : value;
+            }}
+            
+            return redactedObject;
+        }}
+    }}
+}}");
+
+        context.AddSource($"{contractName}TracingMetadata.g.cs", sourceBuilder.ToString());
+    }
+}
+
+// Usage Example:
+[ServiceContract(Name = "CustomerService", Namespace = "http://mycompany.com/services")]
+public interface ICustomerService
+{
+    [OperationContract(Action = "http://mycompany.com/services/GetCustomer")]
+    CustomerData GetCustomer(int customerId);
+    
+    [OperationContract(Action = "http://mycompany.com/services/UpdateCustomer", 
+                      ReplyAction = "http://mycompany.com/services/UpdateCustomerResponse")]
+    bool UpdateCustomer(CustomerData customer, [Redact] string auditToken);
+}
+
+[DataContract]
+public class CustomerData
+{
+    [DataMember]
+    public int Id { get; set; }
+    
+    [DataMember]
+    public string Name { get; set; }
+    
+    [DataMember]
+    [Redact(RedactionValue = "***-**-****")]
+    public string SocialSecurityNumber { get; set; }
+    
+    [DataMember]
+    [Redact]
+    public string CreditCardNumber { get; set; }
+}
+
+// Generated usage in your WCF service:
+public class CustomerService : ICustomerService
+{
+    private static readonly ICustomerServiceTracingMetadata _tracingMetadata = new ICustomerServiceTracingMetadata();
+    
+    public CustomerData GetCustomer(int customerId)
+    {
+        // Log request
+        var requestTrace = _tracingMetadata.SerializeRequestForTracing("GetCustomer", new object[] { customerId });
+        Console.WriteLine($"Request: {requestTrace}");
+        
+        var result = new CustomerData { Id = customerId, Name = "John Doe", SocialSecurityNumber = "123-45-6789" };
+        
+        // Log response  
+        var responseTrace = _tracingMetadata.SerializeResponseForTracing("GetCustomer", result);
+        Console.WriteLine($"Response: {responseTrace}");
+        
+        return result;
+    }
+}
+```
