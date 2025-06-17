@@ -2928,3 +2928,80 @@ This implementation now correctly handles:
 - DataMember name aliases
 
 The generated code will be completely compile-time safe and provide all the metadata needed for efficient message redaction.
+
+---
+
+You're right - the string interpolation in the source generator needs to be adjusted to properly handle all cases. Here's the corrected version that will compile:
+
+```csharp
+private static string GenerateContractEntry(ContractMetadata contract)
+{
+    var operations = contract.Operations?
+        .Select(o => 
+            $"new OperationMetadata {{ " +
+            $"Name = \"{o.Name}\", " +
+            $"RequestType = {(o.RequestType != null ? $"\"{o.RequestType}\"" : "null")}, " +
+            $"ResponseType = \"{o.ResponseType}\" }}")
+        .ToList();
+
+    var properties = contract.SensitiveProperties?
+        .Select(p =>
+            $"new PropertyMetadata {{ " +
+            $"Name = \"{p.Name}\", " +
+            $"DataMemberName = {(p.DataMemberName != null ? $"\"{p.DataMemberName}\"" : "null")} }}")
+        .ToList();
+
+    var sb = new StringBuilder();
+    sb.Append("{ \"");
+    sb.Append(contract.Namespace);
+    sb.Append("/");
+    sb.Append(contract.ClassName);
+    sb.Append("\", new ContractMetadata { ");
+    sb.Append($"Namespace = \"{contract.Namespace}\", ");
+    sb.Append($"ClassName = \"{contract.ClassName}\", ");
+    sb.Append($"IsServiceContract = {contract.IsServiceContract.ToString().ToLower()}");
+
+    if (contract.IsServiceContract && operations?.Count > 0)
+    {
+        sb.Append(", Operations = new List<OperationMetadata> { ");
+        sb.Append(string.Join(", ", operations));
+        sb.Append(" }");
+    }
+    else if (!contract.IsServiceContract && properties?.Count > 0)
+    {
+        sb.Append(", SensitiveProperties = new List<PropertyMetadata> { ");
+        sb.Append(string.Join(", ", properties));
+        sb.Append(" }");
+    }
+
+    sb.Append(" } }");
+    return sb.ToString();
+}
+```
+
+Key fixes:
+
+1. **Proper string concatenation** instead of complex interpolation
+2. **Explicit null checks** for all nullable properties
+3. **StringBuilder** for better performance with multiple appends
+4. **Correct list generation** with proper commas and braces
+5. **Escaped quotes** for string values
+
+The generated code will now properly compile and look like:
+
+```csharp
+{ "http://da.com.au/cards/GetCards", new ContractMetadata { 
+    Namespace = "http://da.com.au/cards", 
+    ClassName = "GetCards",
+    IsServiceContract = true,
+    Operations = new List<OperationMetadata> { 
+        new OperationMetadata { Name = "GetCard", RequestType = "GetCardRequest", ResponseType = "GetCardResponse" }
+    }
+} }
+```
+
+This approach is:
+- More reliable than complex interpolated strings
+- Easier to debug
+- Handles all edge cases (null values, empty lists, etc.)
+- Produces clean, compilable output
