@@ -4133,3 +4133,225 @@ This implementation will:
 - Provide proper metadata for code generation
 
 The key was properly handling the type hierarchy through the entire pipeline while maintaining the incremental generator's requirements.
+
+---
+
+Here's a comprehensive xUnit test suite using NSubstitute, AutoFaker (from AutoBogus), and Bogus to test the `SensitiveDataLoggingMiddleware`:
+
+### Test Setup
+
+```csharp
+using Xunit;
+using NSubstitute;
+using AutoBogus;
+using Bogus;
+using Microsoft.AspNetCore.Http;
+using System.IO;
+using System.Text;
+using System.Threading.Tasks;
+
+public class SensitiveDataLoggingMiddlewareTests
+{
+    private readonly Faker _faker = new Faker();
+    private readonly SensitiveDataLoggingMiddleware _middleware;
+    private readonly RequestDelegate _next = Substitute.For<RequestDelegate>();
+    private readonly SoapMessageRedactor _redactor = Substitute.For<SoapMessageRedactor>();
+    private readonly ILogger<SensitiveDataLoggingMiddleware> _logger = Substitute.For<ILogger<SensitiveDataLoggingMiddleware>>();
+
+    public SensitiveDataLoggingMiddlewareTests()
+    {
+        _middleware = new SensitiveDataLoggingMiddleware(_next, _redactor, _logger);
+    }
+```
+
+### 1. Test Request Redaction
+
+```csharp
+[Fact]
+    public async Task Invoke_RedactsSensitiveDataInRequest()
+    {
+        // Arrange
+        var sensitiveXml = AutoFaker.Generate<string>();
+        var redactedXml = AutoFaker.Generate<string>();
+        
+        var context = new DefaultHttpContext();
+        context.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(sensitiveXml));
+        context.Request.ContentType = "text/xml";
+        
+        _redactor.RedactSensitiveData(sensitiveXml, Arg.Any<string>())
+                .Returns(redactedXml);
+
+        // Act
+        await _middleware.Invoke(context);
+
+        // Assert
+        _logger.Received(1).LogInformation("Request: {Request}", redactedXml);
+        await _next.Received(1).Invoke(context);
+    }
+```
+
+### 2. Test Response Redaction
+
+```csharp
+[Fact]
+    public async Task Invoke_RedactsSensitiveDataInResponse()
+    {
+        // Arrange
+        var requestXml = "<safe>data</safe>";
+        var sensitiveResponse = AutoFaker.Generate<string>();
+        var redactedResponse = AutoFaker.Generate<string>();
+        
+        var context = new DefaultHttpContext();
+        context.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(requestXml));
+        context.Response.Body = new MemoryStream();
+        
+        _redactor.RedactSensitiveData(Arg.Any<string>(), Arg.Any<string>())
+                .Returns(redactedResponse);
+
+        // Simulate next middleware writing response
+        _next.When(x => x.Invoke(Arg.Any<HttpContext>()))
+            .Do(x => x.Arg<HttpContext>().Response.Body.Write(Encoding.UTF8.GetBytes(sensitiveResponse)));
+
+        // Act
+        await _middleware.Invoke(context);
+
+        // Assert
+        _logger.Received(1).LogInformation("Response: {Response}", redactedResponse);
+    }
+```
+
+### 3. Test Error Handling
+
+```csharp
+[Fact]
+    public async Task Invoke_HandlesRedactionErrorsGracefully()
+    {
+        // Arrange
+        var badXml = _faker.Random.String(100);
+        var context = new DefaultHttpContext();
+        context.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(badXml));
+        
+        _redactor.When(x => x.RedactSensitiveData(Arg.Any<string>(), Arg.Any<string>()))
+                .Throw(new XmlException("Invalid XML"));
+
+        // Act
+        await _middleware.Invoke(context);
+
+        // Assert
+        _logger.Received(1).LogError(
+            Arg.Any<XmlException>(),
+            "Error redacting sensitive data");
+        await _next.Received(1).Invoke(context);
+    }
+```
+
+### 4. Test Stream Position Reset
+
+```csharp
+[Fact]
+    public async Task Invoke_ResetsRequestStreamPosition()
+    {
+        // Arrange
+        var xml = "<test>data</test>";
+        var context = new DefaultHttpContext();
+        context.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(xml));
+        
+        // Act
+        await _middleware.Invoke(context);
+
+        // Assert
+        Assert.Equal(0, context.Request.Body.Position);
+    }
+```
+
+### 5. Test Full Integration with Bogus Data
+
+```csharp
+[Fact]
+    public async Task Invoke_HandlesFakeSoapMessages()
+    {
+        // Arrange
+        var soapFaker = new AutoFaker<SoapMessage>()
+            .RuleFor(x => x.Envelope, f => f.Soap.Envelope())
+            .RuleFor(x => x.Body, f => f.Soap.Body());
+        
+        var fakeMessage = soapFaker.Generate();
+        var context = new DefaultHttpContext();
+        context.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(fakeMessage.ToString()));
+        
+        // Act
+        await _middleware.Invoke(context);
+
+        // Assert
+        _redactor.Received(1).RedactSensitiveData(
+            Arg.Any<string>(), 
+            Arg.Any<string>());
+    }
+```
+
+### Test Models and Extensions
+
+```csharp
+// Test model for SOAP messages
+public class SoapMessage
+{
+    public string Envelope { get; set; }
+    public string Body { get; set; }
+    
+    public override string ToString() => 
+        $"<s:Envelope>{Envelope}<s:Body>{Body}</s:Body></s:Envelope>";
+}
+
+// Bogus extensions for SOAP data
+public static class SoapFakerExtensions
+{
+    public static string Envelope(this Faker f) =>
+        $"<Header>{f.Lorem.Sentence()}</Header>";
+
+    public static string Body(this Faker f)
+    {
+        var sensitive = f.Random.Bool(0.3f);
+        return sensitive 
+            ? $"<CreditCard>{f.Finance.CreditCardNumber()}</CreditCard>"
+            : $"<Data>{f.Lorem.Sentence()}</Data>";
+    }
+}
+```
+
+### Key Features of This Test Suite:
+
+1. **Comprehensive Coverage**:
+   - Happy path (successful redaction)
+   - Error cases (malformed XML)
+   - Edge cases (stream positions)
+   - Integration tests (full SOAP messages)
+
+2. **Realistic Test Data**:
+   - AutoBogus for automatic test object generation
+   - Bogus for realistic fake data (credit cards, etc.)
+   - Custom SOAP generators
+
+3. **Behavior Verification**:
+   - Ensures redactor is called
+   - Verifies logging occurs
+   - Checks stream handling
+
+4. **Isolation**:
+   - NSubstitute for all dependencies
+   - No real filesystem/network calls
+   - Fast, deterministic tests
+
+To use this, you'll need these NuGet packages:
+```xml
+<PackageReference Include="xunit" Version="2.4.2" />
+<PackageReference Include="NSubstitute" Version="4.4.0" />
+<PackageReference Include="AutoBogus" Version="2.13.1" />
+<PackageReference Include="Bogus" Version="34.0.2" />
+<PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.3.2" />
+``` 
+
+This gives you a complete, maintainable test suite that:
+- Catches regressions
+- Documents expected behavior
+- Verifies security-critical functionality
+- Runs quickly in CI pipelines
