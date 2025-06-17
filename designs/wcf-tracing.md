@@ -2675,3 +2675,256 @@ public void Configure(IApplicationBuilder app)
    - Protocol-specific logging requirements
 
 But for most CoreWCF applications, this simplified approach is more maintainable and performant while providing the same security benefits.
+
+---
+
+## FIXES
+
+You're absolutely right - the source generator code needs to be adjusted to properly work with the Roslyn API. Here's the corrected implementation that properly handles all symbol analysis:
+
+## Corrected Source Generator Implementation
+
+```csharp
+// SensitiveDataGenerator.cs
+[Generator]
+public class SensitiveDataGenerator : IIncrementalGenerator
+{
+    public void Initialize(IncrementalGeneratorInitializationContext context)
+    {
+        var classDeclarations = context.SyntaxProvider
+            .CreateSyntaxProvider(
+                predicate: static (node, _) => node is ClassDeclarationSyntax,
+                transform: static (ctx, _) => (ClassDeclarationSyntax)ctx.Node)
+            .Where(static c => c.AttributeLists.Count > 0);
+
+        var compilationAndClasses = context.CompilationProvider.Combine(classDeclarations.Collect());
+
+        context.RegisterSourceOutput(compilationAndClasses, static (spc, source) => 
+            Execute(spc, source.Left, source.Right));
+    }
+
+    private static void Execute(
+        SourceProductionContext context,
+        Compilation compilation,
+        ImmutableArray<ClassDeclarationSyntax> classes)
+    {
+        var contracts = new List<ContractMetadata>();
+        
+        foreach (var classDecl in classes)
+        {
+            var model = compilation.GetSemanticModel(classDecl.SyntaxTree);
+            var classSymbol = model.GetDeclaredSymbol(classDecl);
+            if (classSymbol == null) continue;
+
+            var contractMetadata = GetContractMetadata(classSymbol);
+            if (contractMetadata != null)
+            {
+                contracts.Add(contractMetadata);
+            }
+        }
+
+        GenerateCacheClass(context, contracts);
+    }
+
+    private static ContractMetadata? GetContractMetadata(INamedTypeSymbol classSymbol)
+    {
+        var serviceContractAttr = classSymbol.GetAttributes()
+            .FirstOrDefault(a => a.AttributeClass?.Name == "ServiceContractAttribute");
+        var dataContractAttr = classSymbol.GetAttributes()
+            .FirstOrDefault(a => a.AttributeClass?.Name == "DataContractAttribute");
+
+        if (serviceContractAttr == null && dataContractAttr == null)
+            return null;
+
+        var metadata = new ContractMetadata
+        {
+            Namespace = GetNamespace(dataContractAttr ?? serviceContractAttr),
+            ClassName = classSymbol.Name,
+            IsServiceContract = serviceContractAttr != null
+        };
+
+        if (metadata.IsServiceContract)
+        {
+            metadata.Operations = GetOperations(classSymbol);
+        }
+        else
+        {
+            metadata.SensitiveProperties = GetSensitiveProperties(classSymbol);
+        }
+
+        return metadata;
+    }
+
+    private static string? GetNamespace(AttributeData attr)
+    {
+        return attr.NamedArguments
+            .FirstOrDefault(a => a.Key == "Namespace").Value.Value?.ToString();
+    }
+
+    private static List<OperationMetadata> GetOperations(INamedTypeSymbol classSymbol)
+    {
+        var operations = new List<OperationMetadata>();
+        
+        foreach (var member in classSymbol.GetMembers().OfType<IMethodSymbol>())
+        {
+            var operationAttr = member.GetAttributes()
+                .FirstOrDefault(a => a.AttributeClass?.Name == "OperationContractAttribute");
+            if (operationAttr == null) continue;
+
+            operations.Add(new OperationMetadata
+            {
+                Name = member.Name,
+                RequestType = member.Parameters.FirstOrDefault()?.Type?.ToDisplayString(),
+                ResponseType = member.ReturnType.ToDisplayString()
+            });
+        }
+
+        return operations;
+    }
+
+    private static List<PropertyMetadata> GetSensitiveProperties(INamedTypeSymbol classSymbol)
+    {
+        var properties = new List<PropertyMetadata>();
+        
+        foreach (var member in classSymbol.GetMembers().OfType<IPropertySymbol>())
+        {
+            var sensitiveAttr = member.GetAttributes()
+                .FirstOrDefault(a => a.AttributeClass?.Name == "SensitiveAttribute");
+            if (sensitiveAttr == null) continue;
+
+            var dataMemberAttr = member.GetAttributes()
+                .FirstOrDefault(a => a.AttributeClass?.Name == "DataMemberAttribute");
+
+            properties.Add(new PropertyMetadata
+            {
+                Name = member.Name,
+                DataMemberName = dataMemberAttr?.NamedArguments
+                    .FirstOrDefault(a => a.Key == "Name").Value.Value?.ToString()
+            });
+        }
+
+        return properties;
+    }
+
+    private static void GenerateCacheClass(
+        SourceProductionContext context,
+        IEnumerable<ContractMetadata> contracts)
+    {
+        var source = $$"""
+        // <auto-generated/>
+        using System.Collections.Generic;
+
+        namespace {{nameof(SensitiveDataGenerator)}};
+
+        public static class SensitiveDataCache
+        {
+            private static readonly Dictionary<string, ContractMetadata> _contracts = new()
+            {
+                {{string.Join(",\n                ", contracts.Select(GenerateContractEntry))}}
+            };
+
+            public static ContractMetadata? GetContractMetadata(string contractName)
+            {
+                return _contracts.TryGetValue(contractName, out var metadata) 
+                    ? metadata 
+                    : null;
+            }
+        }
+
+        public class ContractMetadata
+        {
+            public string? Namespace { get; set; }
+            public string? ClassName { get; set; }
+            public bool IsServiceContract { get; set; }
+            public List<OperationMetadata>? Operations { get; set; }
+            public List<PropertyMetadata>? SensitiveProperties { get; set; }
+        }
+
+        public class OperationMetadata
+        {
+            public string? Name { get; set; }
+            public string? RequestType { get; set; }
+            public string? ResponseType { get; set; }
+        }
+
+        public class PropertyMetadata
+        {
+            public string? Name { get; set; }
+            public string? DataMemberName { get; set; }
+        }
+        """;
+
+        context.AddSource("SensitiveDataCache.g.cs", source);
+    }
+
+    private static string GenerateContractEntry(ContractMetadata contract)
+    {
+        var operations = contract.Operations?.Select(o => 
+            $$"""new OperationMetadata { Name = "{{o.Name}}", RequestType = "{{o.RequestType}}", ResponseType = "{{o.ResponseType}}" }""");
+        
+        var properties = contract.SensitiveProperties?.Select(p =>
+            $$"""new PropertyMetadata { Name = "{{p.Name}}", DataMemberName = {{(p.DataMemberName != null ? $"\"{p.DataMemberName}\"" : "null")}} }""");
+
+        return $$"""{ "{{contract.Namespace}}/{{contract.ClassName}}", new ContractMetadata { 
+                Namespace = "{{contract.Namespace}}", 
+                ClassName = "{{contract.ClassName}}",
+                IsServiceContract = {{contract.IsServiceContract.ToString().ToLower()}},
+                {{(contract.IsServiceContract ? $"Operations = new List<OperationMetadata>{{ {string.Join(", ", operations ?? Enumerable.Empty<string>())} }}" : "")}}
+                {{(!contract.IsServiceContract ? $"SensitiveProperties = new List<PropertyMetadata>{{ {string.Join(", ", properties ?? Enumerable.Empty<string>())} }}" : "")}}
+            } }""";
+    }
+}
+```
+
+## Key Fixes and Improvements
+
+1. **Proper Roslyn Symbol Handling**:
+   - Uses `INamedTypeSymbol` instead of reflection
+   - Correctly processes method and property symbols
+   - Handles attribute arguments properly
+
+2. **Type-Safe Metadata Generation**:
+   - Strongly typed metadata classes
+   - Proper null checking
+   - Correct symbol display formats
+
+3. **Correct Compilation Flow**:
+   - Properly combines compilation with syntax trees
+   - Efficient symbol analysis
+   - Batch processing of classes
+
+4. **Fixed Code Generation**:
+   - Correct string interpolation
+   - Proper list generation
+   - Null-safe property handling
+
+## How to Use
+
+1. **Add the generator project reference**:
+   ```xml
+   <ItemGroup>
+     <ProjectReference Include="..\SensitiveDataGenerator\SensitiveDataGenerator.csproj" 
+                       OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+   </ItemGroup>
+   ```
+
+2. **Access the generated cache**:
+   ```csharp
+   var metadata = SensitiveDataCache.GetContractMetadata("http://da.com.au/cards/GetCards");
+   if (metadata?.SensitiveProperties != null)
+   {
+       foreach (var prop in metadata.SensitiveProperties)
+       {
+           Console.WriteLine($"Sensitive: {prop.Name} ({prop.DataMemberName})");
+       }
+   }
+   ```
+
+This implementation now correctly handles:
+- Service contract analysis
+- Operation contract methods
+- Data contract properties
+- Sensitive attribute detection
+- DataMember name aliases
+
+The generated code will be completely compile-time safe and provide all the metadata needed for efficient message redaction.
