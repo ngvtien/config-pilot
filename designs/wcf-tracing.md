@@ -4355,3 +4355,315 @@ This gives you a complete, maintainable test suite that:
 - Documents expected behavior
 - Verifies security-critical functionality
 - Runs quickly in CI pipelines
+
+---
+
+## Fixing UnderlyType Name
+
+```csharp
+// SensitiveDataGenerator.cs
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using System.Collections.Immutable;
+using System.Linq;
+using System.Collections.Generic;
+using System.Text;
+
+[Generator]
+public class SensitiveDataGenerator : IIncrementalGenerator
+{
+    public void Initialize(IncrementalGeneratorInitializationContext context)
+    {
+        var classDeclarations = context.SyntaxProvider
+            .CreateSyntaxProvider(
+                predicate: static (node, _) => node is ClassDeclarationSyntax cls && 
+                    cls.AttributeLists.Any(al => al.Attributes.Any()),
+                transform: static (ctx, _) => (ClassDeclarationSyntax)ctx.Node)
+            .Where(static c => c != null);
+
+        var compilationAndClasses = context.CompilationProvider.Combine(classDeclarations.Collect());
+
+        context.RegisterSourceOutput(compilationAndClasses, static (spc, source) => 
+            Execute(spc, source.Left, source.Right));
+    }
+
+    private static void Execute(
+        SourceProductionContext context,
+        Compilation compilation,
+        ImmutableArray<ClassDeclarationSyntax> classes)
+    {
+        var contracts = new List<ContractMetadata>();
+        
+        foreach (var classDecl in classes)
+        {
+            var model = compilation.GetSemanticModel(classDecl.SyntaxTree);
+            var classSymbol = model.GetDeclaredSymbol(classDecl);
+            if (classSymbol == null) continue;
+
+            var contractMetadata = GetContractMetadata(classSymbol);
+            if (contractMetadata != null)
+            {
+                contracts.Add(contractMetadata);
+            }
+        }
+
+        if (contracts.Any())
+        {
+            GenerateCacheClass(context, contracts);
+        }
+    }
+
+    private static ContractMetadata? GetContractMetadata(INamedTypeSymbol classSymbol)
+    {
+        // Use full type names to avoid namespace issues
+        var serviceContractAttr = classSymbol.GetAttributes()
+            .FirstOrDefault(a => a.AttributeClass?.ToDisplayString().Contains("ServiceContractAttribute") == true);
+        var dataContractAttr = classSymbol.GetAttributes()
+            .FirstOrDefault(a => a.AttributeClass?.ToDisplayString().Contains("DataContractAttribute") == true);
+
+        if (serviceContractAttr == null && dataContractAttr == null)
+            return null;
+
+        var metadata = new ContractMetadata
+        {
+            Namespace = GetNamespace(dataContractAttr ?? serviceContractAttr) ?? classSymbol.ContainingNamespace?.ToDisplayString() ?? "Global",
+            ClassName = classSymbol.Name,
+            IsServiceContract = serviceContractAttr != null
+        };
+
+        if (metadata.IsServiceContract)
+        {
+            metadata.Operations = GetOperations(classSymbol);
+        }
+        else
+        {
+            metadata.SensitiveProperties = GetSensitiveProperties(classSymbol);
+        }
+
+        return metadata;
+    }
+
+    private static string? GetNamespace(AttributeData attr)
+    {
+        return attr.NamedArguments
+            .FirstOrDefault(a => a.Key == "Namespace").Value.Value?.ToString();
+    }
+
+    private static List<OperationMetadata> GetOperations(INamedTypeSymbol classSymbol)
+    {
+        var operations = new List<OperationMetadata>();
+        
+        foreach (var member in classSymbol.GetMembers().OfType<IMethodSymbol>())
+        {
+            var operationAttr = member.GetAttributes()
+                .FirstOrDefault(a => a.AttributeClass?.ToDisplayString().Contains("OperationContractAttribute") == true);
+            if (operationAttr == null) continue;
+
+            var requestType = member.Parameters.FirstOrDefault()?.Type;
+            var responseType = member.ReturnType;
+
+            operations.Add(new OperationMetadata
+            {
+                Name = member.Name,
+                RequestType = GetUnderlyingTypeName(requestType),
+                ResponseType = GetUnderlyingTypeName(responseType)
+            });
+        }
+
+        return operations;
+    }
+
+    private static string GetUnderlyingTypeName(ITypeSymbol? type)
+    {
+        if (type == null) return "void";
+
+        // Handle Task<T> and Task (async methods)
+        if (type is INamedTypeSymbol namedType)
+        {
+            // Task<T> -> T
+            if (namedType.Name == "Task" && namedType.TypeArguments.Length == 1)
+            {
+                return GetUnderlyingTypeName(namedType.TypeArguments[0]);
+            }
+            
+            // Task -> void
+            if (namedType.Name == "Task" && namedType.TypeArguments.Length == 0)
+            {
+                return "void";
+            }
+
+            // Arrays: T[] -> T
+            if (namedType.TypeKind == TypeKind.Array && namedType is IArrayTypeSymbol arrayType)
+            {
+                return GetUnderlyingTypeName(arrayType.ElementType);
+            }
+
+            // Generic collections: List<T>, IEnumerable<T>, etc. -> T
+            if (namedType.TypeArguments.Length == 1 && 
+                (namedType.Name.Contains("List") || 
+                 namedType.Name.Contains("Collection") || 
+                 namedType.Name.Contains("Enumerable") ||
+                 namedType.Name.Contains("Array")))
+            {
+                return GetUnderlyingTypeName(namedType.TypeArguments[0]);
+            }
+        }
+
+        // Handle array types
+        if (type is IArrayTypeSymbol arrayTypeSymbol)
+        {
+            return GetUnderlyingTypeName(arrayTypeSymbol.ElementType);
+        }
+
+        // Return the simple type name (no namespace, no generics)
+        return type.Name;
+    }
+
+    private static List<PropertyMetadata> GetSensitiveProperties(INamedTypeSymbol classSymbol)
+    {
+        var properties = new List<PropertyMetadata>();
+        
+        foreach (var member in classSymbol.GetMembers().OfType<IPropertySymbol>())
+        {
+            var sensitiveAttr = member.GetAttributes()
+                .FirstOrDefault(a => a.AttributeClass?.ToDisplayString().Contains("SensitiveAttribute") == true);
+            if (sensitiveAttr == null) continue;
+
+            var dataMemberAttr = member.GetAttributes()
+                .FirstOrDefault(a => a.AttributeClass?.ToDisplayString().Contains("DataMemberAttribute") == true);
+
+            properties.Add(new PropertyMetadata
+            {
+                Name = member.Name,
+                DataMemberName = dataMemberAttr?.NamedArguments
+                    .FirstOrDefault(a => a.Key == "Name").Value.Value?.ToString()
+            });
+        }
+
+        return properties;
+    }
+
+    private static void GenerateCacheClass(
+        SourceProductionContext context,
+        IEnumerable<ContractMetadata> contracts)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("// <auto-generated/>");
+        sb.AppendLine("using System.Collections.Generic;");
+        sb.AppendLine("using System.Collections.Concurrent;");
+        sb.AppendLine();
+        sb.AppendLine($"namespace {nameof(SensitiveDataGenerator)};");
+        sb.AppendLine();
+        sb.AppendLine("public static class SensitiveDataCache");
+        sb.AppendLine("{");
+        sb.AppendLine("    private static readonly ConcurrentDictionary<string, ContractMetadata> _contracts = new()");
+        sb.AppendLine("    {");
+        
+        var contractEntries = contracts.Select(GenerateContractEntry).ToList();
+        for (int i = 0; i < contractEntries.Count; i++)
+        {
+            sb.Append("        ");
+            sb.Append(contractEntries[i]);
+            if (i < contractEntries.Count - 1)
+                sb.AppendLine(",");
+            else
+                sb.AppendLine();
+        }
+        
+        sb.AppendLine("    };");
+        sb.AppendLine();
+        sb.AppendLine("    public static ContractMetadata? GetContractMetadata(string contractName)");
+        sb.AppendLine("    {");
+        sb.AppendLine("        return _contracts.TryGetValue(contractName, out var metadata)");
+        sb.AppendLine("            ? metadata");
+        sb.AppendLine("            : null;");
+        sb.AppendLine("    }");
+        sb.AppendLine("}");
+        sb.AppendLine();
+        
+        // Generate the metadata classes
+        sb.AppendLine("public class ContractMetadata");
+        sb.AppendLine("{");
+        sb.AppendLine("    public string? Namespace { get; set; }");
+        sb.AppendLine("    public string? ClassName { get; set; }");
+        sb.AppendLine("    public bool IsServiceContract { get; set; }");
+        sb.AppendLine("    public List<OperationMetadata>? Operations { get; set; }");
+        sb.AppendLine("    public List<PropertyMetadata>? SensitiveProperties { get; set; }");
+        sb.AppendLine("}");
+        sb.AppendLine();
+        sb.AppendLine("public class OperationMetadata");
+        sb.AppendLine("{");
+        sb.AppendLine("    public string? Name { get; set; }");
+        sb.AppendLine("    public string? RequestType { get; set; }");
+        sb.AppendLine("    public string? ResponseType { get; set; }");
+        sb.AppendLine("}");
+        sb.AppendLine();
+        sb.AppendLine("public class PropertyMetadata");
+        sb.AppendLine("{");
+        sb.AppendLine("    public string? Name { get; set; }");
+        sb.AppendLine("    public string? DataMemberName { get; set; }");
+        sb.AppendLine("}");
+
+        context.AddSource("SensitiveDataCache.g.cs", sb.ToString());
+    }
+
+    private static string GenerateContractEntry(ContractMetadata contract)
+    {
+        var sb = new StringBuilder();
+        sb.Append($"{{ \"{EscapeString(contract.Namespace)}/{EscapeString(contract.ClassName)}\", new ContractMetadata {{ ");
+        sb.Append($"Namespace = \"{EscapeString(contract.Namespace)}\", ");
+        sb.Append($"ClassName = \"{EscapeString(contract.ClassName)}\", ");
+        sb.Append($"IsServiceContract = {contract.IsServiceContract.ToString().ToLower()}");
+        
+        if (contract.IsServiceContract && contract.Operations?.Any() == true)
+        {
+            sb.Append(", Operations = new List<OperationMetadata> { ");
+            var operations = contract.Operations.Select(o => 
+                $"new OperationMetadata {{ Name = \"{EscapeString(o.Name)}\", RequestType = \"{EscapeString(o.RequestType)}\", ResponseType = \"{EscapeString(o.ResponseType)}\" }}");
+            sb.Append(string.Join(", ", operations));
+            sb.Append(" }");
+        }
+        
+        if (!contract.IsServiceContract && contract.SensitiveProperties?.Any() == true)
+        {
+            sb.Append(", SensitiveProperties = new List<PropertyMetadata> { ");
+            var properties = contract.SensitiveProperties.Select(p =>
+                $"new PropertyMetadata {{ Name = \"{EscapeString(p.Name)}\", DataMemberName = {(p.DataMemberName != null ? $"\"{EscapeString(p.DataMemberName)}\"" : "null")} }}");
+            sb.Append(string.Join(", ", properties));
+            sb.Append(" }");
+        }
+        
+        sb.Append(" } }");
+        return sb.ToString();
+    }
+    
+    private static string EscapeString(string? input)
+    {
+        return input?.Replace("\"", "\\\"").Replace("\\", "\\\\") ?? "";
+    }
+}
+
+// Supporting classes that should be defined elsewhere in your project
+public class ContractMetadata
+{
+    public string? Namespace { get; set; }
+    public string? ClassName { get; set; }
+    public bool IsServiceContract { get; set; }
+    public List<OperationMetadata>? Operations { get; set; }
+    public List<PropertyMetadata>? SensitiveProperties { get; set; }
+}
+
+public class OperationMetadata
+{
+    public string? Name { get; set; }
+    public string? RequestType { get; set; }
+    public string? ResponseType { get; set; }
+}
+
+public class PropertyMetadata
+{
+    public string? Name { get; set; }
+    public string? DataMemberName { get; set; }
+}
+```
