@@ -4557,21 +4557,19 @@ public class SensitiveDataGenerator : IIncrementalGenerator
         sb.AppendLine();
         sb.AppendLine("public static class SensitiveDataCache");
         sb.AppendLine("{");
-        sb.AppendLine("    private static readonly ConcurrentDictionary<string, ContractMetadata> _contracts = new()");
+        sb.AppendLine("    private static readonly ConcurrentDictionary<string, ContractMetadata> _contracts;");
+        sb.AppendLine();
+        sb.AppendLine("    static SensitiveDataCache()");
         sb.AppendLine("    {");
+        sb.AppendLine("        _contracts = new ConcurrentDictionary<string, ContractMetadata>();");
         
         var contractEntries = contracts.Select(GenerateContractEntry).ToList();
-        for (int i = 0; i < contractEntries.Count; i++)
+        foreach (var entry in contractEntries)
         {
-            sb.Append("        ");
-            sb.Append(contractEntries[i]);
-            if (i < contractEntries.Count - 1)
-                sb.AppendLine(",");
-            else
-                sb.AppendLine();
+            sb.AppendLine($"        _contracts.TryAdd({entry});");
         }
         
-        sb.AppendLine("    };");
+        sb.AppendLine("    }");
         sb.AppendLine();
         sb.AppendLine("    public static ContractMetadata? GetContractMetadata(string contractName)");
         sb.AppendLine("    {");
@@ -4611,7 +4609,7 @@ public class SensitiveDataGenerator : IIncrementalGenerator
     private static string GenerateContractEntry(ContractMetadata contract)
     {
         var sb = new StringBuilder();
-        sb.Append($"{{ \"{EscapeString(contract.Namespace)}/{EscapeString(contract.ClassName)}\", new ContractMetadata {{ ");
+        sb.Append($"\"{EscapeString(contract.Namespace)}/{EscapeString(contract.ClassName)}\", new ContractMetadata {{ ");
         sb.Append($"Namespace = \"{EscapeString(contract.Namespace)}\", ");
         sb.Append($"ClassName = \"{EscapeString(contract.ClassName)}\", ");
         sb.Append($"IsServiceContract = {contract.IsServiceContract.ToString().ToLower()}");
@@ -4634,7 +4632,7 @@ public class SensitiveDataGenerator : IIncrementalGenerator
             sb.Append(" }");
         }
         
-        sb.Append(" } }");
+        sb.Append(" }");
         return sb.ToString();
     }
     
