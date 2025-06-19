@@ -5217,3 +5217,74 @@ This approach gives you:
 - **Minimal memory usage** - just field names in memory
 - **Maximum throughput** - optimized regex and hashset lookups
 - **Simple deployment** - no complex runtime dependencies
+
+---
+
+## Fixing Regex issue
+
+Looking at your XML structure, I think the issue is that your regex isn't correctly handling the namespace prefixes. Let me help you debug this step by step.
+
+Let me search for more information about XML namespace handling in regex patterns to give you a better solution.The issue is likely with the backreference in your regex. Let me create a simple test to help debug this:The main issue with your original regex is the backreference syntax. Here's what's wrong and the fix:
+
+**Problem in your original pattern:**
+```regex
+<(?:(\w+):)?(?<field>[\w]+)(?:\s[^>]*)?>(.*?)</(?:\1:)?\k<field>>
+```
+
+The issue is mixing numbered groups `\1` with named groups `\k<field>`. When you use `(?:(\w+):)?`, the `(\w+)` creates group 1, but then you reference it as `\1` in the closing tag. However, since the entire group is optional with `?`, the backreference doesn't work properly.
+
+**Here's the corrected version:**
+
+```csharp
+public class XmlRedactor
+{
+    private static readonly HashSet<string> _sensitiveFields = 
+        new HashSet<string>(SensitiveFields.FieldNames, StringComparer.OrdinalIgnoreCase);
+    
+    private static readonly Regex XmlFieldRegex = new Regex(
+        @"(<(?:(?<prefix>\w+):)?(?<field>\w+)(?:\s[^>]*)?>)(.*?)(</(?:\k<prefix>:)?\k<field>>)",
+        RegexOptions.Compiled | RegexOptions.Singleline);
+
+    public string RedactSensitiveXml(string xml)
+    {
+        return XmlFieldRegex.Replace(xml, match =>
+        {
+            var fieldName = match.Groups["field"].Value;
+            if (_sensitiveFields.Contains(fieldName))
+            {
+                return $"{match.Groups[1].Value}****{match.Groups[3].Value}";
+            }
+            return match.Value;
+        });
+    }
+}
+```
+
+**Key changes:**
+1. **Fixed backreference**: Use named groups consistently: `(?<prefix>\w+)` and `\k<prefix>`
+2. **Captured groups**: Wrapped opening tag, content, and closing tag in separate groups for easier replacement
+3. **HashSet lookup**: Much faster than `ConcurrentBag.Contains()`
+
+**Even simpler and more reliable approach:**
+
+```csharp
+public class XmlRedactor
+{
+    private static readonly HashSet<string> _sensitiveFields = 
+        new HashSet<string>(SensitiveFields.FieldNames, StringComparer.OrdinalIgnoreCase);
+
+    public string RedactSensitiveXml(string xml)
+    {
+        string result = xml;
+        foreach (var fieldName in _sensitiveFields)
+        {
+            // This pattern is much simpler and more reliable
+            var pattern = $@"(<(?:\w+:)?{Regex.Escape(fieldName)}>)([^<]*)(</(?:\w+:)?{Regex.Escape(fieldName)}>)";
+            result = Regex.Replace(result, pattern, "$1****$3", RegexOptions.Singleline);
+        }
+        return result;
+    }
+}
+```
+
+Try the debug code above to see which pattern works best for your specific XML structure. The simpler approach (last one) is often more reliable for XML redaction scenarios.
