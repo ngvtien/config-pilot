@@ -5288,3 +5288,209 @@ public class XmlRedactor
 ```
 
 Try the debug code above to see which pattern works best for your specific XML structure. The simpler approach (last one) is often more reliable for XML redaction scenarios.
+
+---
+
+## Test SOAP Message
+Yes, you **can fake XML content** using libraries like **Bogus** and **AutoFaker**, but with some manual configuration. Neither library has built-in support for structured XML generation, but you can:
+
+### ✅ Approach 1: Fake XML as a string using Bogus
+
+You can define a property to hold an XML string and use `RuleFor` to assign a formatted fake XML.
+
+```csharp
+public class XmlWrapper
+{
+    public string XmlContent { get; set; } = default!;
+}
+
+var faker = new Faker<XmlWrapper>()
+    .RuleFor(x => x.XmlContent, f => 
+        $@"<person>
+                <name>{f.Name.FullName()}</name>
+                <email>{f.Internet.Email()}</email>
+                <dob>{f.Date.Past(30).ToString("yyyy-MM-dd")}</dob>
+           </person>");
+
+var fakeData = faker.Generate();
+Console.WriteLine(fakeData.XmlContent);
+```
+
+---
+
+### ✅ Approach 2: Use AutoFaker with manual override for XML
+
+Assuming you use [AutoBogus](https://github.com/nickdodd79/AutoBogus) (AutoFaker), you can override fields similarly:
+
+```csharp
+public class XmlPayload
+{
+    public string Payload { get; set; } = default!;
+}
+
+var faker = AutoFaker<XmlPayload>
+    .Generate(f => {
+        f.RuleFor(x => x.Payload, () => 
+            $@"<invoice>
+                   <id>{Guid.NewGuid()}</id>
+                   <amount>{new Random().Next(100, 500)}</amount>
+               </invoice>");
+    });
+
+Console.WriteLine(faker.Payload);
+```
+
+---
+
+### 🔁 If you want to generate **structured XML with classes**, then serialize:
+
+```csharp
+public class Person
+{
+    public string Name { get; set; }
+    public string Email { get; set; }
+}
+
+var personFaker = new Faker<Person>()
+    .RuleFor(p => p.Name, f => f.Name.FullName())
+    .RuleFor(p => p.Email, f => f.Internet.Email());
+
+var person = personFaker.Generate();
+
+var serializer = new XmlSerializer(typeof(Person));
+using var sw = new StringWriter();
+serializer.Serialize(sw, person);
+var xml = sw.ToString();
+
+Console.WriteLine(xml);
+```
+
+---
+
+### Summary:
+
+| Use Case                      | How to Achieve It                                   |
+| ----------------------------- | --------------------------------------------------- |
+| Simple fake XML string        | Use `Faker<T>.RuleFor` with string formatting       |
+| With AutoFaker                | Use `AutoFaker<T>.Generate(f => ...)` with override |
+| Real XML structure from class | Combine Faker + `XmlSerializer`                     |
+
+---
+
+To fake a **SOAP envelope request and response** using **Bogus**, **AutoFaker**, or manually with serialization, here's how you can approach it depending on your use case.
+
+---
+
+## ✅ Option 1: **Fake SOAP request/response as raw strings** (for testing/mocking)
+
+You can just generate them as **formatted XML strings**.
+
+### 🔹 Example: Fake SOAP Request Envelope
+
+```csharp
+public class SoapWrapper
+{
+    public string SoapRequest { get; set; } = default!;
+    public string SoapResponse { get; set; } = default!;
+}
+
+var faker = new Faker<SoapWrapper>()
+    .RuleFor(x => x.SoapRequest, f => $@"
+<soapenv:Envelope xmlns:soapenv=""http://schemas.xmlsoap.org/soap/envelope/"" xmlns:urn=""urn:example"">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <urn:GetCustomer>
+         <urn:CustomerId>{f.Random.Int(1000, 9999)}</urn:CustomerId>
+      </urn:GetCustomer>
+   </soapenv:Body>
+</soapenv:Envelope>")
+    .RuleFor(x => x.SoapResponse, f => $@"
+<soapenv:Envelope xmlns:soapenv=""http://schemas.xmlsoap.org/soap/envelope/"" xmlns:urn=""urn:example"">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <urn:GetCustomerResponse>
+         <urn:Customer>
+            <urn:Id>{f.Random.Int(1000, 9999)}</urn:Id>
+            <urn:Name>{f.Name.FullName()}</urn:Name>
+            <urn:Email>{f.Internet.Email()}</urn:Email>
+         </urn:Customer>
+      </urn:GetCustomerResponse>
+   </soapenv:Body>
+</soapenv:Envelope>");
+
+var fakeSoap = faker.Generate();
+Console.WriteLine("REQUEST:");
+Console.WriteLine(fakeSoap.SoapRequest);
+Console.WriteLine("RESPONSE:");
+Console.WriteLine(fakeSoap.SoapResponse);
+```
+
+---
+
+## ✅ Option 2: **Generate strongly-typed object and serialize to SOAP**
+
+If you want structured object → XML serialization → SOAP envelope wrapping, here’s a slightly more involved path.
+
+### Step 1: Define payload and wrap manually
+
+```csharp
+public class Customer
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = default!;
+    public string Email { get; set; } = default!;
+}
+
+public class GetCustomerResponse
+{
+    public Customer Customer { get; set; } = default!;
+}
+```
+
+### Step 2: Fake the object and wrap it in SOAP
+
+```csharp
+var customerFaker = new Faker<Customer>()
+    .RuleFor(c => c.Id, f => f.Random.Int(1000, 9999))
+    .RuleFor(c => c.Name, f => f.Name.FullName())
+    .RuleFor(c => c.Email, f => f.Internet.Email());
+
+var response = new GetCustomerResponse { Customer = customerFaker.Generate() };
+
+// Serialize response to XML
+var xmlSerializer = new XmlSerializer(typeof(GetCustomerResponse));
+string bodyXml;
+using (var stringWriter = new StringWriter())
+{
+    xmlSerializer.Serialize(stringWriter, response);
+    bodyXml = stringWriter.ToString();
+}
+
+// Inject into SOAP envelope manually
+string fullSoapResponse = $@"
+<soapenv:Envelope xmlns:soapenv=""http://schemas.xmlsoap.org/soap/envelope/"">
+   <soapenv:Header/>
+   <soapenv:Body>
+      {bodyXml}
+   </soapenv:Body>
+</soapenv:Envelope>";
+
+Console.WriteLine(fullSoapResponse);
+```
+
+---
+
+## 🔧 Option 3: For integration tests (HttpClient or mock handler)
+
+You can return the generated SOAP string as a mocked HTTP response if you're testing service integrations.
+
+---
+
+## Summary
+
+| Goal                                | Suggested Approach                        |
+| ----------------------------------- | ----------------------------------------- |
+| Fake raw SOAP string                | Use `Faker<T>` with XML string templates  |
+| Typed object → SOAP XML             | Combine `Bogus` with `XmlSerializer`      |
+| Integration testing with HttpClient | Return fake SOAP via `HttpMessageHandler` |
+
