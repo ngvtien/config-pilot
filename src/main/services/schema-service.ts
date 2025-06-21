@@ -3,6 +3,8 @@ import { JSONSchema7 } from 'json-schema';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { FlattenedResource, SchemaSource, SchemaTreeNode } from '../../shared/types/schema';
+import { CRDManagementService } from './crd-management-service';
+import { CRDSchema } from "../../shared/types/kubernetes"
 
 // Update the RawSchemaCache interface to include the source path
 interface RawSchemaCache {
@@ -14,6 +16,7 @@ interface RawSchemaCache {
 }
 
 class SchemaService {
+  private crdService?: CRDManagementService;
   private resourcesBySource: Map<string, Map<string, FlattenedResource>> = new Map();
   private schemaSources: Map<string, SchemaSource> = new Map();
   // New: Cache for raw schemas with $ref intact
@@ -63,6 +66,76 @@ class SchemaService {
       throw error;
     }
   }
+
+  /**
+   * Initialize CRD discovery after vanilla schemas are loaded
+   */
+  async initializeCRDs(kubeConfigPath?: string): Promise<void> {
+    try {
+      console.log('=== INITIALIZING CRD DISCOVERY ===');
+      
+      // Initialize CRD service
+      this.crdService = new CRDManagementService(kubeConfigPath);
+      
+      // Discover CRDs from connected cluster
+      const clusterCRDs = await this.crdService.discoverClusterCRDs();
+      console.log(`Discovered ${clusterCRDs.length} CRDs from cluster`);
+      
+      // Convert CRDs to schema format and add to cache
+      for (const crd of clusterCRDs) {
+        await this.addCRDToSchemaCache(crd);
+      }
+      
+      console.log('=== CRD DISCOVERY COMPLETED ===');
+    } catch (error) {
+      console.warn('CRD discovery failed (cluster may not be accessible):', error);
+      // Don't throw - vanilla k8s schemas should still work
+    }
+  }
+  
+  /**
+   * Convert CRD schema to our internal format and add to cache
+   */
+  private async addCRDToSchemaCache(crd: CRDSchema): Promise<void> {
+    const cacheKey = `crd-${crd.group}-${crd.version}`;
+    
+    // Convert CRD OpenAPI v3 schema to JSON Schema v7 format
+    const jsonSchema: JSONSchema7 = {
+      type: 'object',
+      definitions: {
+        [crd.kind]: {
+          type: 'object',
+          properties: {
+            apiVersion: {
+              type: 'string',
+              enum: [`${crd.group}/${crd.version}`]
+            },
+            kind: {
+              type: 'string',
+              enum: [crd.kind]
+            },
+            metadata: {
+              $ref: '#/definitions/ObjectMeta'
+            },
+            spec: crd.schema || {},
+            status: {
+              type: 'object',
+              additionalProperties: true
+            }
+          },
+          required: ['apiVersion', 'kind']
+        }
+      }
+    };
+    
+    this.rawSchemaCache.set(cacheKey, {
+      schema: jsonSchema,
+      dereferencedPaths: new Set(),
+      lastAccessed: Date.now(),
+      filePath: 'cluster-crd',
+      source: 'cluster'
+    });
+  }  
 
   /**
    * Build a hierarchical tree structure from JSON schema with full field information
@@ -378,6 +451,8 @@ class SchemaService {
               console.log(`✅ Stored in cache with key: ${cacheKey}`);
               console.log(`Cache size after storing: ${this.rawSchemaCache.size}`);
 
+              this.extractBasicResourceInfo(schema, source);
+              
             } catch (parseError) {
               console.error(`❌ Failed to parse JSON from ${definitionsPath}:`, parseError);
             }

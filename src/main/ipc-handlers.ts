@@ -4,6 +4,7 @@ import * as path from 'path';
 import { exec } from "child_process"
 import util from "util"
 import yaml from "js-yaml"
+import Store from 'electron-store';
 import { VaultService } from './vault-service'
 import { VaultCredentialManager } from './vault-credential-manager'
 import { ArgoCDService } from './argocd-service'
@@ -29,11 +30,12 @@ let platformDetectionService: PlatformDetectionService | null = null
 export function initializeSchemaHandlers(): void {
 
   // Auto-initialize schema service immediately
-  const initializeSchemas = async () => {
-    try {
-      const appDataPath = app.getPath('userData');
-      console.log('=== AUTO-INITIALIZING SCHEMA SERVICE ===');
-      console.log('App data path:', appDataPath);
+const initializeSchemas = async () => {
+  try {
+    const appDataPath = app.getPath('userData');
+
+    console.log('🔄 Auto-initializing schemas...');
+    console.log('App data path:', appDataPath);    
 
       // Register Kubernetes schema sources using Node.js path.join for main process
       schemaService.registerSchemaSource({
@@ -42,30 +44,25 @@ export function initializeSchemaHandlers(): void {
         path: path.join(appDataPath, 'schemas', 'k8s'),
         enabled: true
       });
-
-      // Register OpenShift schema sources
-      schemaService.registerSchemaSource({
-        id: 'openshift',
-        name: 'OpenShift API',
-        path: path.join(appDataPath, 'schemas', 'openshift'),
-        enabled: false
-      });
-
-      // Register ArgoCD schema sources
-      schemaService.registerSchemaSource({
-        id: 'argocd',
-        name: 'ArgoCD API',
-        path: path.join(appDataPath, 'schemas', 'argocd'),
-        enabled: false
-      });
-
-      await schemaService.initialize();
-      console.log('✅ Schema service auto-initialized successfully');
-    } catch (error: any) {
-      console.error('❌ Schema auto-initialization failed:', error);
-    }
-  };
-
+          
+    // Initialize vanilla k8s schemas first
+    await schemaService.initialize();
+    console.log('✅ Vanilla k8s schemas loaded');
+    
+   // Get the saved kubeconfig path from store
+   const ElectronStore = (await import('electron-store')).default;
+    const store = new ElectronStore();
+    const savedConfigPath = (store as any).get('kubeConfigPath') as string | undefined;
+   
+    // Then discover and load CRDs from cluster
+    await schemaService.initializeCRDs(savedConfigPath);
+    console.log('✅ CRD discovery completed');
+          
+  } catch (error: any) {
+    console.error('❌ Schema auto-initialization failed:', error);
+  }
+};
+// ... existing code ...
   // Initialize immediately
   initializeSchemas();
 

@@ -9,6 +9,11 @@ import type {
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import * as yaml from 'js-yaml'
+import { exec } from 'child_process'
+import { promisify } from 'util'
+
+
+const execAsync = promisify(exec)
 
 export class CRDManagementService {
     private kubeConfig: KubeConfig
@@ -19,6 +24,10 @@ export class CRDManagementService {
     private initialized: boolean = false
 
     constructor(kubeConfigPath?: string, storageDir?: string) {
+        
+        // // Temporarily disable TLS verification for local development
+        // const originalTLSReject = process.env.NODE_TLS_REJECT_UNAUTHORIZED
+        // process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
         this.kubeConfig = new KubeConfig()
 
         if (kubeConfigPath) {
@@ -26,6 +35,27 @@ export class CRDManagementService {
         } else {
             this.kubeConfig.loadFromDefault()
         }
+
+    // // Check if we're connecting to a local cluster using HTTP
+    // const currentCluster = this.kubeConfig.getCurrentCluster()
+    // const isHTTPCluster = currentCluster && currentCluster.server.startsWith('http://')
+    
+    // if (isHTTPCluster) {
+    //     // For HTTP clusters, we need to set insecure-skip-tls-verify to true
+    //     // This modifies the cluster configuration directly
+    //     const clusters = this.kubeConfig.clusters
+    //     //const currentClusterName = this.kubeConfig.getCurrentContext()?.cluster
+    //     const currentClusterName = this.kubeConfig.getCurrentCluster.name; //.getCurrentContext()?.cluster
+        
+    //     if (currentClusterName) {
+    //         const cluster = clusters.find(c => c.name === currentClusterName)
+    //         if (cluster) {
+    //             // Set the insecure-skip-tls-verify flag for HTTP clusters
+    //             (cluster as any).skipTLSVerify = true
+    //             console.log('🔓 Enabled insecure TLS skip for HTTP cluster:', cluster.server)
+    //         }
+    //     }
+    // }
 
         this.customApi = this.kubeConfig.makeApiClient(CustomObjectsApi)
         this.apiExtensionsApi = this.kubeConfig.makeApiClient(ApiextensionsV1Api)
@@ -308,23 +338,138 @@ export class CRDManagementService {
         return updatedCRD
     }
 
+    // async discoverClusterCRDs(): Promise<CRDSchema[]> {
+    //     await this.ensureInitialized()
+    //     try {
+    //         const response = await this.apiExtensionsApi.listCustomResourceDefinition()
+    //         const crds: CRDSchema[] = []
+
+    //         for (const crdDef of response.items) {
+    //             const crdSchema = this.convertToCRDSchema(crdDef, {
+    //                 name: crdDef.spec.names.kind,
+    //                 source: 'cluster'
+    //             })
+    //             crds.push(crdSchema)
+    //         }
+
+    //         return crds
+    //     } catch (error) {
+    //         console.error('Failed to discover cluster CRDs:', error)
+    //         return []
+    //     }
+    // }
+
     async discoverClusterCRDs(): Promise<CRDSchema[]> {
-        await this.ensureInitialized()
         try {
-            const response = await this.apiExtensionsApi.listCustomResourceDefinition()
-            const crds: CRDSchema[] = []
-
-            for (const crdDef of response.items) {
-                const crdSchema = this.convertToCRDSchema(crdDef, {
-                    name: crdDef.spec.names.kind,
-                    source: 'cluster'
-                })
-                crds.push(crdSchema)
+            console.log('🔍 Discovering CRDs from cluster using Kubernetes client...')
+            
+            // Get the current cluster configuration
+            const currentCluster = this.kubeConfig.getCurrentCluster()
+            if (!currentCluster) {
+                throw new Error('No current cluster found in kubeconfig')
             }
-
-            return crds
+            
+            console.log(`🔗 Connecting to cluster: ${currentCluster.server}`)
+            
+            let apiExtensionsApi: ApiextensionsV1Api
+            
+            // For local clusters (localhost, 127.0.0.1) or HTTP endpoints, configure TLS verification
+            if (currentCluster.server.includes('localhost') || 
+                currentCluster.server.includes('127.0.0.1') ||
+                currentCluster.server.startsWith('http://')) {
+                
+                console.log('🔧 Configuring client for local/WSL cluster with TLS verification disabled')
+                
+                // Get current user and context for proper authentication
+                const currentUser = this.kubeConfig.getCurrentUser()
+                const currentContext = this.kubeConfig.getCurrentContext()
+                
+                if (!currentUser || !currentContext) {
+                    throw new Error('No current user or context found in kubeconfig')
+                }
+                
+                // Create a new cluster configuration with proper insecure settings
+                const modifiedCluster = {
+                    name: 'temp-cluster',
+                    server: currentCluster.server,
+                    'insecure-skip-tls-verify': true
+                }
+                
+                // Create a new kubeconfig with the modified cluster but preserve user auth
+                const tempKubeConfig = new KubeConfig()
+                const configData = {
+                    apiVersion: 'v1',
+                    kind: 'Config',
+                    clusters: [{
+                        name: 'temp-cluster',
+                        cluster: modifiedCluster
+                    }],
+                    users: [{
+                        name: 'temp-user',
+                        user: currentUser // Preserve the original user credentials
+                    }],
+                    contexts: [{
+                        name: 'temp-context',
+                        context: {
+                            cluster: 'temp-cluster',
+                            user: 'temp-user'
+                        }
+                    }],
+                    'current-context': 'temp-context'
+                }
+                
+                tempKubeConfig.loadFromString(JSON.stringify(configData))
+                
+                // Create a temporary API client with the modified configuration
+                apiExtensionsApi = tempKubeConfig.makeApiClient(ApiextensionsV1Api)
+            } else {
+                // For remote clusters, use the original configuration
+                console.log('🔧 Using standard cluster configuration')
+                apiExtensionsApi = this.kubeConfig.makeApiClient(ApiextensionsV1Api)
+            }
+            
+            // List all CRDs using the appropriate client
+            const response = await apiExtensionsApi.listCustomResourceDefinition()
+            const crds = response.items || []
+            
+            console.log(`📋 Found ${crds.length} CRDs in cluster`)
+            
+            const crdSchemas: CRDSchema[] = []
+            
+            for (const crd of crds) {
+                try {
+                    const crdSchema = this.convertToCRDSchema(crd, {
+                        name: crd.spec.names.kind,
+                        source: 'cluster'
+                    })
+                    if (crdSchema) {
+                        crdSchemas.push(crdSchema)
+                        console.log(`✅ Converted CRD: ${crdSchema.group}/${crdSchema.version}/${crdSchema.kind}`)
+                    }
+                } catch (error) {
+                    console.warn(`⚠️ Failed to convert CRD ${crd.metadata?.name}:`, error)
+                }
+            }
+            
+            console.log(`🎉 Successfully discovered ${crdSchemas.length} CRDs from cluster`)
+            return crdSchemas
+            
         } catch (error) {
-            console.error('Failed to discover cluster CRDs:', error)
+            console.error('❌ Failed to discover cluster CRDs:', error)
+            
+            // Provide helpful error messages based on the error type
+            if (error instanceof Error) {
+                if (error.message.includes('ECONNREFUSED')) {
+                    console.error('💡 Connection refused - check if your Kubernetes cluster is running')
+                    console.error('💡 For WSL clusters, ensure the cluster is accessible from Windows')
+                    console.error(`💡 Cluster endpoint: ${this.kubeConfig.getCurrentCluster()?.server}`)
+                } else if (error.message.includes('certificate') || error.message.includes('TLS')) {
+                    console.error('💡 TLS/Certificate error - the cluster configuration may need adjustment')
+                } else if (error.message.includes('Unauthorized') || error.message.includes('Forbidden')) {
+                    console.error('💡 Authentication/Authorization error - check your kubeconfig credentials')
+                }
+            }
+            
             return []
         }
     }
