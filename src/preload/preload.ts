@@ -93,6 +93,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
       'schema:dereferenceResource',
       'schema:getResourceSchemaTree',
       'schema:getRawResourceSchema',
+      'schema:getAllResourcesWithCRDs',
+      'schema:searchAllSourcesWithCRDs',
 
     ]
     if (validChannels.includes(channel)) {

@@ -268,6 +268,62 @@ class KubernetesSchemaIndexer {
       originalSchema: schemaProperties
     }
   }
+
+
+  /**
+   * Enhanced search that includes CRDs when available
+   * Falls back to standard search if CRDs not available
+   */
+  async searchResourcesWithCRDs(query: string): Promise<KubernetesResourceSchema[]> {
+    try {
+      // Try enhanced search with CRDs
+      const results = await window.electronAPI.invoke('schema:searchAllSourcesWithCRDs', query);
+  
+      // Convert FlattenedResource[] to KubernetesResourceSchema[] format
+      return results.map(resource => {
+        // Parse apiVersion to extract group and version
+        const [group, version] = resource.apiVersion?.includes('/') 
+          ? resource.apiVersion.split('/')
+          : ['core', resource.apiVersion || 'v1'];
+  
+        return {
+          key: resource.key,
+          group: group, // Use parsed group from apiVersion
+          version: version, // Use parsed version from apiVersion
+          kind: resource.kind,
+          schema: resource.schema || {},
+          displayName: this.createDisplayName({
+            group: group,
+            version: version,
+            kind: resource.kind
+          }),
+          description: resource.description
+        };
+      });
+    } catch (error) {
+      console.warn('Enhanced CRD search not available, falling back to standard search:', error);
+      // Fallback to existing search functionality
+      return this.searchResources(query);
+    }
+  }
+
+  /**
+   * Get all available kinds including CRDs when available
+   * Falls back to standard kinds if CRDs not available
+   */
+  async getAvailableKindsWithCRDs(): Promise<string[]> {
+    try {
+      // Try to get enhanced resource list with CRDs
+      const allResources = await window.electronAPI.invoke('schema:getAllResourcesWithCRDs');
+      const kinds = [...new Set(allResources.map(r => r.kind))].sort();
+      return kinds;
+    } catch (error) {
+      console.warn('Enhanced CRD kinds not available, falling back to standard kinds:', error);
+      // Fallback to existing functionality
+      return this.getAvailableKinds();
+    }
+  }
+
 }
 
 export const kubernetesSchemaIndexer = new KubernetesSchemaIndexer()

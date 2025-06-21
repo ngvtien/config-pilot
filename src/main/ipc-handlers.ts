@@ -30,12 +30,12 @@ let platformDetectionService: PlatformDetectionService | null = null
 export function initializeSchemaHandlers(): void {
 
   // Auto-initialize schema service immediately
-const initializeSchemas = async () => {
-  try {
-    const appDataPath = app.getPath('userData');
+  const initializeSchemas = async () => {
+    try {
+      const appDataPath = app.getPath('userData');
 
-    console.log('🔄 Auto-initializing schemas...');
-    console.log('App data path:', appDataPath);    
+      console.log('🔄 Auto-initializing schemas...');
+      console.log('App data path:', appDataPath);
 
       // Register Kubernetes schema sources using Node.js path.join for main process
       schemaService.registerSchemaSource({
@@ -44,25 +44,25 @@ const initializeSchemas = async () => {
         path: path.join(appDataPath, 'schemas', 'k8s'),
         enabled: true
       });
-          
-    // Initialize vanilla k8s schemas first
-    await schemaService.initialize();
-    console.log('✅ Vanilla k8s schemas loaded');
-    
-   // Get the saved kubeconfig path from store
-   const ElectronStore = (await import('electron-store')).default;
-    const store = new ElectronStore();
-    const savedConfigPath = (store as any).get('kubeConfigPath') as string | undefined;
-   
-    // Then discover and load CRDs from cluster
-    await schemaService.initializeCRDs(savedConfigPath);
-    console.log('✅ CRD discovery completed');
-          
-  } catch (error: any) {
-    console.error('❌ Schema auto-initialization failed:', error);
-  }
-};
-// ... existing code ...
+
+      // Initialize vanilla k8s schemas first
+      await schemaService.initialize();
+      console.log('✅ Vanilla k8s schemas loaded');
+
+      // Get the saved kubeconfig path from store
+      const ElectronStore = (await import('electron-store')).default;
+      const store = new ElectronStore();
+      const savedConfigPath = (store as any).get('kubeConfigPath') as string | undefined;
+
+      // Then discover and load CRDs from cluster
+      await schemaService.initializeCRDs(savedConfigPath);
+      console.log('✅ CRD discovery completed');
+
+    } catch (error: any) {
+      console.error('❌ Schema auto-initialization failed:', error);
+    }
+  };
+  // ... existing code ...
   // Initialize immediately
   initializeSchemas();
 
@@ -115,6 +115,16 @@ const initializeSchemas = async () => {
   // NEW: Get schema tree for resource (replaces dereferencing for UI)
   ipcMain.handle('schema:getResourceSchemaTree', async (_, sourceId: string, resourceKey: string) => {
     return schemaService.getResourceSchemaTree(sourceId, resourceKey);
+  });
+
+  // Optional CRD-enhanced search (fallback to standard if CRDs not available)
+  ipcMain.handle('schema:searchAllSourcesWithCRDs', async (_, query: string) => {
+    return schemaService.searchAllSourcesWithCRDs(query);
+  });
+
+  // Optional CRD-enhanced resource listing (fallback to standard if CRDs not available)
+  ipcMain.handle('schema:getAllResourcesWithCRDs', async () => {
+    return schemaService.getAllResourcesWithCRDs();
   });
 
 }

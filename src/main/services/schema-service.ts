@@ -73,33 +73,65 @@ class SchemaService {
   async initializeCRDs(kubeConfigPath?: string): Promise<void> {
     try {
       console.log('=== INITIALIZING CRD DISCOVERY ===');
-      
+
       // Initialize CRD service
       this.crdService = new CRDManagementService(kubeConfigPath);
-      
+
       // Discover CRDs from connected cluster
       const clusterCRDs = await this.crdService.discoverClusterCRDs();
       console.log(`Discovered ${clusterCRDs.length} CRDs from cluster`);
-      
+
       // Convert CRDs to schema format and add to cache
       for (const crd of clusterCRDs) {
         await this.addCRDToSchemaCache(crd);
       }
-      
+
       console.log('=== CRD DISCOVERY COMPLETED ===');
     } catch (error) {
       console.warn('CRD discovery failed (cluster may not be accessible):', error);
       // Don't throw - vanilla k8s schemas should still work
     }
   }
-  
+
   /**
    * Convert CRD schema to our internal format and add to cache
+   * CRITICAL: Key generation must be consistent for resource lookup
    */
   private async addCRDToSchemaCache(crd: CRDSchema): Promise<void> {
+    // Validate CRD data before processing
+    if (!crd.group || !crd.version || !crd.kind) {
+      console.error('❌ Invalid CRD data - missing required fields:', {
+        group: crd.group,
+        version: crd.version,
+        kind: crd.kind,
+        id: crd.id
+      });
+      return;
+    }
+
+    console.log('🔍 Processing CRD with validated data:', {
+      kind: crd.kind,
+      group: crd.group,
+      version: crd.version,
+      expectedApiVersion: `${crd.group}/${crd.version}`
+    });
+
+    const sourceId = 'cluster-crds';
     const cacheKey = `crd-${crd.group}-${crd.version}`;
-    
+
+    // Ensure we have a source map for CRDs
+    if (!this.resourcesBySource.has(sourceId)) {
+      this.resourcesBySource.set(sourceId, new Map());
+      this.schemaSources.set(sourceId, {
+        id: sourceId,
+        name: 'Cluster CRDs',
+        path: 'cluster',
+        enabled: true
+      });
+    }
+
     // Convert CRD OpenAPI v3 schema to JSON Schema v7 format
+    const apiVersion = `${crd.group}/${crd.version}`;
     const jsonSchema: JSONSchema7 = {
       type: 'object',
       definitions: {
@@ -108,7 +140,7 @@ class SchemaService {
           properties: {
             apiVersion: {
               type: 'string',
-              enum: [`${crd.group}/${crd.version}`]
+              enum: [apiVersion]
             },
             kind: {
               type: 'string',
@@ -127,7 +159,7 @@ class SchemaService {
         }
       }
     };
-    
+
     this.rawSchemaCache.set(cacheKey, {
       schema: jsonSchema,
       dereferencedPaths: new Set(),
@@ -135,8 +167,28 @@ class SchemaService {
       filePath: 'cluster-crd',
       source: 'cluster'
     });
-  }  
 
+    // Create FlattenedResource with EXACT key format for lookup
+    const flattenedResource: FlattenedResource = {
+      kind: crd.kind,
+      apiVersion: apiVersion, // This MUST be {group}/{version}
+      properties: {},
+      required: ['apiVersion', 'kind'],
+      description: crd.description || `Custom Resource Definition: ${crd.kind}`,
+      source: sourceId,
+      originalKey: crd.kind
+    };
+
+    // CRITICAL: Resource key must match frontend expectations
+    const resourceKey = `${apiVersion}/${crd.kind}`; // e.g., "argoproj.io/v1alpha1/ApplicationSet"
+    
+    const sourceMap = this.resourcesBySource.get(sourceId)!;
+    sourceMap.set(resourceKey, flattenedResource);
+
+    console.log(`✅ Added CRD to search index with key: ${resourceKey}`);
+    console.log(`   - apiVersion: ${flattenedResource.apiVersion}`);
+    console.log(`   - kind: ${flattenedResource.kind}`);
+  }
   /**
    * Build a hierarchical tree structure from JSON schema with full field information
    */
@@ -381,6 +433,65 @@ class SchemaService {
     }
   }
 
+
+  /**
+   * Get all resources from all sources (optional CRD enhancement)
+   * Falls back to empty array if CRDs not available
+   */
+  getAllResourcesWithCRDs(): FlattenedResource[] {
+    if (!this.isInitialized) return [];
+
+    const allResources: FlattenedResource[] = [];
+
+    try {
+      // Get resources from all sources including CRDs
+      for (const sourceId of this.resourcesBySource.keys()) {
+        const sourceResources = this.getResourcesFromSource(sourceId);
+        allResources.push(...sourceResources);
+      }
+
+      // Remove duplicates and sort
+      const uniqueResources = allResources.filter((resource, index, self) =>
+        index === self.findIndex(r => r.kind === resource.kind && r.apiVersion === resource.apiVersion)
+      );
+
+      return uniqueResources.sort((a, b) => a.kind.localeCompare(b.kind));
+    } catch (error) {
+      console.warn('CRD resources not available, falling back to standard resources:', error);
+      // Fallback to just kubernetes source if CRDs fail
+      return this.getResourcesFromSource('kubernetes') || [];
+    }
+  }
+
+  /**
+   * Search across all sources with CRD support (optional enhancement)
+   * Falls back to kubernetes source only if CRDs not available
+   */
+  searchAllSourcesWithCRDs(query: string): FlattenedResource[] {
+    if (!this.isInitialized) return [];
+
+    try {
+      const allResults: FlattenedResource[] = [];
+
+      // Search in all available sources
+      for (const sourceId of this.resourcesBySource.keys()) {
+        const sourceResults = this.searchInSource(sourceId, query);
+        allResults.push(...sourceResults);
+      }
+
+      // Remove duplicates and sort
+      const uniqueResults = allResults.filter((resource, index, self) =>
+        index === self.findIndex(r => r.kind === resource.kind && r.apiVersion === resource.apiVersion)
+      );
+
+      return uniqueResults.sort((a, b) => a.kind.localeCompare(b.kind));
+    } catch (error) {
+      console.warn('CRD search not available, falling back to kubernetes source:', error);
+      // Fallback to just kubernetes source if CRDs fail
+      return this.searchInSource('kubernetes', query);
+    }
+  }
+
   /**
    * List directories in a given path
    */
@@ -452,7 +563,7 @@ class SchemaService {
               console.log(`Cache size after storing: ${this.rawSchemaCache.size}`);
 
               this.extractBasicResourceInfo(schema, source);
-              
+
             } catch (parseError) {
               console.error(`❌ Failed to parse JSON from ${definitionsPath}:`, parseError);
             }

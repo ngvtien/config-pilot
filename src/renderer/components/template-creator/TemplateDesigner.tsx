@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react'
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/renderer/components/ui/card'
 import { Input } from '@/renderer/components/ui/input'
 import { Label } from '@/renderer/components/ui/label'
@@ -55,6 +55,8 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
     }
   })
 
+  const [searchResults, setSearchResults] = useState<KubernetesResourceSchema[]>([])
+
   const [selectedFields, setSelectedFields] = useState<{
     [resourceKey: string]: TemplateField[]
   }>({})
@@ -85,6 +87,39 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
   const [isSchemaModalOpen, setIsSchemaModalOpen] = useState(false)
   const [selectedResourceForSchema, setSelectedResourceForSchema] = useState<KubernetesResourceSchema | null>(null)
   const [selectedResourceIndex, setSelectedResourceIndex] = useState<number | null>(null)
+
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false)
+      }
+    }
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsDropdownOpen(false)
+      }
+    }
+
+    if (isDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+      document.addEventListener('keydown', handleEscape)
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleEscape)
+    }
+  }, [isDropdownOpen])
+
+  useEffect(() => {
+    // Auto-close dropdown when search term is empty
+    if (!searchTerm.trim()) {
+      setIsDropdownOpen(false)
+    }
+  }, [searchTerm])
 
   // Get Kubernetes version from settings data
   const kubernetesVersion = settingsData.kubernetesVersion
@@ -433,9 +468,17 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
       // Use the existing kubernetesSchemaIndexer service (it handles caching internally)
       await kubernetesSchemaIndexer.loadSchemaDefinitions(definitionsPath)
 
-      // Get available kinds from the indexer
-      const kinds = kubernetesSchemaIndexer.getAvailableKinds()
-      setAvailableKinds(kinds)
+      // Try to enhance with CRDs (optional, non-breaking)
+      try {
+        const enhancedKinds = await kubernetesSchemaIndexer.getAvailableKindsWithCRDs()
+        setAvailableKinds(enhancedKinds)
+        console.log('✅ Enhanced with CRD schemas')
+      } catch (crdError) {
+        console.warn('CRD enhancement not available, using standard schemas:', crdError)
+        // Fallback to standard functionality
+        const standardKinds = kubernetesSchemaIndexer.getAvailableKinds()
+        setAvailableKinds(standardKinds)
+      }
 
     } catch (err: any) {
       console.error('Failed to load schema definitions:', err)
@@ -449,17 +492,38 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
   /**
    * Search for resources using the indexer's search functionality
    */
-  const searchResults = useMemo(() => {
-    if (!searchTerm.trim()) {
-      // Return all kinds as basic search results when no search term
-      return availableKinds.map(kind => {
-        const versions = kubernetesSchemaIndexer.getKindVersions(kind)
-        return versions[0] // Return the first version for each kind
-      }).filter(Boolean)
+  useEffect(() => {
+    /**
+     * Perform enhanced search with CRD support
+     */
+    const performSearch = async () => {
+      if (!searchTerm.trim()) {
+        // Return all kinds as basic search results when no search term
+        const allKindsResults = availableKinds.map(kind => {
+          const versions = kubernetesSchemaIndexer.getKindVersions(kind)
+          return versions[0] // Return the first version for each kind
+        }).filter(Boolean)
+        setSearchResults(allKindsResults)
+        console.log('🔍 No search term - showing all kinds:', allKindsResults.length)
+        return
+      }
+
+      try {
+        // Use enhanced search with CRDs
+        const results = await kubernetesSchemaIndexer.searchResourcesWithCRDs(searchTerm)
+        console.log('🔍 Enhanced search results:', results)
+        console.log('🔍 CRD resources found:', results.filter(r => r.group !== 'core' && r.group !== ''))
+        setSearchResults(results)
+        console.log('✅ Using enhanced search with CRDs:', results.length, 'results')
+      } catch (error) {
+        console.warn('Enhanced search not available, using standard search:', error)
+        // Fallback to standard search
+        const standardResults = kubernetesSchemaIndexer.searchResources(searchTerm)
+        setSearchResults(standardResults)
+      }
     }
 
-    // Use the indexer's built-in search functionality
-    return kubernetesSchemaIndexer.searchResources(searchTerm)
+    performSearch()
   }, [searchTerm, availableKinds])
 
   /**
@@ -553,12 +617,15 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
 
   // Filter search results to exclude already selected resources
   const filteredSearchResults = useMemo(() => {
-    return searchResults.filter((resource: { kind: any; group: any; version: any }) =>
+    const filtered = searchResults.filter((resource: { kind: any; group: any; version: any }) =>
       !selectedResources.some(selected =>
         selected.kind === resource.kind &&
         selected.apiVersion === `${resource.group}/${resource.version}`
       )
     )
+    console.log('🔍 Filtered search results:', filtered.length, 'of', searchResults.length)
+    console.log('🔍 CRDs in filtered results:', filtered.filter(r => r.group !== 'core' && r.group !== ''))
+    return filtered
   }, [searchResults, selectedResources])
 
   /**
@@ -726,7 +793,7 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Searchable Dropdown */}
-          <div className="relative">
+          <div className="relative" ref={dropdownRef}>
             <Label htmlFor="kind-search">Select Resource Kind:</Label>
             <div className="relative mt-2">
               <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
@@ -736,15 +803,31 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
                 value={searchTerm}
                 onChange={(e) => {
                   setSearchTerm(e.target.value)
-                  setIsDropdownOpen(true)
+                  // Only open dropdown if there's a search term
+                  if (e.target.value.trim()) {
+                    setIsDropdownOpen(true)
+                  }
                 }}
-                onFocus={() => setIsDropdownOpen(true)}
+                onFocus={() => {
+                  // Only open dropdown if there's a search term
+                  if (searchTerm.trim()) {
+                    setIsDropdownOpen(true)
+                  }
+                }}
+                onBlur={() => {
+                  // Delay closing to allow for click events on dropdown items
+                  setTimeout(() => setIsDropdownOpen(false), 150)
+                }}
                 className="pl-10 pr-10"
                 disabled={isLoading}
               />
               <ChevronDown
                 className="absolute right-3 top-3 h-4 w-4 text-muted-foreground cursor-pointer"
-                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                onClick={() => {
+                  if (searchTerm.trim()) {
+                    setIsDropdownOpen(!isDropdownOpen)
+                  }
+                }}
               />
             </div>
 
@@ -752,9 +835,9 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
             {isDropdownOpen && !isLoading && !error && (
               <div className="absolute z-10 w-full mt-1 bg-background border border-border rounded-md shadow-lg max-h-60 overflow-auto">
                 {filteredSearchResults.length > 0 ? (
-                  filteredSearchResults.map((resource) => (
+                  filteredSearchResults.map((resource, index) => (
                     <div
-                      key={`${resource.group}-${resource.version}-${resource.kind}`}
+                      key={`${resource.group || 'core'}-${resource.version || 'v1'}-${resource.kind}-${index}`}
                       className="px-3 py-2 hover:bg-accent hover:text-accent-foreground cursor-pointer border-b border-border last:border-b-0"
                       onClick={() => handleKindSelect(resource)}
                     >
@@ -762,9 +845,9 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
                         <span className="font-medium">{resource.kind}</span>
                         <div className="flex gap-1">
                           <Badge variant="secondary" className="text-xs">
-                            {resource.version}
+                            {resource.version || 'v1'}
                           </Badge>
-                          {resource.group !== 'core' && (
+                          {(resource.group && resource.group !== 'core') && (
                             <Badge variant="outline" className="text-xs">
                               {resource.group}
                             </Badge>
