@@ -838,18 +838,15 @@ export function SchemaFieldSelectionModal({
 
                 <Separator />
 
-                <DialogFooter className="flex-shrink-0 justify-between">
-                    <div className="flex space-x-2">
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={handlePreviewSchema}
-                            className="text-xs"
-                        >
-                            Preview Schema
-                        </Button>
-                    </div>
-                    <div className="flex space-x-2">
+                <DialogFooter className="flex-shrink-0 flex flex-row justify-between items-center w-full">
+                    <Button
+                        variant="outline"
+                        onClick={handlePreviewSchema}
+                        className="mr-auto"
+                    >
+                        Preview Schema
+                    </Button>
+                    <div className="flex space-x-2 ml-auto">
                         <Button variant="outline" onClick={handleCancel}>
                             Cancel
                         </Button>
@@ -858,7 +855,6 @@ export function SchemaFieldSelectionModal({
                         </Button>
                     </div>
                 </DialogFooter>
-
                 {/* Schema Preview Modal */}
                 {showSchemaPreview && (
                     <Dialog open={showSchemaPreview} onOpenChange={setShowSchemaPreview}>

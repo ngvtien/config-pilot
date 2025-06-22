@@ -117,7 +117,8 @@ class SchemaService {
     });
 
     const sourceId = 'cluster-crds';
-    const cacheKey = `crd-${crd.group}-${crd.version}`;
+    //const cacheKey = `crd-${crd.group}-${crd.version}`;
+    const cacheKey = `crd-${crd.group}-${crd.version}-${crd.kind}`;
 
     // Ensure we have a source map for CRDs
     if (!this.resourcesBySource.has(sourceId)) {
@@ -659,10 +660,16 @@ class SchemaService {
 
       if (!kind) return null;
 
+      // Parse group from apiVersion (same logic as CRD processing)
+      const group = apiVersion && apiVersion.includes('/') 
+        ? apiVersion.split('/')[0]
+        : 'core';
+
       return {
         key,
         kind,
         apiVersion: apiVersion ?? undefined,
+        group: group,
         properties: {},
         required: definition.required as string[],
         description: definition.description,
@@ -1059,7 +1066,7 @@ class SchemaService {
    * @returns Promise resolving to schema tree nodes or null if not found
    */
   async getCRDSchemaTree(group: string, version: string, kind: string): Promise<SchemaTreeNode[] | null> {
-    const cacheKey = `crd-${group}-${version}`;
+    const cacheKey = `crd-${group}-${version}-${kind}`;
 
     console.log('Getting CRD schema tree:', { cacheKey, group, version, kind });
 
