@@ -168,10 +168,20 @@ class SchemaService {
       source: 'cluster'
     });
 
+    // CRITICAL: Resource key must match frontend expectations
+    const resourceKey = `${apiVersion}/${crd.kind}`; // e.g., "argoproj.io/v1alpha1/ApplicationSet"
+
+    // Parse group from apiVersion
+    const [group, version] = apiVersion.includes('/') 
+        ? apiVersion.split('/')
+        : ['core', apiVersion];
+
     // Create FlattenedResource with EXACT key format for lookup
     const flattenedResource: FlattenedResource = {
+      key: resourceKey,
       kind: crd.kind,
       apiVersion: apiVersion, // This MUST be {group}/{version}
+      group: group,
       properties: {},
       required: ['apiVersion', 'kind'],
       description: crd.description || `Custom Resource Definition: ${crd.kind}`,
@@ -179,9 +189,7 @@ class SchemaService {
       originalKey: crd.kind
     };
 
-    // CRITICAL: Resource key must match frontend expectations
-    const resourceKey = `${apiVersion}/${crd.kind}`; // e.g., "argoproj.io/v1alpha1/ApplicationSet"
-    
+
     const sourceMap = this.resourcesBySource.get(sourceId)!;
     sourceMap.set(resourceKey, flattenedResource);
 
@@ -652,6 +660,7 @@ class SchemaService {
       if (!kind) return null;
 
       return {
+        key,
         kind,
         apiVersion: apiVersion ?? undefined,
         properties: {},
@@ -814,6 +823,7 @@ class SchemaService {
       const flattened = this.flattenSchema(definition);
 
       return {
+        key,
         kind,
         apiVersion: apiVersion ?? undefined,
         properties: flattened.properties,
@@ -913,6 +923,7 @@ class SchemaService {
       if (!kind) return null;
 
       return {
+        key,
         kind,
         apiVersion,
         properties: this.flattenProperties(props),
@@ -1038,6 +1049,43 @@ class SchemaService {
    */
   isReady(): boolean {
     return this.isInitialized;
+  }
+
+  /**
+   * Retrieves the schema tree for a specific CRD resource
+   * @param group - The API group of the CRD
+   * @param version - The API version of the CRD
+   * @param kind - The kind of the CRD resource
+   * @returns Promise resolving to schema tree nodes or null if not found
+   */
+  async getCRDSchemaTree(group: string, version: string, kind: string): Promise<SchemaTreeNode[] | null> {
+    const cacheKey = `crd-${group}-${version}`;
+
+    console.log('Getting CRD schema tree:', { cacheKey, group, version, kind });
+
+    const rawCache = this.rawSchemaCache.get(cacheKey);
+    if (!rawCache) {
+      console.warn(`No CRD cache found for: ${cacheKey}`);
+      return null;
+    }
+
+    const rawDefinitions = rawCache.schema.definitions || {};
+    const resourceSchema = rawDefinitions[kind];
+
+    if (!resourceSchema || typeof resourceSchema === 'boolean') {
+      console.warn(`CRD schema not found for: ${kind}`);
+      return null;
+    }
+
+    // Filter out boolean definitions and create a proper Record<string, JSONSchema7>
+    const definitions: Record<string, JSONSchema7> = {};
+    Object.entries(rawDefinitions).forEach(([key, value]) => {
+      if (typeof value !== 'boolean') {
+        definitions[key] = value;
+      }
+    });
+
+    return this.buildSchemaTree(resourceSchema, definitions, kind, '', []);
   }
 }
 

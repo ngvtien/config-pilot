@@ -167,18 +167,61 @@ export function SchemaFieldSelectionModal({
     const [highlightedFieldPath, setHighlightedFieldPath] = useState<string | null>(null);
 
     // Generate resource key for persistence (fix undefined apiVersion)
-    const resourceKey = resource ? resource.key : '';
+    //const resourceKey = resource ? (resource.key || `${resource.kind}-${resource.apiVersion || resource.group + '/' + resource.version}`) : '';
+    //const resourceKey = resource ? (resource.key || `io.k8s.api.${resource.group || 'core'}.${resource.version}.${resource.kind}`) : '';
+
+    console.log('🔍 Resource object:', resource);
+    console.log('🔍 Resource key:', resource?.key);
+    console.log('🔍 Resource kind:', resource?.kind);
+    console.log('🔍 Resource apiVersion:', resource?.apiVersion);
+    console.log('🔍 Resource group:', resource?.group);
+    const resourceKey = resource?.key || '';
+    console.log('🔍 Final resourceKey:', resourceKey);
 
     useEffect(() => {
         if (resource && isOpen) {
             setIsLoadingSchema(true);
-            const sourceId = 'kubernetes';
+            
+            // Determine if this is a CRD resource
+            const isCRD = resource.source === 'cluster-crds';
+            
+            console.log('Getting schema tree for resource:', { 
+                resource: resource.key, 
+                isCRD, 
+                source: resource.source 
+            });
 
-            console.log('Getting schema tree for resource:', { sourceId, resourceKey });
+            let schemaPromise: Promise<SchemaTreeNode[]>;
+            
+            if (isCRD) {
+                // Use CRD-specific IPC channel
+                schemaPromise = window.electronAPI.invoke(
+                    'schema:getCRDSchemaTree', 
+                    resource.group, 
+                    resource.version, 
+                    resource.kind
+                );
+            } else {
+                // Use standard kubernetes schema IPC channel
+                const sourceId = 'kubernetes';
+                schemaPromise = window.electronAPI.invoke(
+                    'schema:getResourceSchemaTree', 
+                    sourceId, 
+                    resourceKey
+                );
+            }
 
-            window.electronAPI.invoke('schema:getResourceSchemaTree', sourceId, resourceKey)
+            schemaPromise
                 .then((tree: SchemaTreeNode[]) => {
                     console.log('Schema tree received:', tree);
+
+                    if (!tree || !Array.isArray(tree)) {
+                        console.error('Invalid schema tree received:', tree);
+                        setSchemaTree([]);
+                        setIsLoadingSchema(false);
+                        return;
+                    }
+            
                     setSchemaTree(tree);
 
                     // Check if we have any persisted data for this resource

@@ -11,8 +11,10 @@ export interface SchemaTreeNode {
 }
 
 export interface FlattenedResource {
+  key: string;
   kind: string;
   apiVersion?: string;
+  group?: string;
   properties: Record<string, any>;
   required?: string[];
   description?: string;

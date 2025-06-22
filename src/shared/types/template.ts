@@ -1,3 +1,4 @@
+import type { KubernetesResourceSchema } from '@/renderer/services/kubernetes-schema-indexer'
 /**
  * Represents a field in a template with extensible format support
  * Supports Kubernetes, Terraform, Ansible, Kustomize, and future formats
@@ -31,6 +32,8 @@ interface TemplateResource {
   namespace?: string
   selectedFields: TemplateField[]
   templateType: 'kubernetes' | 'terraform' | 'ansible' | 'kustomize' | 'helm' | 'docker-compose'
+  source?: 'kubernetes' | 'cluster-crds'
+  originalSchema?: KubernetesResourceSchema
   formatSpecific?: {
     terraform?: {
       provider?: string

@@ -1,11 +1,12 @@
 interface KubernetesResourceSchema {
-  key: string // The definition key (e.g., "io.k8s.api.apps.v1.Deployment")
+  key: string           // The definition key (e.g., "io.k8s.api.apps.v1.Deployment")
   group: string
   version: string
   kind: string
-  schema: any // The actual JSON schema
-  displayName: string // User-friendly name
+  schema: any           // The actual JSON schema
+  displayName: string   // User-friendly name
   description?: string
+  source?: string       // source field to identify CRDs vs vanilla k8s resources
 }
 
 interface SchemaIndex {
@@ -34,7 +35,7 @@ class KubernetesSchemaIndexer {
       const definitionsContent = await window.electronAPI.readFile(definitionsPath)
       const definitions = JSON.parse(definitionsContent)
 
-      return this.indexDefinitions(definitions)
+      return this.indexDefinitions(definitions, 'kubernetes')
     } catch (error) {
       console.error('Failed to load schema definitions:', error)
       throw error
@@ -44,7 +45,7 @@ class KubernetesSchemaIndexer {
   /**
    * Index the definitions by finding all schemas with x-kubernetes-group-version-kind
    */
-  private indexDefinitions(definitions: any): SchemaIndex {
+  private indexDefinitions(definitions: any, sourceId: string): SchemaIndex {
     const byKind = new Map<string, KubernetesResourceSchema[]>()
     const byGroupVersionKind = new Map<string, KubernetesResourceSchema>()
     const byKey = new Map<string, any>()
@@ -61,13 +62,14 @@ class KubernetesSchemaIndexer {
 
         gvkList.forEach((gvk: any) => {
           const resourceSchema: KubernetesResourceSchema = {
-            key,
+            key: `${gvk.group}/${gvk.version}/${gvk.kind}`,
             group: gvk.group || 'core',
             version: gvk.version,
             kind: gvk.kind,
             schema,
             displayName: this.createDisplayName(gvk),
-            description: schema.description
+            description: schema.description,
+            source: sourceId // This will be 'kubernetes' for vanilla k8s
           }
 
           // Index by kind
@@ -297,7 +299,8 @@ class KubernetesSchemaIndexer {
             version: version,
             kind: resource.kind
           }),
-          description: resource.description
+          description: resource.description,
+          source: resource.source // Include source information
         };
       });
     } catch (error) {
