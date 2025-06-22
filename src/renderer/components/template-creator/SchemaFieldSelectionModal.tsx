@@ -16,14 +16,22 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/renderer/components/
 import { ChevronRight, ChevronDown } from 'lucide-react'
 import { DescriptionTooltip } from './DescriptionTooltip'
 import type { KubernetesResourceSchema } from '@/renderer/services/kubernetes-schema-indexer'
-import type { TemplateField } from '@/shared/types/template'
+import type { TemplateField, TemplateResource } from '@/shared/types/template'
 import { SchemaTreeNode } from '../../../shared/types/schema';
 import { SchemaTreeView } from './SchemaTreeView';
 
+
+// interface SchemaFieldSelectionModalProps {
+//     isOpen: boolean
+//     onClose: () => void
+//     resource: KubernetesResourceSchema | null
+//     selectedFields: TemplateField[]
+//     onFieldsChange: (fields: TemplateField[]) => void
+// }
 interface SchemaFieldSelectionModalProps {
     isOpen: boolean
     onClose: () => void
-    resource: KubernetesResourceSchema | null
+    resource: KubernetesResourceSchema | TemplateResource | null
     selectedFields: TemplateField[]
     onFieldsChange: (fields: TemplateField[]) => void
 }
@@ -181,32 +189,32 @@ export function SchemaFieldSelectionModal({
     useEffect(() => {
         if (resource && isOpen) {
             setIsLoadingSchema(true);
-            
+
             // Determine if this is a CRD resource
             const isCRD = resource.source === 'cluster-crds';
-            
-            console.log('Getting schema tree for resource:', { 
-                resource: resource.key, 
-                isCRD, 
-                source: resource.source 
+
+            console.log('Getting schema tree for resource:', {
+                resource: resource.key,
+                isCRD,
+                source: resource.source
             });
 
             let schemaPromise: Promise<SchemaTreeNode[]>;
-            
+
             if (isCRD) {
                 // Use CRD-specific IPC channel
                 schemaPromise = window.electronAPI.invoke(
-                    'schema:getCRDSchemaTree', 
-                    resource.group, 
-                    resource.version, 
+                    'schema:getCRDSchemaTree',
+                    resource.group,
+                    resource.version,
                     resource.kind
                 );
             } else {
                 // Use standard kubernetes schema IPC channel
                 const sourceId = 'kubernetes';
                 schemaPromise = window.electronAPI.invoke(
-                    'schema:getResourceSchemaTree', 
-                    sourceId, 
+                    'schema:getResourceSchemaTree',
+                    sourceId,
                     resourceKey
                 );
             }
@@ -221,7 +229,7 @@ export function SchemaFieldSelectionModal({
                         setIsLoadingSchema(false);
                         return;
                     }
-            
+
                     setSchemaTree(tree);
 
                     // Check if we have any persisted data for this resource
@@ -472,6 +480,42 @@ export function SchemaFieldSelectionModal({
         }
     }
 
+    // /**
+    //  * Handle schema preview - fetch schema on-demand for both CRD and vanilla K8s resources
+    //  */
+    // const handlePreviewSchema = async () => {
+    //     try {
+    //         let schemaToUse;
+
+    //         // Check if we have an originalSchema (this means it's a properly structured resource)
+    //         // For CRDs, fetch via IPC
+    //         if (resource.source === 'cluster-crds') {
+    //             const cacheKey = `crd-${resource.group}-${resource.version}-${resource.kind}`;
+    //             console.log('🔍 Fetching CRD schema for:', cacheKey);
+    //             schemaToUse = await window.electronAPI.invoke('schema:getRawCRDSchema', cacheKey);
+    //         }
+    //         // For vanilla Kubernetes resources, fetch via IPC
+    //         else if (resource.source === 'kubernetes') {
+    //             const resourceKey = `${resource.group}/${resource.version}/${resource.kind}`;
+    //             console.log('🔍 Fetching K8s schema for:', resourceKey);
+    //             schemaToUse = await window.electronAPI.invoke('schema:getResourceSchema', resourceKey);
+    //         }
+    //         // Fallback to existing schema if available
+    //         else {
+    //             schemaToUse = resource.schema;
+    //         }
+
+    //         if (schemaToUse) {
+    //             console.log('🔍 Raw Schema Structure:', JSON.stringify(schemaToUse, null, 2));
+    //             console.log('🔍 Parsed Schema Properties:', schemaProperties);
+    //             setShowSchemaPreview(true);
+    //         } else {
+    //             console.warn('No schema available for preview');
+    //         }
+    //     } catch (error) {
+    //         console.error('Error fetching schema:', error);
+    //     }
+    // }
     /**
      * Handle field selection with persistence
      */
@@ -788,48 +832,47 @@ export function SchemaFieldSelectionModal({
                                     </div>
                                 ) : (
                                     <div className="space-y-2">
-    {localSelectedFields.map((field, index) => (
-        <div
-            key={field.path}
-            className={`p-3 border rounded-lg cursor-pointer transition-all duration-300 ${
-                highlightedFieldPath === field.path
-                    ? 'hover:bg-gray-50 dark:hover:bg-gray-800 transform scale-105 shadow-lg'
-                    : 'hover:bg-gray-50 dark:hover:bg-gray-800'
-            }`}
-            onClick={() => handleSelectedFieldClick(field.path)}
-        >
-            <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                    <span className="font-medium">{field.title}</span>
-                    {field.required && (
-                        <Badge variant="destructive" className="text-xs">Required</Badge>
-                    )}
-                </div>
-                <div className="flex items-center space-x-2">
-                    <Badge variant="secondary" className="text-xs">
-                        {field.type}
-                    </Badge>
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            handleRemoveField(field.path);
-                        }}
-                        className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                        title="Remove field"
-                    >
-                        <span className="text-lg font-medium">×</span>
-                    </Button>
-                </div>
-            </div>
-            <div className="text-xs text-gray-500 mt-1">{field.path}</div>
-            {field.description && (
-                <div className="text-sm text-gray-600 dark:text-gray-300 mt-1">{field.description}</div>
-            )}
-        </div>
-    ))}
-</div>
+                                        {localSelectedFields.map((field, index) => (
+                                            <div
+                                                key={field.path}
+                                                className={`p-3 border rounded-lg cursor-pointer transition-all duration-300 ${highlightedFieldPath === field.path
+                                                        ? 'hover:bg-gray-50 dark:hover:bg-gray-800 transform scale-105 shadow-lg'
+                                                        : 'hover:bg-gray-50 dark:hover:bg-gray-800'
+                                                    }`}
+                                                onClick={() => handleSelectedFieldClick(field.path)}
+                                            >
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center space-x-2">
+                                                        <span className="font-medium">{field.title}</span>
+                                                        {field.required && (
+                                                            <Badge variant="destructive" className="text-xs">Required</Badge>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex items-center space-x-2">
+                                                        <Badge variant="secondary" className="text-xs">
+                                                            {field.type}
+                                                        </Badge>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleRemoveField(field.path);
+                                                            }}
+                                                            className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                                                            title="Remove field"
+                                                        >
+                                                            <span className="text-lg font-medium">×</span>
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                                <div className="text-xs text-gray-500 mt-1">{field.path}</div>
+                                                {field.description && (
+                                                    <div className="text-sm text-gray-600 dark:text-gray-300 mt-1">{field.description}</div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
                                 )}
                             </ScrollArea>
                         </CardContent>

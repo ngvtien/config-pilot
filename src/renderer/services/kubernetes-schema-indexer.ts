@@ -280,32 +280,67 @@ class KubernetesSchemaIndexer {
     try {
       // Try enhanced search with CRDs
       const results = await window.electronAPI.invoke('schema:searchAllSourcesWithCRDs', query);
-  
+
       // Convert FlattenedResource[] to KubernetesResourceSchema[] format
-      return results.map(resource => {
+      const converted = await Promise.all(results.map(async resource => {
         // Parse apiVersion to extract group and version
-        const [group, version] = resource.apiVersion?.includes('/') 
+        const [group, version] = resource.apiVersion?.includes('/')
           ? resource.apiVersion.split('/')
           : ['core', resource.apiVersion || 'v1'];
-  
+
+        let schema: any = {};
+
+        // For CRD resources, fetch the actual JSONSchema7 from the backend
+        if (resource.source === 'cluster-crds') {
+          try {
+            // Get the raw JSONSchema7 from the backend cache
+            const cacheKey = `crd-${group}-${version}-${resource.kind}`;
+            const rawSchema = await window.electronAPI.invoke('schema:getRawCRDSchema', cacheKey);
+            if (rawSchema && rawSchema.definitions && rawSchema.definitions[resource.kind]) {
+              schema = rawSchema.definitions[resource.kind];
+            }
+          } catch (error) {
+            console.warn(`Failed to fetch CRD schema for ${resource.kind}:`, error);
+          }
+        } else {
+          // For regular Kubernetes resources, use the existing schema
+          schema = resource.schema || {};
+
+          // // For vanilla Kubernetes resources, fetch the actual schema via IPC
+          // try {
+          //   // Use the originalKey (definition key) instead of the resourceKey
+          //   const definitionKey = resource.originalKey || resource.key;
+          //   const rawSchema = await window.electronAPI.invoke('schema:getRawResourceSchema', 'kubernetes', definitionKey);
+          //   if (rawSchema) {
+          //     schema = rawSchema;
+          //     console.log(rawSchema)
+          //   }
+          // } catch (error) {
+          //   console.warn(`Failed to fetch K8s schema for ${resource.kind}:`, error);
+          //   // Fallback to existing schema
+          //   schema = resource.schema || {};
+          // }
+        }
+
         return {
           key: resource.key,
-          group: group, // Use parsed group from apiVersion
-          version: version, // Use parsed version from apiVersion
+          group: group,
+          version: version,
           kind: resource.kind,
-          schema: resource.schema || {},
+          schema: schema, // This will be a proper JSONSchema7 object
           displayName: this.createDisplayName({
             group: group,
             version: version,
             kind: resource.kind
           }),
           description: resource.description,
-          source: resource.source // Include source information
+          source: resource.source
         };
-      });
+      }));
+
+      return converted;
     } catch (error) {
       console.warn('Enhanced CRD search not available, falling back to standard search:', error);
-      // Fallback to existing search functionality
       return this.searchResources(query);
     }
   }

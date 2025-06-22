@@ -95,7 +95,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
       'schema:getRawResourceSchema',
       'schema:getAllResourcesWithCRDs',
       'schema:searchAllSourcesWithCRDs',
-      'schema:getCRDSchemaTree'
+      'schema:getCRDSchemaTree',
+      'schema:getRawCRDSchema',
 
     ]
     if (validChannels.includes(channel)) {

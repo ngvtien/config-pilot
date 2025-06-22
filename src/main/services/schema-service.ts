@@ -117,7 +117,6 @@ class SchemaService {
     });
 
     const sourceId = 'cluster-crds';
-    //const cacheKey = `crd-${crd.group}-${crd.version}`;
     const cacheKey = `crd-${crd.group}-${crd.version}-${crd.kind}`;
 
     // Ensure we have a source map for CRDs
@@ -173,9 +172,9 @@ class SchemaService {
     const resourceKey = `${apiVersion}/${crd.kind}`; // e.g., "argoproj.io/v1alpha1/ApplicationSet"
 
     // Parse group from apiVersion
-    const [group, version] = apiVersion.includes('/') 
-        ? apiVersion.split('/')
-        : ['core', apiVersion];
+    const [group, version] = apiVersion.includes('/')
+      ? apiVersion.split('/')
+      : ['core', apiVersion];
 
     // Create FlattenedResource with EXACT key format for lookup
     const flattenedResource: FlattenedResource = {
@@ -661,7 +660,7 @@ class SchemaService {
       if (!kind) return null;
 
       // Parse group from apiVersion (same logic as CRD processing)
-      const group = apiVersion && apiVersion.includes('/') 
+      const group = apiVersion && apiVersion.includes('/')
         ? apiVersion.split('/')[0]
         : 'core';
 
@@ -852,7 +851,8 @@ class SchemaService {
     const rawCache = this.rawSchemaCache.get(sourceId);
     if (!rawCache) return null;
 
-    const definition = rawCache.schema.definitions?.[resourceKey];
+    const definition = rawCache.schema.definitions?.[resourceKey] as JSONSchema7;
+    console.log(definition)
     return definition as JSONSchema7 || null;
   }
 
@@ -1094,6 +1094,19 @@ class SchemaService {
 
     return this.buildSchemaTree(resourceSchema, definitions, kind, '', []);
   }
+
+  /**
+   * Get raw CRD JSONSchema7 directly from cache using cache key
+   */
+  getRawCRDSchema(cacheKey: string): JSONSchema7 | null {
+    const rawCache = this.rawSchemaCache.get(cacheKey);
+    if (!rawCache) {
+      console.warn(`No CRD cache found for: ${cacheKey}`);
+      return null;
+    }
+    return rawCache.schema;
+  }
+
 }
 
 export const schemaService = new SchemaService();

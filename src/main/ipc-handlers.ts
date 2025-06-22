@@ -127,11 +127,15 @@ export function initializeSchemaHandlers(): void {
     return schemaService.getAllResourcesWithCRDs();
   });
 
-// Add after existing schema handlers
-ipcMain.handle('schema:getCRDSchemaTree', async (_, group: string, version: string, kind: string) => {
-  return schemaService.getCRDSchemaTree(group, version, kind);
-});
-  
+  // Add after existing schema handlers
+  ipcMain.handle('schema:getCRDSchemaTree', async (_, group: string, version: string, kind: string) => {
+    return schemaService.getCRDSchemaTree(group, version, kind);
+  });
+
+  ipcMain.handle('schema:getRawCRDSchema', async (_, cacheKey: string) => {
+    return schemaService.getRawCRDSchema(cacheKey);
+  });
+
 }
 
 /**

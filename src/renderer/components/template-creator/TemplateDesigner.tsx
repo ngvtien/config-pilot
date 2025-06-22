@@ -952,42 +952,20 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
                   <div
                     key={`${resource.apiVersion}-${resource.kind}-${index}`}
                     className={`${scheme.bg} ${scheme.border} ${scheme.hover} rounded-xl p-5 border-2 hover:shadow-lg hover:scale-105 transition-all duration-300 relative overflow-hidden cursor-pointer`}
-                    // onClick={() => {
-                    //   // Get the original KubernetesResourceSchema with the correct source
-                    //   const resourceSchema = kubernetesSchemaIndexer.getKindVersions(resource.kind)?.[0]
-                    //   if (resourceSchema) {
-                    //     // Preserve the source from the TemplateResource
-                    //     const resourceWithSource = {
-                    //       ...resourceSchema,
-                    //       source: resource.source  // This is the key fix!
-                    //     }
-                    //     setSelectedResourceForSchema(resourceWithSource)
-                    //     setSelectedResourceIndex(index)
-                    //     setSelectedResource(resourceWithSource)
-                    //     setIsSchemaModalOpen(true)
-                    //   }
-                    // }}
-                  //   onClick={() => {
-                  //     // Create proper KubernetesResourceSchema object with preserved source
-                  //     const schemaResource = {
-                  //       kind: resource.kind,
-                  //       apiVersion: resource.apiVersion || 'v1', // fallback if undefined
-                  //       key: `${resource.kind}.${resource.apiVersion || 'v1'}`,
-                  //       source: resource.source // preserve the source field
-                  //     };
-                  //     setSelectedResourceForSchema(schemaResource)
-                  //     setSelectedResourceIndex(index)
-                  //     setSelectedResource(schemaResource)
-                  //     setIsSchemaModalOpen(true)
-                  // }}
-                  onClick={() => {
-                    // Use the original schema if available, otherwise fallback to current resource
-                    const schemaResource = resource.originalSchema || resource;
-                    setSelectedResourceForSchema(schemaResource)
-                    setSelectedResourceIndex(index)
-                    setSelectedResource(schemaResource)
-                    setIsSchemaModalOpen(true)
-                  }}                  
+                    onClick={() => {
+                      const schemaResource = resource.originalSchema || resource;
+                      if (resource.source == 'kubernetes') {
+                        const resourceSchema = kubernetesSchemaIndexer.getKindVersions(resource.kind)?.[0]
+                        if (resourceSchema) {
+                          schemaResource.schema = resourceSchema.schema
+                        }
+                      }
+                      setSelectedResourceForSchema(schemaResource)
+                      setSelectedResourceIndex(index)
+                      setSelectedResource(schemaResource)
+                      setIsSchemaModalOpen(true)
+                    }}
+
                   >
                     {/* Subtle accent line */}
                     <div className={`absolute top-0 left-0 right-0 h-1 ${scheme.accent.replace('text-', 'bg-')}`}></div>
