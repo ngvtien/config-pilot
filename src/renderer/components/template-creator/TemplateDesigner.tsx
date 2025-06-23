@@ -535,28 +535,35 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
   const handleKindSelect = (resource: KubernetesResourceSchema) => {
     // Check if resource is already selected
     console.log('handleKindSelect received resource:', resource);
+    
+    // Ensure apiVersion is always present - fallback calculation
+    if (!resource.apiVersion && resource.group && resource.version) {
+      resource.apiVersion = resource.group === 'core' ? resource.version : `${resource.group}/${resource.version}`
+      console.log('✅ Added fallback apiVersion:', resource.apiVersion)
+    }
+    
+    // Use the actual apiVersion for duplicate check instead of manually constructing it
     const isAlreadySelected = selectedResources.some(r =>
-      r.kind === resource.kind && r.apiVersion === `${resource.group}/${resource.version}`
+      r.kind === resource.kind && r.apiVersion === resource.apiVersion
     )
 
     if (isAlreadySelected) {
       return // Don't add duplicates
     }
 
-
-    // const newResource: TemplateResource = {
-    //   apiVersion: `${resource.group}/${resource.version}`,
-    //   kind: resource.kind,
-    //   selectedFields: [],
-    //   source: resource.source,
-    //   originalSchema: resource // Store the original KubernetesResourceSchema
-    // }
-
     // Ensure apiVersion is always present - fallback calculation
     if (!resource.apiVersion && resource.group && resource.version) {
       resource.apiVersion = resource.group === 'core' ? resource.version : `${resource.group}/${resource.version}`
       console.log('✅ Added fallback apiVersion:', resource.apiVersion)
     }
+
+    console.log('🐛 DEBUG - Resource before creating TemplateResource:', {
+      kind: resource.kind,
+      group: resource.group,
+      version: resource.version,
+      apiVersion: resource.apiVersion,
+      source: resource.source
+    });
 
     const newResource: TemplateResource = {
       apiVersion: resource.apiVersion, // Use the properly set apiVersion
@@ -565,6 +572,11 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
       source: resource.source,
       originalSchema: resource
     }
+
+    console.log('🐛 DEBUG - Created TemplateResource:', {
+      apiVersion: newResource.apiVersion,
+      kind: newResource.kind
+    });
 
     setSelectedResources(prev => [...prev, newResource])
     setSelectedResource(resource)
@@ -872,13 +884,13 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
                           <span className="font-medium">{resource.kind}</span>
                           <div className="flex gap-1">
                             <Badge variant="secondary" className="text-xs">
-                              {resource.version || 'v1'}
+                              {displayResource.apiVersion}
                             </Badge>
-                            {(resource.group && resource.group !== 'core') && (
+                            {/* {(resource.group && resource.group !== 'core') && (
                               <Badge variant="outline" className="text-xs">
                                 {resource.group}
                               </Badge>
-                            )}
+                            )} */}
                           </div>
                         </div>
                         {resource.description && (
@@ -981,9 +993,17 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
                     onClick={async () => {
                       const schemaResource = resource.originalSchema || resource;
                       if (resource.source == 'kubernetes') {
-                        const resourceSchema = (await kubernetesSchemaIndexer.getKindVersions(resource.kind))?.[0]
+                        console.log('🔍 Requesting schema for kind:', resource.kind);
+                        console.log('🔍 Schema indexer initialized:', !!kubernetesSchemaIndexer.lazyIndex);
+
+                        var versions = await kubernetesSchemaIndexer.getKindVersions(resource.kind);
+                        const resourceSchema = versions?.[0]
                         if (resourceSchema) {
                           schemaResource.schema = resourceSchema.schema
+                          console.log('✅ Schema found and assigned');
+                        }
+                        else{
+                          console.warn('❌ No schema found for kind:', resource.kind);
                         }
                       }
                       setSelectedResourceForSchema(schemaResource)
@@ -999,6 +1019,14 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
                     <div className="flex justify-between items-start mb-4">
                       <div className="flex-1">
                         <h3 className={`font-semibold text-lg ${scheme.accent} mb-1`}>{resource.kind}</h3>
+{
+  console.log('🐛 DEBUG - Rendering resource in UI:', {
+    kind: resource.kind,
+    apiVersion: resource.apiVersion,
+    originalSchema: resource.originalSchema
+  })
+}
+
                         <p className="text-sm text-gray-600 font-medium">{resource.apiVersion}</p>
                         {resource.namespace && (
                           <p className="text-xs text-gray-500 mt-1 bg-white/50 px-2 py-1 rounded-full inline-block">

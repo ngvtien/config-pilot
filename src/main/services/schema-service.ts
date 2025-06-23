@@ -984,14 +984,28 @@ class SchemaService {
   /**
    * Extract API version from schema key
    */
+  /**
+   * Extract API version from schema key
+   */
   private extractApiVersionFromKey(key: string): string | undefined {
-    const match = key.match(/\.([^.]+)\.([^.]+)$/);
-    if (match) {
-      return `${match[1]}/${match[2]}`;
+    // Handle different key patterns:
+    // Core resources: "io.k8s.api.core.v1.Pod" -> "v1"
+    // Non-core resources: "io.k8s.api.apps.v1.Deployment" -> "apps/v1"
+    
+    if (key.includes('.api.core.')) {
+      // Core resources: extract just the version
+      const match = key.match(/\.api\.core\.([^.]+)\./)
+      return match ? match[1] : 'v1'
+    } else if (key.includes('.api.')) {
+      // Non-core resources: extract group and version
+      const match = key.match(/\.api\.([^.]+)\.([^.]+)\./)
+      return match ? `${match[1]}/${match[2]}` : 'v1'
     }
-    return 'v1';
+    
+    // Fallback for other patterns
+    return 'v1'
   }
-
+  
   /**
    * Search resources within a specific schema source
    */

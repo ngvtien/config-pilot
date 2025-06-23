@@ -373,7 +373,7 @@ class KubernetesSchemaIndexer {
         // Direct apiVersion computation - simple and reliable
         const apiVersion = metadata.group === 'core' ? metadata.version : `${metadata.group}/${metadata.version}`
 
-        //console.log('✅ Computed apiVersion:', apiVersion)
+        console.log('✅ Computed apiVersion:', apiVersion)
 
         const result = {
           ...metadata,
@@ -564,7 +564,8 @@ class KubernetesSchemaIndexer {
           schema = resource.schema || {};
         }
 
-        return {
+        // Use the factory function to ensure apiVersion is correctly computed
+        return createKubernetesResourceSchema({
           key: resource.key,
           group: group,
           version: version,
@@ -577,7 +578,7 @@ class KubernetesSchemaIndexer {
           }),
           description: resource.description,
           source: resource.source
-        };
+        });
       }));
 
       return converted;
