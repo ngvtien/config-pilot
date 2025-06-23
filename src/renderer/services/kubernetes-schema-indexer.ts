@@ -364,11 +364,11 @@ class KubernetesSchemaIndexer {
       metadataList.map(async (metadata) => {
         const schema = await this.loadSchemaOnDemand(metadata.definitionKey)
 
-        console.log('🔍 Metadata for apiVersion calculation:', {
-          group: metadata.group,
-          version: metadata.version,
-          kind: metadata.kind
-        })
+        // console.log('🔍 Metadata for apiVersion calculation:', {
+        //   group: metadata.group,
+        //   version: metadata.version,
+        //   kind: metadata.kind
+        // })
 
         // Direct apiVersion computation - simple and reliable
         const apiVersion = metadata.group === 'core' ? metadata.version : `${metadata.group}/${metadata.version}`
