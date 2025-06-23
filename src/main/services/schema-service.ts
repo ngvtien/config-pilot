@@ -146,9 +146,8 @@ class SchemaService {
               type: 'string',
               enum: [crd.kind]
             },
-            // metadata: crd.metadata || {},
             metadata: {
-              $ref: '#/definitions/ObjectMeta'
+              $ref: '#/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta'
             },
             spec: crd.schema || {},
             status: {
@@ -1080,36 +1079,89 @@ class SchemaService {
    * @param kind - The kind of the CRD resource
    * @returns Promise resolving to schema tree nodes or null if not found
    */
-  async getCRDSchemaTree(group: string, version: string, kind: string): Promise<SchemaTreeNode[] | null> {
-    const cacheKey = `crd-${group}-${version}-${kind}`;
+  // async getCRDSchemaTree(group: string, version: string, kind: string): Promise<SchemaTreeNode[] | null> {
+  //   const cacheKey = `crd-${group}-${version}-${kind}`;
 
-    console.log('Getting CRD schema tree:', { cacheKey, group, version, kind });
+  //   console.log('Getting CRD schema tree:', { cacheKey, group, version, kind });
 
-    const rawCache = this.rawSchemaCache.get(cacheKey);
-    if (!rawCache) {
-      console.warn(`No CRD cache found for: ${cacheKey}`);
-      return null;
-    }
+  //   const rawCache = this.rawSchemaCache.get(cacheKey);
+  //   if (!rawCache) {
+  //     console.warn(`No CRD cache found for: ${cacheKey}`);
+  //     return null;
+  //   }
 
-    const rawDefinitions = rawCache.schema.definitions || {};
-    const resourceSchema = rawDefinitions[kind];
+  //   const rawDefinitions = rawCache.schema.definitions || {};
+  //   const resourceSchema = rawDefinitions[kind];
 
-    if (!resourceSchema || typeof resourceSchema === 'boolean') {
-      console.warn(`CRD schema not found for: ${kind}`);
-      return null;
-    }
+  //   if (!resourceSchema || typeof resourceSchema === 'boolean') {
+  //     console.warn(`CRD schema not found for: ${kind}`);
+  //     return null;
+  //   }
 
-    // Filter out boolean definitions and create a proper Record<string, JSONSchema7>
-    const definitions: Record<string, JSONSchema7> = {};
-    Object.entries(rawDefinitions).forEach(([key, value]) => {
-      if (typeof value !== 'boolean') {
-        definitions[key] = value;
-      }
-    });
+  //   // Filter out boolean definitions and create a proper Record<string, JSONSchema7>
+  //   const definitions: Record<string, JSONSchema7> = {};
+  //   Object.entries(rawDefinitions).forEach(([key, value]) => {
+  //     if (typeof value !== 'boolean') {
+  //       definitions[key] = value;
+  //     }
+  //   });
 
-    return this.buildSchemaTree(resourceSchema, definitions, kind, '', []);
+  //   return this.buildSchemaTree(resourceSchema, definitions, kind, '', []);
+  // }
+
+  /**
+ * Get CRD schema tree with vanilla definitions merged for $ref resolution
+ * @param group CRD group
+ * @param version CRD version  
+ * @param kind CRD kind
+ * @returns Promise resolving to schema tree nodes or null if not found
+ */
+async getCRDSchemaTree(group: string, version: string, kind: string): Promise<SchemaTreeNode[] | null> {
+  const cacheKey = `crd-${group}-${version}-${kind}`;
+
+  console.log('Getting CRD schema tree:', { cacheKey, group, version, kind });
+
+  const rawCache = this.rawSchemaCache.get(cacheKey);
+  if (!rawCache) {
+    console.warn(`No CRD cache found for: ${cacheKey}`);
+    return null;
   }
 
+  const crdDefinitions = rawCache.schema.definitions || {};
+  const resourceSchema = crdDefinitions[kind];
+
+  if (!resourceSchema || typeof resourceSchema === 'boolean') {
+    console.warn(`CRD schema not found for: ${kind}`);
+    return null;
+  }
+
+  // Get vanilla definitions for $ref resolution (same as vanilla resources)
+  const vanillaCache = this.rawSchemaCache.get('kubernetes') || 
+    Array.from(this.rawSchemaCache.entries())
+      .find(([key]) => key.startsWith('kubernetes-'))?.[1];
+
+  const vanillaDefinitions = vanillaCache?.schema.definitions || {};
+
+  // Merge CRD definitions with vanilla definitions (CRD takes precedence)
+  const mergedDefinitions: Record<string, JSONSchema7> = {};
+  
+  // Add vanilla definitions first
+  Object.entries(vanillaDefinitions).forEach(([key, value]) => {
+    if (typeof value !== 'boolean') {
+      mergedDefinitions[key] = value;
+    }
+  });
+  
+  // Add CRD definitions (overwrites vanilla if same key)
+  Object.entries(crdDefinitions).forEach(([key, value]) => {
+    if (typeof value !== 'boolean') {
+      mergedDefinitions[key] = value;
+    }
+  });
+
+  // Now buildSchemaTree can resolve $ref to ObjectMeta and other vanilla types
+  return this.buildSchemaTree(resourceSchema, mergedDefinitions, kind, '', []);
+}
   /**
    * Get raw CRD JSONSchema7 directly from cache using cache key
    */
