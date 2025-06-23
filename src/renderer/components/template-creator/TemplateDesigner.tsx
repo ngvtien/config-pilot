@@ -142,7 +142,7 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
   useEffect(() => {
     try {
       localStorage.setItem('template-designer-selected-resources', JSON.stringify(selectedResources))
-      console.log('Persisted selected resources:', selectedResources.length, 'resources')
+      //console.log('Persisted selected resources:', selectedResources.length, 'resources')
     } catch (error) {
       console.warn('Failed to persist selected resources:', error)
     }
@@ -514,12 +514,12 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
       try {
         // Use enhanced search with CRDs
         const results = await kubernetesSchemaIndexer.searchResourcesWithCRDs(searchTerm)
-        console.log('🔍 Enhanced search results:', results)
-        console.log('🔍 CRD resources found:', results.filter(r => r.group !== 'core' && r.group !== ''))
+        //console.log('🔍 Enhanced search results:', results)
+        //console.log('🔍 CRD resources found:', results.filter(r => r.group !== 'core' && r.group !== ''))
         setSearchResults(results)
-        console.log('✅ Using enhanced search with CRDs:', results.length, 'results')
+        //console.log('✅ Using enhanced search with CRDs:', results.length, 'results')
       } catch (error) {
-        console.warn('Enhanced search not available, using standard search:', error)
+        //console.warn('Enhanced search not available, using standard search:', error)
         // Fallback to standard search
         const standardResults = kubernetesSchemaIndexer.searchResources(searchTerm)
         setSearchResults(standardResults)
@@ -702,14 +702,407 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
   }
 
   /**
-   * Save template to file
+   * Save template to file system with folder structure
    */
-  const saveTemplate = () => {
-    // Implementation for saving template
-    console.log('Saving template:', template)
-    // This would save the template to the file system
+  const saveTemplate = async () => {
+    if (!template.name.trim()) {
+      console.error('Template name is required')
+      return
+    }
+
+    try {
+      // Create the template folder structure: {baseDirectory}/{template-name}
+      const templateDir = joinPath(settingsData.baseDirectory, template.name)
+      
+      // Ensure the template directory exists
+      await window.electronAPI.createDirectory(templateDir)
+      
+      // Create helm subdirectory
+      const helmDir = joinPath(templateDir, 'helm')
+      await window.electronAPI.createDirectory(helmDir)
+      
+      // Create kustomize subdirectory  
+      const kustomizeDir = joinPath(templateDir, 'kustomize')
+      await window.electronAPI.createDirectory(kustomizeDir)
+      
+      // Prepare template metadata
+      const templateMetadata = {
+        name: template.name,
+        description: template.description || '',
+        resources: selectedResources.map(resource => ({
+          kind: resource.kind,
+          apiVersion: resource.apiVersion,
+          namespace: resource.namespace,
+          selectedFields: resource.selectedFields || [],
+          templateType: resource.templateType || 'kubernetes',
+          source: resource.source
+        })),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }
+      
+      // Save template.metadata.json in the template directory
+      const metadataPath = joinPath(templateDir, 'template.metadata.json')
+      await window.electronAPI.writeFile(metadataPath, JSON.stringify(templateMetadata, null, 2))
+      
+      // Generate and save template.schema.json (JSON Schema for validation)
+      const schemaPath = joinPath(templateDir, 'template.schema.json')
+      const templateSchema = generateTemplateSchema(templateMetadata)
+      await window.electronAPI.writeFile(schemaPath, JSON.stringify(templateSchema, null, 2))
+      
+      // Generate Helm files
+      await generateHelmFiles(helmDir, templateMetadata)
+      
+      // Generate Kustomize files
+      await generateKustomizeFiles(kustomizeDir, templateMetadata)
+      
+      console.log('✅ Template saved successfully to:', templateDir)
+      
+      // Optional: Show success notification to user
+      // You might want to add a toast notification here
+      
+    } catch (error) {
+      console.error('❌ Failed to save template:', error)
+      // Optional: Show error notification to user
+    }
   }
 
+  /**
+   * Generate JSON Schema for template validation
+   */
+/**
+ * Generates a simplified template schema that groups fields by resource type
+ * Creates a user-friendly structure like deployment.replicas, configmap.data, etc.
+ * @param template - The template containing selected resources and fields
+ * @returns JSON Schema object for form generation
+ */
+const generateTemplateSchema = (template: Template): any => {
+  const schema = {
+    $schema: "http://json-schema.org/draft-07/schema#",
+    type: "object",
+    title: template.name,
+    description: template.description,
+    properties: {} as any,
+    required: [] as string[]
+  };
+
+  template.resources.forEach((resource) => {
+    // Use lowercase resource kind as the property key (e.g., "deployment", "configmap")
+    const resourceKey = resource.kind.toLowerCase();
+    
+    // Initialize the resource object in the schema
+    schema.properties[resourceKey] = {
+      type: "object",
+      title: `${resource.kind} Configuration`,
+      description: `Configuration for ${resource.kind} resource`,
+      properties: {} as any,
+      required: [] as string[]
+    };
+
+    // Process each selected field for this resource
+    resource.selectedFields.forEach(field => {
+      // Extract the final property name from the path (e.g., "spec.replicas" -> "replicas")
+      const fieldParts = field.path.split('.');
+      const fieldName = fieldParts[fieldParts.length - 1].replace(/\[\]/g, '');
+      
+      // Create the field schema based on the field type and constraints
+      const fieldSchema: any = {
+        title: fieldName.charAt(0).toUpperCase() + fieldName.slice(1), // Capitalize first letter
+        description: field.description || `Configuration for ${fieldName}`
+      };
+
+      // Set the type and constraints based on the field type
+      switch (field.type) {
+        case 'string':
+          fieldSchema.type = 'string';
+          if (field.constraints?.enum) {
+            fieldSchema.enum = field.constraints.enum;
+          }
+          if (field.constraints?.pattern) {
+            fieldSchema.pattern = field.constraints.pattern;
+          }
+          if (field.constraints?.minLength) {
+            fieldSchema.minLength = field.constraints.minLength;
+          }
+          if (field.constraints?.maxLength) {
+            fieldSchema.maxLength = field.constraints.maxLength;
+          }
+          break;
+          
+        case 'number':
+        case 'integer':
+          fieldSchema.type = field.type;
+          if (field.constraints?.minimum !== undefined) {
+            fieldSchema.minimum = field.constraints.minimum;
+          }
+          if (field.constraints?.maximum !== undefined) {
+            fieldSchema.maximum = field.constraints.maximum;
+          }
+          // Set sensible defaults for common fields
+          if (fieldName === 'replicas') {
+            fieldSchema.default = 1;
+          }
+          break;
+          
+        case 'boolean':
+          fieldSchema.type = 'boolean';
+          break;
+          
+        case 'array':
+          fieldSchema.type = 'array';
+          fieldSchema.items = {
+            type: 'string' // Default to string, could be enhanced based on array item type
+          };
+          if (field.constraints?.minItems !== undefined) {
+            fieldSchema.minItems = field.constraints.minItems;
+          }
+          if (field.constraints?.maxItems !== undefined) {
+            fieldSchema.maxItems = field.constraints.maxItems;
+          }
+          break;
+          
+        case 'object':
+          fieldSchema.type = 'object';
+          fieldSchema.additionalProperties = true;
+          // Set default empty object for common object fields
+          if (fieldName === 'env' || fieldName === 'data' || fieldName === 'labels' || fieldName === 'annotations') {
+            fieldSchema.default = {};
+          }
+          break;
+          
+        default:
+          fieldSchema.type = 'string';
+      }
+
+      // Add examples if available
+      if (field.example !== undefined) {
+        fieldSchema.examples = [field.example];
+      }
+
+      // Set default value if available and not already set
+      if (field.default !== undefined && fieldSchema.default === undefined) {
+        fieldSchema.default = field.default;
+      }
+
+      // Add field to the resource schema
+      schema.properties[resourceKey].properties[fieldName] = fieldSchema;
+      
+      // Mark as required if specified
+      if (field.required) {
+        schema.properties[resourceKey].required.push(fieldName);
+      }
+    });
+
+    // Add the resource to the main required array if it has required fields
+    if (schema.properties[resourceKey].required.length > 0) {
+      schema.required.push(resourceKey);
+    }
+  });
+
+  return schema;
+};
+
+  /**
+   * Generate Helm Chart files
+   */
+  const generateHelmFiles = async (helmDir: string, templateMetadata: any) => {
+    // Generate Chart.yaml
+    const chartYaml = {
+      apiVersion: 'v2',
+      name: templateMetadata.name.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
+      description: templateMetadata.description || `A Helm chart for ${templateMetadata.name}`,
+      type: 'application',
+      version: '0.1.0',
+      appVersion: '1.0.0'
+    }
+    
+    const chartContent = `# Generated Helm Chart for ${templateMetadata.name}\napiVersion: ${chartYaml.apiVersion}\nname: ${chartYaml.name}\ndescription: ${chartYaml.description}\ntype: ${chartYaml.type}\nversion: ${chartYaml.version}\nappVersion: ${chartYaml.appVersion}`
+    
+    const chartPath = joinPath(helmDir, 'Chart.yaml')
+    await window.electronAPI.writeFile(chartPath, chartContent)
+    
+    // Generate values.yaml
+    const valuesContent = generateValuesYaml(templateMetadata)
+    const valuesPath = joinPath(helmDir, 'values.yaml')
+    await window.electronAPI.writeFile(valuesPath, valuesContent)
+    
+    // Create templates directory
+    const templatesDir = joinPath(helmDir, 'templates')
+    await window.electronAPI.createDirectory(templatesDir)
+    
+    // Generate individual resource template files
+    for (const resource of templateMetadata.resources) {
+      const resourceFileName = `${resource.kind.toLowerCase()}.yaml`
+      const resourcePath = joinPath(templatesDir, resourceFileName)
+      
+      const resourceTemplate = generateHelmResourceTemplate(resource, templateMetadata.name)
+      await window.electronAPI.writeFile(resourcePath, resourceTemplate)
+    }
+  }
+  
+  /**
+   * Generate values.yaml content for Helm chart
+   */
+  const generateValuesYaml = (templateMetadata: any): string => {
+    let valuesContent = `# Default values for ${templateMetadata.name}\n# This is a YAML-formatted file.\n\n`
+    
+    templateMetadata.resources.forEach((resource: any) => {
+      const resourceKey = resource.kind.toLowerCase()
+      valuesContent += `${resourceKey}:\n`
+      valuesContent += `  enabled: true\n`
+      
+      if (resource.selectedFields && resource.selectedFields.length > 0) {
+        resource.selectedFields.forEach((field: any) => {
+          const fieldKey = field.path.split('.').pop() || field.title.toLowerCase().replace(/\s+/g, '')
+          const defaultValue = getDefaultValueForType(field.type)
+          valuesContent += `  ${fieldKey}: ${defaultValue}\n`
+        })
+      }
+      valuesContent += '\n'
+    })
+    
+    return valuesContent
+  }
+  
+  /**
+   * Generate Helm resource template
+   */
+  const generateHelmResourceTemplate = (resource: any, templateName: string): string => {
+    const chartName = templateName.toLowerCase().replace(/[^a-z0-9-]/g, '-')
+    
+    let template = `apiVersion: ${resource.apiVersion}\n`
+    template += `kind: ${resource.kind}\n`
+    template += `metadata:\n`
+    template += `  name: {{ include "${chartName}.fullname" . }}\n`
+    template += `  labels:\n`
+    template += `    {{- include "${chartName}.labels" . | nindent 4 }}\n`
+    
+    if (resource.kind === 'Deployment' || resource.kind === 'StatefulSet' || resource.kind === 'DaemonSet') {
+      template += `spec:\n`
+      template += `  replicas: {{ .Values.${resource.kind.toLowerCase()}.replicas | default 1 }}\n`
+      template += `  selector:\n`
+      template += `    matchLabels:\n`
+      template += `      {{- include "${chartName}.selectorLabels" . | nindent 6 }}\n`
+      template += `  template:\n`
+      template += `    metadata:\n`
+      template += `      labels:\n`
+      template += `        {{- include "${chartName}.selectorLabels" . | nindent 8 }}\n`
+      template += `    spec:\n`
+      template += `      containers:\n`
+      template += `      - name: {{ .Chart.Name }}\n`
+      template += `        image: "{{ .Values.${resource.kind.toLowerCase()}.image.repository }}:{{ .Values.${resource.kind.toLowerCase()}.image.tag | default .Chart.AppVersion }}"\n`
+      template += `        imagePullPolicy: {{ .Values.${resource.kind.toLowerCase()}.image.pullPolicy }}\n`
+    } else {
+      template += `spec:\n`
+      template += `  # Add your ${resource.kind} specification here\n`
+      if (resource.selectedFields && resource.selectedFields.length > 0) {
+        template += `  # Based on selected fields: ${resource.selectedFields.map((f: any) => f.path).join(', ')}\n`
+      }
+    }
+    
+    return template
+  }
+  
+  /**
+   * Generate Kustomize files
+   */
+  const generateKustomizeFiles = async (kustomizeDir: string, templateMetadata: any) => {
+    // Generate kustomization.yaml
+    const kustomizationContent = generateKustomizationYaml(templateMetadata)
+    const kustomizationPath = joinPath(kustomizeDir, 'kustomization.yaml')
+    await window.electronAPI.writeFile(kustomizationPath, kustomizationContent)
+    
+    // Generate individual resource files for Kustomize
+    for (const resource of templateMetadata.resources) {
+      const resourceFileName = `${resource.kind.toLowerCase()}.yaml`
+      const resourcePath = joinPath(kustomizeDir, resourceFileName)
+      
+      const resourceManifest = generateKustomizeResourceManifest(resource, templateMetadata.name)
+      await window.electronAPI.writeFile(resourcePath, resourceManifest)
+    }
+  }
+  
+  /**
+   * Generate kustomization.yaml content
+   */
+  const generateKustomizationYaml = (templateMetadata: any): string => {
+    let content = `apiVersion: kustomize.config.k8s.io/v1beta1\n`
+    content += `kind: Kustomization\n\n`
+    content += `metadata:\n`
+    content += `  name: ${templateMetadata.name.toLowerCase()}\n\n`
+    content += `resources:\n`
+    
+    templateMetadata.resources.forEach((resource: any) => {
+      content += `- ${resource.kind.toLowerCase()}.yaml\n`
+    })
+    
+    content += `\n# Add common labels to all resources\n`
+    content += `commonLabels:\n`
+    content += `  app: ${templateMetadata.name.toLowerCase()}\n`
+    content += `  version: v1.0.0\n\n`
+    
+    content += `# Add common annotations\n`
+    content += `commonAnnotations:\n`
+    content += `  generated-by: config-pilot\n`
+    content += `  template: ${templateMetadata.name}\n`
+    
+    return content
+  }
+  
+  /**
+   * Generate Kustomize resource manifest
+   */
+  const generateKustomizeResourceManifest = (resource: any, templateName: string): string => {
+    let manifest = `apiVersion: ${resource.apiVersion}\n`
+    manifest += `kind: ${resource.kind}\n`
+    manifest += `metadata:\n`
+    manifest += `  name: ${templateName.toLowerCase()}-${resource.kind.toLowerCase()}\n`
+    
+    if (resource.namespace) {
+      manifest += `  namespace: ${resource.namespace}\n`
+    }
+    
+    manifest += `spec:\n`
+    
+    if (resource.kind === 'Deployment' || resource.kind === 'StatefulSet' || resource.kind === 'DaemonSet') {
+      manifest += `  replicas: 1\n`
+      manifest += `  selector:\n`
+      manifest += `    matchLabels:\n`
+      manifest += `      app: ${templateName.toLowerCase()}\n`
+      manifest += `  template:\n`
+      manifest += `    metadata:\n`
+      manifest += `      labels:\n`
+      manifest += `        app: ${templateName.toLowerCase()}\n`
+      manifest += `    spec:\n`
+      manifest += `      containers:\n`
+      manifest += `      - name: ${templateName.toLowerCase()}\n`
+      manifest += `        image: nginx:latest\n`
+      manifest += `        ports:\n`
+      manifest += `        - containerPort: 80\n`
+    } else {
+      manifest += `  # Add your ${resource.kind} specification here\n`
+      if (resource.selectedFields && resource.selectedFields.length > 0) {
+        manifest += `  # Based on selected fields: ${resource.selectedFields.map((f: any) => f.path).join(', ')}\n`
+      }
+    }
+    
+    return manifest
+  }
+  
+  /**
+   * Get default value for field type
+   */
+  const getDefaultValueForType = (type: string): string => {
+    switch (type) {
+      case 'string': return '""'
+      case 'number': return '0'
+      case 'boolean': return 'false'
+      case 'array': return '[]'
+      case 'object': return '{}'
+      default: return '""'
+    }
+  }
+    
   /**
    * Check if template has data to enable buttons
    */
@@ -1019,14 +1412,6 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
                     <div className="flex justify-between items-start mb-4">
                       <div className="flex-1">
                         <h3 className={`font-semibold text-lg ${scheme.accent} mb-1`}>{resource.kind}</h3>
-{
-  console.log('🐛 DEBUG - Rendering resource in UI:', {
-    kind: resource.kind,
-    apiVersion: resource.apiVersion,
-    originalSchema: resource.originalSchema
-  })
-}
-
                         <p className="text-sm text-gray-600 font-medium">{resource.apiVersion}</p>
                         {resource.namespace && (
                           <p className="text-xs text-gray-500 mt-1 bg-white/50 px-2 py-1 rounded-full inline-block">

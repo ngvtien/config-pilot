@@ -158,11 +158,6 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
         }
     }, [])
 
-    //   // Load recent projects on mount
-    //   useEffect(() => {
-    //     loadRecentProjects()
-    //   }, [])
-
     // Load recent projects and current project on mount
     useEffect(() => {
         const initializeProjects = async () => {

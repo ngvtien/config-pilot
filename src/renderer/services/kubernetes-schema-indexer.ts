@@ -373,7 +373,7 @@ class KubernetesSchemaIndexer {
         // Direct apiVersion computation - simple and reliable
         const apiVersion = metadata.group === 'core' ? metadata.version : `${metadata.group}/${metadata.version}`
 
-        console.log('✅ Computed apiVersion:', apiVersion)
+        //console.log('✅ Computed apiVersion:', apiVersion)
 
         const result = {
           ...metadata,
@@ -421,7 +421,7 @@ class KubernetesSchemaIndexer {
     // Direct apiVersion computation - simple and reliable
     const apiVersion = metadata.group === 'core' ? metadata.version : `${metadata.group}/${metadata.version}`
 
-    console.log('✅ getSchemaByGVK computed apiVersion:', apiVersion)
+    //console.log('✅ getSchemaByGVK computed apiVersion:', apiVersion)
 
     const result = {
       ...metadata,
