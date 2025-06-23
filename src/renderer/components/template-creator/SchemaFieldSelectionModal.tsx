@@ -178,13 +178,13 @@ export function SchemaFieldSelectionModal({
     //const resourceKey = resource ? (resource.key || `${resource.kind}-${resource.apiVersion || resource.group + '/' + resource.version}`) : '';
     //const resourceKey = resource ? (resource.key || `io.k8s.api.${resource.group || 'core'}.${resource.version}.${resource.kind}`) : '';
 
-    console.log('🔍 Resource object:', resource);
-    console.log('🔍 Resource key:', resource?.key);
-    console.log('🔍 Resource kind:', resource?.kind);
-    console.log('🔍 Resource apiVersion:', resource?.apiVersion);
-    console.log('🔍 Resource group:', resource?.group);
+    // console.log('🔍 Resource object:', resource);
+    // console.log('🔍 Resource key:', resource?.key);
+    // console.log('🔍 Resource kind:', resource?.kind);
+    // console.log('🔍 Resource apiVersion:', resource?.apiVersion);
+    // console.log('🔍 Resource group:', resource?.group);
     const resourceKey = resource?.key || '';
-    console.log('🔍 Final resourceKey:', resourceKey);
+    //console.log('🔍 Final resourceKey:', resourceKey);
 
     useEffect(() => {
         if (resource && isOpen) {
@@ -474,8 +474,8 @@ export function SchemaFieldSelectionModal({
      */
     const handlePreviewSchema = () => {
         if (resource?.schema) {
-            console.log('🔍 Raw Schema Structure:', JSON.stringify(resource.schema, null, 2))
-            console.log('🔍 Parsed Schema Properties:', schemaProperties)
+            //console.log('🔍 Raw Schema Structure:', JSON.stringify(resource.schema, null, 2))
+            //console.log('🔍 Parsed Schema Properties:', schemaProperties)
             setShowSchemaPreview(true)
         }
     }

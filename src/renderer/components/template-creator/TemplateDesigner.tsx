@@ -274,7 +274,7 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
   /**
  * Convert Kubernetes schema to RJSF schema format
  */
-  const convertToRJSFSchema = useCallback((kubernetesSchema: any): RJSFSchema => {
+  const convertToRJSFSchema = useCallback(async (kubernetesSchema: any): Promise<RJSFSchema> => {
     if (!kubernetesSchema?.schema) return {}
 
     try {
@@ -286,7 +286,7 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
       }
 
       // Use the indexer's getResolvedSchema method to resolve all $ref references
-      const resolvedSchema = kubernetesSchemaIndexer.getResolvedSchema(
+      const resolvedSchema = await kubernetesSchemaIndexer.getResolvedSchema(
         kubernetesSchema.group,
         kubernetesSchema.version,
         kubernetesSchema.kind
@@ -499,11 +499,14 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
     const performSearch = async () => {
       if (!searchTerm.trim()) {
         // Return all kinds as basic search results when no search term
-        const allKindsResults = availableKinds.map(kind => {
-          const versions = kubernetesSchemaIndexer.getKindVersions(kind)
+        const allKindsPromises = availableKinds.map(async kind => {
+          const versions = await kubernetesSchemaIndexer.getKindVersions(kind)
           return versions[0] // Return the first version for each kind
         }).filter(Boolean)
-        setSearchResults(allKindsResults)
+
+        // Wait for all promises to resolve
+        const allKindsResults = await Promise.all(allKindsPromises)
+        setSearchResults(allKindsResults.filter(Boolean))
         console.log('🔍 No search term - showing all kinds:', allKindsResults.length)
         return
       }
@@ -531,6 +534,7 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
    */
   const handleKindSelect = (resource: KubernetesResourceSchema) => {
     // Check if resource is already selected
+    console.log('handleKindSelect received resource:', resource);
     const isAlreadySelected = selectedResources.some(r =>
       r.kind === resource.kind && r.apiVersion === `${resource.group}/${resource.version}`
     )
@@ -539,12 +543,27 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
       return // Don't add duplicates
     }
 
+
+    // const newResource: TemplateResource = {
+    //   apiVersion: `${resource.group}/${resource.version}`,
+    //   kind: resource.kind,
+    //   selectedFields: [],
+    //   source: resource.source,
+    //   originalSchema: resource // Store the original KubernetesResourceSchema
+    // }
+
+    // Ensure apiVersion is always present - fallback calculation
+    if (!resource.apiVersion && resource.group && resource.version) {
+      resource.apiVersion = resource.group === 'core' ? resource.version : `${resource.group}/${resource.version}`
+      console.log('✅ Added fallback apiVersion:', resource.apiVersion)
+    }
+
     const newResource: TemplateResource = {
-      apiVersion: `${resource.group}/${resource.version}`,
+      apiVersion: resource.apiVersion, // Use the properly set apiVersion
       kind: resource.kind,
       selectedFields: [],
       source: resource.source,
-      originalSchema: resource // Store the original KubernetesResourceSchema
+      originalSchema: resource
     }
 
     setSelectedResources(prev => [...prev, newResource])
@@ -625,8 +644,8 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
         selected.apiVersion === `${resource.group}/${resource.version}`
       )
     )
-    console.log('🔍 Filtered search results:', filtered.length, 'of', searchResults.length)
-    console.log('🔍 CRDs in filtered results:', filtered.filter(r => r.group !== 'core' && r.group !== ''))
+    // console.log('🔍 Filtered search results:', filtered.length, 'of', searchResults.length)
+    // console.log('🔍 CRDs in filtered results:', filtered.filter(r => r.group !== 'core' && r.group !== ''))
     return filtered
   }, [searchResults, selectedResources])
 
@@ -837,32 +856,39 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
             {isDropdownOpen && !isLoading && !error && (
               <div className="absolute z-10 w-full mt-1 bg-background border border-border rounded-md shadow-lg max-h-60 overflow-auto">
                 {filteredSearchResults.length > 0 ? (
-                  filteredSearchResults.map((resource, index) => (
-                    <div
-                      key={`${resource.group || 'core'}-${resource.version || 'v1'}-${resource.kind}-${index}`}
-                      className="px-3 py-2 hover:bg-accent hover:text-accent-foreground cursor-pointer border-b border-border last:border-b-0"
-                      onClick={() => handleKindSelect(resource)}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium">{resource.kind}</span>
-                        <div className="flex gap-1">
-                          <Badge variant="secondary" className="text-xs">
-                            {resource.version || 'v1'}
-                          </Badge>
-                          {(resource.group && resource.group !== 'core') && (
-                            <Badge variant="outline" className="text-xs">
-                              {resource.group}
+                  filteredSearchResults.map((resource, index) => {
+                    // Ensure apiVersion is present for display
+                    const displayResource = {
+                      ...resource,
+                      apiVersion: resource.apiVersion || (resource.group === 'core' ? resource.version : `${resource.group}/${resource.version}`)
+                    }
+                    return (
+                      <div
+                        key={`${resource.group || 'core'}-${resource.version || 'v1'}-${resource.kind}-${index}`}
+                        className="px-3 py-2 hover:bg-accent hover:text-accent-foreground cursor-pointer border-b border-border last:border-b-0"
+                        onClick={() => handleKindSelect(displayResource)}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium">{resource.kind}</span>
+                          <div className="flex gap-1">
+                            <Badge variant="secondary" className="text-xs">
+                              {resource.version || 'v1'}
                             </Badge>
-                          )}
+                            {(resource.group && resource.group !== 'core') && (
+                              <Badge variant="outline" className="text-xs">
+                                {resource.group}
+                              </Badge>
+                            )}
+                          </div>
                         </div>
+                        {resource.description && (
+                          <p className="text-sm text-muted-foreground mt-1">
+                            {resource.description}
+                          </p>
+                        )}
                       </div>
-                      {resource.description && (
-                        <p className="text-sm text-muted-foreground mt-1">
-                          {resource.description}
-                        </p>
-                      )}
-                    </div>
-                  ))
+                    )
+                  })
                 ) : (
                   <div className="px-3 py-4 text-center text-muted-foreground">
                     {searchTerm ?
@@ -952,10 +978,10 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
                   <div
                     key={`${resource.apiVersion}-${resource.kind}-${index}`}
                     className={`${scheme.bg} ${scheme.border} ${scheme.hover} rounded-xl p-5 border-2 hover:shadow-lg hover:scale-105 transition-all duration-300 relative overflow-hidden cursor-pointer`}
-                    onClick={() => {
+                    onClick={async () => {
                       const schemaResource = resource.originalSchema || resource;
                       if (resource.source == 'kubernetes') {
-                        const resourceSchema = kubernetesSchemaIndexer.getKindVersions(resource.kind)?.[0]
+                        const resourceSchema = (await kubernetesSchemaIndexer.getKindVersions(resource.kind))?.[0]
                         if (resourceSchema) {
                           schemaResource.schema = resourceSchema.schema
                         }

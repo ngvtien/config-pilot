@@ -48,25 +48,25 @@ export function KubernetesResourceSelector({ onSchemaSelect, schemaVersion }: Ku
     }
   }
 
-  const handleKindSelect = (kind: string) => {
+  const handleKindSelect = async (kind: string) => {
     setSelectedKind(kind)
-    const versions = kubernetesSchemaIndexer.getKindVersions(kind)
+    const versions = await kubernetesSchemaIndexer.getKindVersions(kind)
     setKindVersions(versions)
     setSelectedResource(null)
   }
 
-  const handleResourceSelect = (resource: any) => {
+  const handleResourceSelect = async (resource: any) => {
     setSelectedResource(resource)
 
     // Get the schema properties specifically for form generation
-    const schemaProperties = kubernetesSchemaIndexer.getSchemaProperties(
+    const schemaProperties = await kubernetesSchemaIndexer.getSchemaProperties(
         resource.group,
         resource.version,
         resource.kind
       )
       
     // Also get the full resolved schema if needed
-    const fullSchema = kubernetesSchemaIndexer.getResolvedSchema(
+    const fullSchema = await kubernetesSchemaIndexer.getResolvedSchema(
         resource.group,
         resource.version,
         resource.kind

@@ -98,6 +98,7 @@ export interface CRDSchema {
   importedAt: Date
   lastUsed?: Date
   isActive: boolean
+  apiVersion?: string
 }
 
 export interface CRDSource {

@@ -264,7 +264,8 @@ export class CRDManagementService {
                 lastFetched: new Date()
             },
             importedAt: new Date(),
-            isActive: true
+            isActive: true,
+            apiVersion: `${spec.group}/${latestVersion.name}`
         }
     }
 

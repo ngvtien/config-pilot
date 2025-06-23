@@ -146,6 +146,7 @@ class SchemaService {
               type: 'string',
               enum: [crd.kind]
             },
+            // metadata: crd.metadata || {},
             metadata: {
               $ref: '#/definitions/ObjectMeta'
             },
