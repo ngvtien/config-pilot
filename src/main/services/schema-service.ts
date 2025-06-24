@@ -655,15 +655,15 @@ class SchemaService {
   private createBasicResource(key: string, definition: JSONSchema7, source: SchemaSource): FlattenedResource | null {
     try {
       const kind = this.extractKindFromKey(key);
-      const apiVersion = this.extractApiVersionFromKey(key);
-
+      const apiVersion = this.extractApiVersionFromKey(key, definition); // Pass definition parameter
+      
       if (!kind) return null;
-
+  
       // Parse group from apiVersion (same logic as CRD processing)
       const group = apiVersion && apiVersion.includes('/')
         ? apiVersion.split('/')[0]
         : 'core';
-
+  
       return {
         key,
         kind,

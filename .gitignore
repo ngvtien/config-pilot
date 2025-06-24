@@ -33,4 +33,4 @@ src/**/*.js
 
 designs/rjsf-tooltips-demo/*
 data
-tests/outputs
+tests/output
