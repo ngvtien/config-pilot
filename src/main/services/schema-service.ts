@@ -920,15 +920,38 @@ class SchemaService {
   /**
    * Flatten a resource definition into a searchable format
    */
+  // private flattenResource(key: string, definition: JSONSchema7, source: SchemaSource): FlattenedResource | null {
+  //   try {
+  //     const props = definition.properties as Record<string, any>;
+
+  //     const kind = this.extractKindFromKey(key);
+  //     const apiVersion = this.extractApiVersionFromKey(key) as any;
+
+  //     if (!kind) return null;
+
+  //     return {
+  //       key,
+  //       kind,
+  //       apiVersion,
+  //       properties: this.flattenProperties(props),
+  //       required: definition.required as string[],
+  //       description: definition.description,
+  //       source: source.id
+  //     };
+  //   } catch (error) {
+  //     console.warn(`Failed to flatten resource ${key}:`, error);
+  //     return null;
+  //   }
+  // }
   private flattenResource(key: string, definition: JSONSchema7, source: SchemaSource): FlattenedResource | null {
     try {
       const props = definition.properties as Record<string, any>;
-
+  
       const kind = this.extractKindFromKey(key);
-      const apiVersion = this.extractApiVersionFromKey(key) as any;
-
+      const apiVersion = this.extractApiVersionFromKey(key, definition); // Pass definition here
+  
       if (!kind) return null;
-
+  
       return {
         key,
         kind,
@@ -983,27 +1006,55 @@ class SchemaService {
   /**
    * Extract API version from schema key
    */
-  /**
-   * Extract API version from schema key
-   */
-  private extractApiVersionFromKey(key: string): string | undefined {
-    // Handle different key patterns:
-    // Core resources: "io.k8s.api.core.v1.Pod" -> "v1"
-    // Non-core resources: "io.k8s.api.apps.v1.Deployment" -> "apps/v1"
-    
-    if (key.includes('.api.core.')) {
-      // Core resources: extract just the version
-      const match = key.match(/\.api\.core\.([^.]+)\./)
-      return match ? match[1] : 'v1'
-    } else if (key.includes('.api.')) {
-      // Non-core resources: extract group and version
-      const match = key.match(/\.api\.([^.]+)\.([^.]+)\./)
-      return match ? `${match[1]}/${match[2]}` : 'v1'
+/**
+ * Extract API version from schema key, prioritizing x-kubernetes-group-version-kind metadata
+ */
+private extractApiVersionFromKey(key: string, definition?: JSONSchema7): string {
+  // First, try to get the authoritative group info from x-kubernetes-group-version-kind
+  if (definition) {
+    const extendedDefinition = definition as any;
+    if (extendedDefinition['x-kubernetes-group-version-kind']) {
+      const gvkArray = extendedDefinition['x-kubernetes-group-version-kind'] as any[];
+      if (gvkArray && gvkArray.length > 0) {
+        const gvk = gvkArray[0];
+        const group = gvk.group;
+        const version = gvk.version;
+        
+        // Core resources have empty group
+        if (!group || group === '') {
+          return version;
+        }
+        return `${group}/${version}`;
+      }
     }
-    
-    // Fallback for other patterns
-    return 'v1'
   }
+  
+  // Fallback: parse from the schema key (existing logic)
+  // Core resources: "io.k8s.api.core.v1.Pod" -> "v1"
+  // Non-core resources: "io.k8s.api.apps.v1.Deployment" -> "apps/v1"
+  
+  if (key.includes('.api.core.')) {
+    // Core resources: extract just the version
+    const match = key.match(/\.api\.core\.([^.]+)\./); 
+    return match ? match[1] : 'v1';
+  } else if (key.includes('.api.')) {
+    // Non-core resources: extract complete group and version
+    // Remove the prefix "io.k8s.api." and find the last segment as version
+    const afterApi = key.substring(key.indexOf('.api.') + 5); // Remove "io.k8s.api."
+    const segments = afterApi.split('.');
+    
+    if (segments.length >= 2) {
+      // Last segment before the resource name is the version
+      const version = segments[segments.length - 2];
+      // Everything before the version is the group
+      const group = segments.slice(0, segments.length - 2).join('.');
+      return group ? `${group}/${version}` : version;
+    }
+  }
+  
+  // Fallback for other patterns
+  return 'v1';
+}
   
   /**
    * Search resources within a specific schema source
@@ -1176,4 +1227,5 @@ async getCRDSchemaTree(group: string, version: string, kind: string): Promise<Sc
 
 }
 
+export { SchemaService };
 export const schemaService = new SchemaService();

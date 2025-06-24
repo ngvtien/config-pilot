@@ -19,7 +19,7 @@ interface KubernetesResourceSchema extends KubernetesResourceSchemaBase {
  * Factory function to create KubernetesResourceSchema with computed apiVersion
  * This ensures apiVersion is always correctly calculated from group and version
  */
-function createKubernetesResourceSchema(base: KubernetesResourceSchemaBase): KubernetesResourceSchema {
+export function createKubernetesResourceSchema(base: KubernetesResourceSchemaBase): KubernetesResourceSchema {
   const apiVersion = base.group === 'core' ? base.version : `${base.group}/${base.version}`
 
   return {
@@ -531,12 +531,12 @@ class KubernetesSchemaIndexer {
     }
   }
 
-  // ... existing code ...
-  // Keep the existing CRD methods unchanged
   async searchResourcesWithCRDs(query: string): Promise<KubernetesResourceSchema[]> {
     try {
       // Try enhanced search with CRDs
       const results = await window.electronAPI.invoke('schema:searchAllSourcesWithCRDs', query);
+
+      console.log('🔍 Backend results:', results.filter(r => r.kind === 'RoleBinding'));
 
       // Convert FlattenedResource[] to KubernetesResourceSchema[] format
       const converted = await Promise.all(results.map(async resource => {
@@ -629,4 +629,5 @@ class KubernetesSchemaIndexer {
   }
 }
 
+export { KubernetesSchemaIndexer };
 export const kubernetesSchemaIndexer = new KubernetesSchemaIndexer()
