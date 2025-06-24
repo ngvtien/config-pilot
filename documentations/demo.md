@@ -1,20 +1,20 @@
 # ConfigPilot Demo Deployment Structures
 
-# ============================
-# Deployment Set 1: Vault + ESO
-# ============================
+### Deployment Set 1: Vault + ESO
 
-# Folder Structure:
-# └── demo-set-1-vault-eso/
-#     ├── infra/
-#     │   ├── external-secret.yaml
-#     │   └── values-infra.yaml
-#     └── app/
-#         ├── values.yaml
-#         └── helm-release.yaml
+Folder Structure:
+└── demo-set-1-vault-eso/
+    ├── infra/
+    │   ├── external-secret.yaml
+    │   └── values-infra.yaml
+    └── app/
+        ├── values.yaml
+        └── helm-release.yaml
 
 ---
-# demo-set-1-vault-eso/infra/external-secret.yaml
+### demo-set-1-vault-eso/infra/external-secret.yaml
+
+```yaml
 apiVersion: external-secrets.io/v1beta1
 kind: ExternalSecret
 metadata:
@@ -77,24 +77,23 @@ spec:
     automated:
       prune: true
       selfHeal: true
+```
 
+### Deployment Set 2: ArgoCD App-of-Apps
 
-# ============================
-# Deployment Set 2: ArgoCD App-of-Apps
-# ============================
-
-# Folder Structure:
-# └── demo-set-2-app-of-apps/
-#     ├── parent-app.yaml
-#     ├── infra/
-#     │   ├── namespace.yaml
-#     │   └── values-infra.yaml
-#     └── app/
-#         ├── helm-release.yaml
-#         └── values.yaml
+Folder Structure:
+└── demo-set-2-app-of-apps/
+    ├── parent-app.yaml
+    ├── infra/
+    │   ├── namespace.yaml
+    │   └── values-infra.yaml
+    └── app/
+        ├── helm-release.yaml
+        └── values.yaml
 
 ---
-# demo-set-2-app-of-apps/parent-app.yaml
+### demo-set-2-app-of-apps/parent-app.yaml
+```yml
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -116,6 +115,7 @@ spec:
 
 ---
 # demo-set-2-app-of-apps/infra/namespace.yaml
+```yaml
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -180,20 +180,19 @@ spec:
   project: default
   syncPolicy:
     automated: {}
+```
 
+###  Deployment Set 3: Helm OCI + Git Values
 
-# ============================
-# Deployment Set 3: Helm OCI + Git Values
-# ============================
-
-# Folder Structure:
-# └── demo-set-3-oci-git-values/
-#     ├── infra-values.yaml
-#     └── app-values.yaml
-#     └── helm-release.yaml
+Folder Structure:
+└── demo-set-3-oci-git-values/
+    ├── infra-values.yaml
+    └── app-values.yaml
+    └── helm-release.yaml
 
 ---
-# demo-set-3-oci-git-values/infra-values.yaml
+### demo-set-3-oci-git-values/infra-values.yaml
+```yaml
 namespace: acme-cai-api-uat
 
 limits:
@@ -238,3 +237,4 @@ spec:
     automated:
       prune: true
       selfHeal: true
+```

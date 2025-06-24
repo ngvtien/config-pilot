@@ -478,24 +478,55 @@ class SchemaService {
   searchAllSourcesWithCRDs(query: string): FlattenedResource[] {
     if (!this.isInitialized) return [];
 
+    // Handle empty or whitespace-only queries
+    if (!query || query.trim() === '') {
+      return [];
+    }
+
     try {
       const allResults: FlattenedResource[] = [];
+      const seenKeys = new Set<string>();
 
       // Search in all available sources
       for (const sourceId of this.resourcesBySource.keys()) {
         const sourceResults = this.searchInSource(sourceId, query);
-        allResults.push(...sourceResults);
+
+        // Add unique results (avoid duplicates)
+        for (const result of sourceResults) {
+          if (!seenKeys.has(result.key)) {
+            seenKeys.add(result.key);
+            allResults.push(result);
+          }
+        }
       }
 
-      // Remove duplicates and sort
-      const uniqueResults = allResults.filter((resource, index, self) =>
-        index === self.findIndex(r => r.kind === resource.kind && r.apiVersion === resource.apiVersion)
-      );
+      // Re-apply prioritization across all sources
+      const lowerQuery = query.toLowerCase();
+      const exactMatches: FlattenedResource[] = [];
+      const startsWithMatches: FlattenedResource[] = [];
+      const containsMatches: FlattenedResource[] = [];
 
-      return uniqueResults.sort((a, b) => a.kind.localeCompare(b.kind));
+      for (const resource of allResults) {
+        const kindLower = resource.kind.toLowerCase();
+
+        if (kindLower === lowerQuery) {
+          exactMatches.push(resource);
+        } else if (kindLower.startsWith(lowerQuery)) {
+          startsWithMatches.push(resource);
+        } else {
+          containsMatches.push(resource);
+        }
+      }
+
+      // Sort each category alphabetically
+      const sortByKind = (a: FlattenedResource, b: FlattenedResource) => a.kind.localeCompare(b.kind);
+      exactMatches.sort(sortByKind);
+      startsWithMatches.sort(sortByKind);
+      containsMatches.sort(sortByKind);
+
+      return [...exactMatches, ...startsWithMatches, ...containsMatches];
     } catch (error) {
-      console.warn('CRD search not available, falling back to kubernetes source:', error);
-      // Fallback to just kubernetes source if CRDs fail
+      console.warn('Error searching CRDs, falling back to kubernetes source only:', error);
       return this.searchInSource('kubernetes', query);
     }
   }
@@ -656,14 +687,14 @@ class SchemaService {
     try {
       const kind = this.extractKindFromKey(key);
       const apiVersion = this.extractApiVersionFromKey(key, definition); // Pass definition parameter
-      
+
       if (!kind) return null;
-  
+
       // Parse group from apiVersion (same logic as CRD processing)
       const group = apiVersion && apiVersion.includes('/')
         ? apiVersion.split('/')[0]
         : 'core';
-  
+
       return {
         key,
         kind,
@@ -946,12 +977,12 @@ class SchemaService {
   private flattenResource(key: string, definition: JSONSchema7, source: SchemaSource): FlattenedResource | null {
     try {
       const props = definition.properties as Record<string, any>;
-  
+
       const kind = this.extractKindFromKey(key);
       const apiVersion = this.extractApiVersionFromKey(key, definition); // Pass definition here
-  
+
       if (!kind) return null;
-  
+
       return {
         key,
         kind,
@@ -1006,79 +1037,106 @@ class SchemaService {
   /**
    * Extract API version from schema key
    */
-/**
- * Extract API version from schema key, prioritizing x-kubernetes-group-version-kind metadata
- */
-private extractApiVersionFromKey(key: string, definition?: JSONSchema7): string {
-  // First, try to get the authoritative group info from x-kubernetes-group-version-kind
-  if (definition) {
-    const extendedDefinition = definition as any;
-    if (extendedDefinition['x-kubernetes-group-version-kind']) {
-      const gvkArray = extendedDefinition['x-kubernetes-group-version-kind'] as any[];
-      if (gvkArray && gvkArray.length > 0) {
-        const gvk = gvkArray[0];
-        const group = gvk.group;
-        const version = gvk.version;
-        
-        // Core resources have empty group
-        if (!group || group === '') {
-          return version;
+  /**
+   * Extract API version from schema key, prioritizing x-kubernetes-group-version-kind metadata
+   */
+  private extractApiVersionFromKey(key: string, definition?: JSONSchema7): string {
+    // First, try to get the authoritative group info from x-kubernetes-group-version-kind
+    if (definition) {
+      const extendedDefinition = definition as any;
+      if (extendedDefinition['x-kubernetes-group-version-kind']) {
+        const gvkArray = extendedDefinition['x-kubernetes-group-version-kind'] as any[];
+        if (gvkArray && gvkArray.length > 0) {
+          const gvk = gvkArray[0];
+          const group = gvk.group;
+          const version = gvk.version;
+
+          // Core resources have empty group
+          if (!group || group === '') {
+            return version;
+          }
+          return `${group}/${version}`;
         }
-        return `${group}/${version}`;
       }
     }
-  }
-  
-  // Fallback: parse from the schema key (existing logic)
-  // Core resources: "io.k8s.api.core.v1.Pod" -> "v1"
-  // Non-core resources: "io.k8s.api.apps.v1.Deployment" -> "apps/v1"
-  
-  if (key.includes('.api.core.')) {
-    // Core resources: extract just the version
-    const match = key.match(/\.api\.core\.([^.]+)\./); 
-    return match ? match[1] : 'v1';
-  } else if (key.includes('.api.')) {
-    // Non-core resources: extract complete group and version
-    // Remove the prefix "io.k8s.api." and find the last segment as version
-    const afterApi = key.substring(key.indexOf('.api.') + 5); // Remove "io.k8s.api."
-    const segments = afterApi.split('.');
-    
-    if (segments.length >= 2) {
-      // Last segment before the resource name is the version
-      const version = segments[segments.length - 2];
-      // Everything before the version is the group
-      const group = segments.slice(0, segments.length - 2).join('.');
-      return group ? `${group}/${version}` : version;
+
+    // Fallback: parse from the schema key (existing logic)
+    // Core resources: "io.k8s.api.core.v1.Pod" -> "v1"
+    // Non-core resources: "io.k8s.api.apps.v1.Deployment" -> "apps/v1"
+
+    if (key.includes('.api.core.')) {
+      // Core resources: extract just the version
+      const match = key.match(/\.api\.core\.([^.]+)\./);
+      return match ? match[1] : 'v1';
+    } else if (key.includes('.api.')) {
+      // Non-core resources: extract complete group and version
+      // Remove the prefix "io.k8s.api." and find the last segment as version
+      const afterApi = key.substring(key.indexOf('.api.') + 5); // Remove "io.k8s.api."
+      const segments = afterApi.split('.');
+
+      if (segments.length >= 2) {
+        // Last segment before the resource name is the version
+        const version = segments[segments.length - 2];
+        // Everything before the version is the group
+        const group = segments.slice(0, segments.length - 2).join('.');
+        return group ? `${group}/${version}` : version;
+      }
     }
+
+    // Fallback for other patterns
+    return 'v1';
   }
-  
-  // Fallback for other patterns
-  return 'v1';
-}
-  
+
   /**
    * Search resources within a specific schema source
    */
   searchInSource(sourceId: string, query: string): FlattenedResource[] {
     if (!this.isInitialized) return [];
 
+    // Handle empty or whitespace-only queries
+    if (!query || query.trim() === '') {
+      return [];
+    }
+
     const sourceMap = this.resourcesBySource.get(sourceId);
     if (!sourceMap) return [];
 
     const lowerQuery = query.toLowerCase();
-    const results: FlattenedResource[] = [];
+    const exactMatches: FlattenedResource[] = [];
+    const startsWithMatches: FlattenedResource[] = [];
+    const containsMatches: FlattenedResource[] = [];
 
     for (const resource of sourceMap.values()) {
-      if (
-        resource.kind.toLowerCase().includes(lowerQuery) ||
-        (resource.apiVersion && resource.apiVersion.toLowerCase().includes(lowerQuery)) ||
-        (resource.description && resource.description.toLowerCase().includes(lowerQuery))
+      const kindLower = resource.kind.toLowerCase();
+      const apiVersionLower = resource.apiVersion?.toLowerCase() || '';
+      const descriptionLower = resource.description?.toLowerCase() || '';
+
+      // Check for exact match first
+      if (kindLower === lowerQuery) {
+        exactMatches.push(resource);
+      }
+      // Check for starts with match
+      else if (kindLower.startsWith(lowerQuery)) {
+        startsWithMatches.push(resource);
+      }
+      // Check for contains match (original behavior)
+      else if (
+        kindLower.includes(lowerQuery) ||
+        apiVersionLower.includes(lowerQuery) ||
+        descriptionLower.includes(lowerQuery)
       ) {
-        results.push(resource);
+        containsMatches.push(resource);
       }
     }
 
-    return results.sort((a, b) => a.kind.localeCompare(b.kind));
+    // Sort each category alphabetically
+    const sortByKind = (a: FlattenedResource, b: FlattenedResource) => a.kind.localeCompare(b.kind);
+    exactMatches.sort(sortByKind);
+    startsWithMatches.sort(sortByKind);
+    containsMatches.sort(sortByKind);
+
+    // Return prioritized results: exact matches first, then starts-with, then contains
+    return [...exactMatches, ...startsWithMatches, ...containsMatches];
   }
 
   /**
@@ -1167,52 +1225,52 @@ private extractApiVersionFromKey(key: string, definition?: JSONSchema7): string 
  * @param kind CRD kind
  * @returns Promise resolving to schema tree nodes or null if not found
  */
-async getCRDSchemaTree(group: string, version: string, kind: string): Promise<SchemaTreeNode[] | null> {
-  const cacheKey = `crd-${group}-${version}-${kind}`;
+  async getCRDSchemaTree(group: string, version: string, kind: string): Promise<SchemaTreeNode[] | null> {
+    const cacheKey = `crd-${group}-${version}-${kind}`;
 
-  console.log('Getting CRD schema tree:', { cacheKey, group, version, kind });
+    console.log('Getting CRD schema tree:', { cacheKey, group, version, kind });
 
-  const rawCache = this.rawSchemaCache.get(cacheKey);
-  if (!rawCache) {
-    console.warn(`No CRD cache found for: ${cacheKey}`);
-    return null;
-  }
-
-  const crdDefinitions = rawCache.schema.definitions || {};
-  const resourceSchema = crdDefinitions[kind];
-
-  if (!resourceSchema || typeof resourceSchema === 'boolean') {
-    console.warn(`CRD schema not found for: ${kind}`);
-    return null;
-  }
-
-  // Get vanilla definitions for $ref resolution (same as vanilla resources)
-  const vanillaCache = this.rawSchemaCache.get('kubernetes') || 
-    Array.from(this.rawSchemaCache.entries())
-      .find(([key]) => key.startsWith('kubernetes-'))?.[1];
-
-  const vanillaDefinitions = vanillaCache?.schema.definitions || {};
-
-  // Merge CRD definitions with vanilla definitions (CRD takes precedence)
-  const mergedDefinitions: Record<string, JSONSchema7> = {};
-  
-  // Add vanilla definitions first
-  Object.entries(vanillaDefinitions).forEach(([key, value]) => {
-    if (typeof value !== 'boolean') {
-      mergedDefinitions[key] = value;
+    const rawCache = this.rawSchemaCache.get(cacheKey);
+    if (!rawCache) {
+      console.warn(`No CRD cache found for: ${cacheKey}`);
+      return null;
     }
-  });
-  
-  // Add CRD definitions (overwrites vanilla if same key)
-  Object.entries(crdDefinitions).forEach(([key, value]) => {
-    if (typeof value !== 'boolean') {
-      mergedDefinitions[key] = value;
-    }
-  });
 
-  // Now buildSchemaTree can resolve $ref to ObjectMeta and other vanilla types
-  return this.buildSchemaTree(resourceSchema, mergedDefinitions, kind, '', []);
-}
+    const crdDefinitions = rawCache.schema.definitions || {};
+    const resourceSchema = crdDefinitions[kind];
+
+    if (!resourceSchema || typeof resourceSchema === 'boolean') {
+      console.warn(`CRD schema not found for: ${kind}`);
+      return null;
+    }
+
+    // Get vanilla definitions for $ref resolution (same as vanilla resources)
+    const vanillaCache = this.rawSchemaCache.get('kubernetes') ||
+      Array.from(this.rawSchemaCache.entries())
+        .find(([key]) => key.startsWith('kubernetes-'))?.[1];
+
+    const vanillaDefinitions = vanillaCache?.schema.definitions || {};
+
+    // Merge CRD definitions with vanilla definitions (CRD takes precedence)
+    const mergedDefinitions: Record<string, JSONSchema7> = {};
+
+    // Add vanilla definitions first
+    Object.entries(vanillaDefinitions).forEach(([key, value]) => {
+      if (typeof value !== 'boolean') {
+        mergedDefinitions[key] = value;
+      }
+    });
+
+    // Add CRD definitions (overwrites vanilla if same key)
+    Object.entries(crdDefinitions).forEach(([key, value]) => {
+      if (typeof value !== 'boolean') {
+        mergedDefinitions[key] = value;
+      }
+    });
+
+    // Now buildSchemaTree can resolve $ref to ObjectMeta and other vanilla types
+    return this.buildSchemaTree(resourceSchema, mergedDefinitions, kind, '', []);
+  }
   /**
    * Get raw CRD JSONSchema7 directly from cache using cache key
    */

@@ -463,25 +463,69 @@ class KubernetesSchemaIndexer {
   /**
    * Search for resources by name or description
    */
-  searchResources(query: string): KubernetesResourceMetadata[] {
-    if (!this.lazyIndex || !query.trim()) return []
+  // searchResources(query: string): KubernetesResourceMetadata[] {
+  //   if (!this.lazyIndex || !query.trim()) return []
 
-    const searchTerm = query.toLowerCase()
-    const results: KubernetesResourceMetadata[] = []
+  //   const searchTerm = query.toLowerCase()
+  //   const results: KubernetesResourceMetadata[] = []
 
-    this.lazyIndex.byGroupVersionKind.forEach(resource => {
-      if (
-        resource.kind.toLowerCase().includes(searchTerm) ||
-        resource.displayName.toLowerCase().includes(searchTerm) ||
-        (resource.description && resource.description.toLowerCase().includes(searchTerm))
-      ) {
-        results.push(resource)
-      }
-    })
+  //   this.lazyIndex.byGroupVersionKind.forEach(resource => {
+  //     if (
+  //       resource.kind.toLowerCase().includes(searchTerm) ||
+  //       resource.displayName.toLowerCase().includes(searchTerm) ||
+  //       (resource.description && resource.description.toLowerCase().includes(searchTerm))
+  //     ) {
+  //       results.push(resource)
+  //     }
+  //   })
 
-    return results.sort((a, b) => a.displayName.localeCompare(b.displayName))
-  }
+  //   return results.sort((a, b) => a.displayName.localeCompare(b.displayName))
+  // }
 
+/**
+ * Search for resources by name or description with prioritized matching
+ */
+searchResources(query: string): KubernetesResourceMetadata[] {
+  if (!this.lazyIndex || !query.trim()) return []
+
+  const searchTerm = query.toLowerCase()
+  const exactMatches: KubernetesResourceMetadata[] = []
+  const startsWithMatches: KubernetesResourceMetadata[] = []
+  const containsMatches: KubernetesResourceMetadata[] = []
+
+  this.lazyIndex.byGroupVersionKind.forEach(resource => {
+    const kindLower = resource.kind.toLowerCase()
+    const displayNameLower = resource.displayName.toLowerCase()
+    const descriptionLower = resource.description?.toLowerCase() || ''
+
+    // Check for exact match first
+    if (kindLower === searchTerm || displayNameLower === searchTerm) {
+      exactMatches.push(resource)
+    }
+    // Check for starts with match
+    else if (kindLower.startsWith(searchTerm) || displayNameLower.startsWith(searchTerm)) {
+      startsWithMatches.push(resource)
+    }
+    // Check for contains match (original behavior)
+    else if (
+      kindLower.includes(searchTerm) ||
+      displayNameLower.includes(searchTerm) ||
+      descriptionLower.includes(searchTerm)
+    ) {
+      containsMatches.push(resource)
+    }
+  })
+
+  // Sort each category alphabetically
+  const sortByDisplayName = (a: KubernetesResourceMetadata, b: KubernetesResourceMetadata) => 
+    a.displayName.localeCompare(b.displayName)
+  exactMatches.sort(sortByDisplayName)
+  startsWithMatches.sort(sortByDisplayName)
+  containsMatches.sort(sortByDisplayName)
+
+  // Return prioritized results: exact matches first, then starts-with, then contains
+  return [...exactMatches, ...startsWithMatches, ...containsMatches]
+}
   /**
    * Get schema properties for form generation (with lazy loading)
    */
