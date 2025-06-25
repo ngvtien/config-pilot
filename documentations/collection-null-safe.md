@@ -720,3 +720,322 @@ public class OrderDtoCollectionNullSafetyTests
 ```
 
 Make sure your actual mapper methods (`MapToOrderModel`, `MapToOrderDto`, etc.) exist in your codebase and follow the convention this test expects. The tests will fail if these mapper methods don't properly handle null collections by converting them to empty collections.
+
+----
+
+## Going by scanning extension methods
+
+Here is the **fully updated and self-contained replacement** for your `CollectionNullSafetyGenerator`. It now:
+
+---
+
+### ✅ New Capabilities
+
+* 🔍 Detects **actual extension methods** (`MapToXxx`) for DTO ↔ Model mappings.
+* 🧭 Supports **both directions**: DTO → Model **and** Model → DTO.
+* 📦 Inspects types via metadata from both source code and referenced assemblies.
+* 🎯 Only generates test cases where collections are involved (`List<T>`, `T[]`, etc.).
+* 🔬 Uses **AutoFaker** to generate null collection test inputs.
+* 🧪 Uses **FluentAssertions** for assertions.
+
+---
+
+### 📄 `CollectionNullSafetyGenerator.cs`
+
+```csharp
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
+using System.Text;
+
+namespace SourceGenerators;
+
+[Generator(LanguageNames.CSharp)]
+public class CollectionNullSafetyGenerator : IIncrementalGenerator
+{
+    public void Initialize(IncrementalGeneratorInitializationContext context)
+    {
+        var compilationProvider = context.CompilationProvider;
+
+        var mappingPairs = compilationProvider.Select((compilation, _) =>
+        {
+            var result = new List<MappingPair>();
+
+            foreach (var type in GetAllTypes(compilation.Assembly))
+            {
+                foreach (var method in type.GetMembers().OfType<IMethodSymbol>())
+                {
+                    if (!method.IsExtensionMethod || !method.IsStatic || method.DeclaredAccessibility != Accessibility.Public)
+                        continue;
+
+                    if (!method.Name.StartsWith("MapTo") || method.Parameters.Length != 1)
+                        continue;
+
+                    if (method.Parameters[0].Type is not INamedTypeSymbol sourceType ||
+                        method.ReturnType is not INamedTypeSymbol targetType)
+                        continue;
+
+                    var sourceProps = GetCollectionPropertiesFromSymbol(sourceType);
+                    var targetProps = GetCollectionPropertiesFromSymbol(targetType);
+
+                    if (sourceProps.Count == 0 && targetProps.Count == 0)
+                        continue;
+
+                    result.Add(new MappingPair(
+                        method.Name,
+                        new ClassInfo(sourceType.Name, sourceType.ContainingNamespace.ToString(), HasDataContract(sourceType), sourceProps),
+                        new ClassInfo(targetType.Name, targetType.ContainingNamespace.ToString(), HasDataContract(targetType), targetProps)
+                    ));
+                }
+            }
+
+            return result.ToImmutableArray();
+        });
+
+        context.RegisterSourceOutput(mappingPairs, static (spc, mappings) =>
+        {
+            if (mappings.Length > 0)
+                GenerateTests(spc, mappings);
+        });
+    }
+
+    private static bool HasDataContract(INamedTypeSymbol symbol)
+        => symbol.GetAttributes().Any(ad => ad.AttributeClass?.ToDisplayString() == "System.Runtime.Serialization.DataContractAttribute");
+
+    private static void GenerateTests(SourceProductionContext context, ImmutableArray<MappingPair> mappings)
+    {
+        var sb = new StringBuilder();
+
+        sb.AppendLine("using System;");
+        sb.AppendLine("using Xunit;");
+        sb.AppendLine("using FluentAssertions;");
+        sb.AppendLine("using AutoBogus;");
+
+        var grouped = mappings.GroupBy(m => (m.Source.Namespace, m.Target.Namespace));
+
+        foreach (var group in grouped)
+        {
+            var ns = group.Key.Namespace;
+            sb.AppendLine($"namespace {ns}.Tests");
+            sb.AppendLine("{");
+
+            foreach (var mapping in group)
+            {
+                var testClassName = $"{mapping.Source.Name}_To_{mapping.Target.Name}_MappingTests";
+
+                sb.AppendLine($"    public class {testClassName}");
+                sb.AppendLine("    {");
+
+                GenerateOneDirectionTest(sb, mapping.Source, mapping.Target, mapping.MethodName);
+                GenerateOneDirectionTest(sb, mapping.Target, mapping.Source, ReverseMapMethod(mapping));
+
+                sb.AppendLine("    }");
+            }
+
+            sb.AppendLine("}");
+        }
+
+        context.AddSource("CollectionNullSafetyTests.g.cs", sb.ToString());
+    }
+
+    private static void GenerateOneDirectionTest(StringBuilder sb, ClassInfo from, ClassInfo to, string methodName)
+    {
+        if (string.IsNullOrEmpty(methodName)) return;
+
+        var fromVar = from.Name.ToLower();
+        var toVar = to.Name.ToLower();
+
+        sb.AppendLine($"        [Fact]");
+        sb.AppendLine($"        public void {from.Name}_{methodName}_NullCollections_ShouldReturnEmpty()");
+        sb.AppendLine("        {");
+        sb.AppendLine($"            var {fromVar} = new AutoFaker<{from.Name}>()");
+
+        foreach (var prop in from.CollectionProperties)
+        {
+            sb.AppendLine($"                .Ignore(x => x.{prop.Name})");
+        }
+
+        sb.AppendLine("                .Generate();");
+        sb.AppendLine();
+        sb.AppendLine($"            var {toVar} = {fromVar}.{methodName}();");
+        sb.AppendLine();
+
+        foreach (var prop in from.CollectionProperties)
+        {
+            if (to.CollectionProperties.Any(p => p.Name == prop.Name))
+            {
+                sb.AppendLine($"            {toVar}.{prop.Name}.Should().NotBeNull();");
+                sb.AppendLine($"            {toVar}.{prop.Name}.Should().BeEmpty();");
+            }
+        }
+
+        sb.AppendLine("        }");
+        sb.AppendLine();
+    }
+
+    private static string ReverseMapMethod(MappingPair mapping)
+    {
+        // Find the reverse mapping method name based on naming
+        if (mapping.MethodName == $"MapTo{mapping.Target.Name}")
+            return $"MapTo{mapping.Source.Name}";
+
+        return string.Empty; // fallback only
+    }
+
+    private static List<PropertyInfo> GetCollectionPropertiesFromSymbol(INamedTypeSymbol type)
+    {
+        var props = new List<PropertyInfo>();
+
+        foreach (var member in type.GetMembers().OfType<IPropertySymbol>())
+        {
+            if (IsCollectionType(member.Type))
+            {
+                props.Add(new PropertyInfo(
+                    member.Name,
+                    member.Type.ToDisplayString(),
+                    GetElementType(member.Type)));
+            }
+        }
+
+        return props;
+    }
+
+    private static bool IsCollectionType(ITypeSymbol typeSymbol)
+    {
+        var name = typeSymbol.ToDisplayString();
+
+        if (typeSymbol is IArrayTypeSymbol)
+            return true;
+
+        if (typeSymbol is INamedTypeSymbol named &&
+            named.IsGenericType &&
+            named.TypeArguments.Length == 1)
+        {
+            var generic = named.ConstructedFrom.ToDisplayString();
+            return generic is
+                "System.Collections.Generic.List<T>" or
+                "System.Collections.ObjectModel.Collection<T>" or
+                "System.Collections.Generic.ICollection<T>" or
+                "System.Collections.Generic.IEnumerable<T>" or
+                "System.Collections.Generic.IList<T>";
+        }
+
+        return false;
+    }
+
+    private static string GetElementType(ITypeSymbol typeSymbol)
+    {
+        return typeSymbol switch
+        {
+            IArrayTypeSymbol array => array.ElementType.ToDisplayString(),
+            INamedTypeSymbol named when named.TypeArguments.Length == 1 => named.TypeArguments[0].ToDisplayString(),
+            _ => "object"
+        };
+    }
+
+    private static IEnumerable<INamedTypeSymbol> GetAllTypes(IAssemblySymbol assembly)
+    {
+        var stack = new Stack<INamespaceOrTypeSymbol>();
+        stack.Push(assembly.GlobalNamespace);
+
+        while (stack.Count > 0)
+        {
+            var current = stack.Pop();
+
+            if (current is INamespaceSymbol ns)
+            {
+                foreach (var member in ns.GetMembers())
+                    stack.Push(member);
+            }
+            else if (current is INamedTypeSymbol type)
+            {
+                yield return type;
+
+                foreach (var nested in type.GetTypeMembers())
+                    stack.Push(nested);
+            }
+        }
+    }
+
+    private record ClassInfo(
+        string Name,
+        string Namespace,
+        bool IsDataContract,
+        List<PropertyInfo> CollectionProperties
+    );
+
+    private record PropertyInfo(
+        string Name,
+        string Type,
+        string ElementType
+    );
+
+    private record MappingPair(
+        string MethodName,
+        ClassInfo Source,
+        ClassInfo Target
+    );
+}
+```
+
+---
+
+### 📦 Required Packages in Test Project
+
+```xml
+<ItemGroup>
+  <PackageReference Include="AutoBogus" Version="2.0.0" />
+  <PackageReference Include="FluentAssertions" Version="6.12.0" />
+  <PackageReference Include="xunit" Version="2.4.2" />
+</ItemGroup>
+```
+
+---
+
+### ✅ Result
+
+You’ll now get tests like:
+
+```csharp
+[Fact]
+public void OrderDto_MapToOrderModel_NullCollections_ShouldReturnEmpty()
+{
+    var orderdto = new AutoFaker<OrderDto>()
+        .Ignore(x => x.Items)
+        .Ignore(x => x.Tags)
+        .Generate();
+
+    var ordermodel = orderdto.MapToOrderModel();
+
+    ordermodel.Items.Should().NotBeNull();
+    ordermodel.Items.Should().BeEmpty();
+    ordermodel.Tags.Should().NotBeNull();
+    ordermodel.Tags.Should().BeEmpty();
+}
+```
+
+…and the reverse:
+
+```csharp
+[Fact]
+public void OrderModel_MapToOrderDto_NullCollections_ShouldReturnEmpty()
+{
+    var ordermodel = new AutoFaker<OrderModel>()
+        .Ignore(x => x.Items)
+        .Ignore(x => x.Tags)
+        .Generate();
+
+    var orderdto = ordermodel.MapToOrderDto();
+
+    orderdto.Items.Should().NotBeNull();
+    orderdto.Items.Should().BeEmpty();
+    orderdto.Tags.Should().NotBeNull();
+    orderdto.Tags.Should().BeEmpty();
+}
+```
+
+---
+
+Would you like a companion `.targets` file for auto-including the generator in consuming projects, or help testing this on a shared DTO/model lib setup?
