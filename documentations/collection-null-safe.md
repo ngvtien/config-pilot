@@ -1063,17 +1063,10 @@ private static void GenerateTests(SourceProductionContext context, ImmutableArra
     sb.AppendLine("    public class CollectionNullSafetyTests");
     sb.AppendLine("    {");
 
-    // Generate all tests in a single class
+    // Generate only the direct mapping tests found via extension methods
     foreach (var mapping in mappings)
     {
-        GenerateOneDirectionTest(sb, mapping.Source, mapping.Target, mapping.MethodName);
-        
-        // Optionally generate reverse mapping test if needed
-        var reverseMethod = ReverseMapMethod(mapping);
-        if (!string.IsNullOrEmpty(reverseMethod))
-        {
-            GenerateOneDirectionTest(sb, mapping.Target, mapping.Source, reverseMethod);
-        }
+        GenerateMappingTest(sb, mapping);
     }
 
     sb.AppendLine("    }");
@@ -1082,41 +1075,47 @@ private static void GenerateTests(SourceProductionContext context, ImmutableArra
     context.AddSource("CollectionNullSafetyTests.g.cs", sb.ToString());
 }
 
-private static void GenerateOneDirectionTest(StringBuilder sb, ClassInfo from, ClassInfo to, string methodName)
+private static void GenerateMappingTest(StringBuilder sb, MappingPair mapping)
 {
-    if (string.IsNullOrEmpty(methodName)) return;
-
-    // Create unique test method name
-    var testMethodName = $"{from.Namespace.Replace(".", "_")}_{from.Name}_To_{to.Name}_{methodName}_NullCollections";
-
-    var fromVar = from.Name.ToLower();
-    var toVar = to.Name.ToLower();
+    var testMethodName = $"{SanitizeNamespace(mapping.Source.Namespace)}_{mapping.Source.Name}_To_{mapping.Target.Name}_NullCollections";
+    var sourceVar = mapping.Source.Name.ToLower();
+    var targetVar = mapping.Target.Name.ToLower();
 
     sb.AppendLine($"        [Fact]");
     sb.AppendLine($"        public void {testMethodName}()");
     sb.AppendLine("        {");
-    sb.AppendLine($"            var {fromVar} = new AutoFaker<{from.Name}>()");
+    sb.AppendLine($"            var {sourceVar} = new AutoFaker<{mapping.Source.Name}>()");
 
-    foreach (var prop in from.CollectionProperties)
+    // Ignore all collection properties
+    foreach (var prop in mapping.Source.CollectionProperties)
     {
         sb.AppendLine($"                .Ignore(x => x.{prop.Name})");
     }
 
     sb.AppendLine("                .Generate();");
     sb.AppendLine();
-    sb.AppendLine($"            var {toVar} = {fromVar}.{methodName}();");
+    sb.AppendLine($"            var {targetVar} = {sourceVar}.{mapping.MethodName}();");
     sb.AppendLine();
 
-    foreach (var prop in from.CollectionProperties)
+    // Assert all collection properties are not null and empty
+    foreach (var prop in mapping.Source.CollectionProperties)
     {
-        if (to.CollectionProperties.Any(p => p.Name == prop.Name))
+        if (mapping.Target.CollectionProperties.Any(p => p.Name == prop.Name))
         {
-            sb.AppendLine($"            {toVar}.{prop.Name}.Should().NotBeNull();");
-            sb.AppendLine($"            {toVar}.{prop.Name}.Should().BeEmpty();");
+            sb.AppendLine($"            {targetVar}.{prop.Name}.Should().NotBeNull();");
+            sb.AppendLine($"            {targetVar}.{prop.Name}.Should().BeEmpty();");
         }
     }
 
     sb.AppendLine("        }");
     sb.AppendLine();
+}
+
+private static string SanitizeNamespace(string namespaceName)
+{
+    // Replace problematic characters for method names
+    return namespaceName.Replace(".", "_")
+                       .Replace("+", "_")
+                       .Replace("-", "_");
 }
 ```
