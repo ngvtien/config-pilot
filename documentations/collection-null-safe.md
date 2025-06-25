@@ -501,3 +501,98 @@ public class CollectionNullSafetyGenerator : IIncrementalGenerator
 4. **Better Performance**: Only processes types that actually have the `DataContract` attribute
 
 The rest of your original code (test generation, etc.) can remain exactly the same since we're still producing the same `ClassInfo` records, just getting them from a different source.
+
+---
+
+Here's the implementation of the `GetAllTypes` helper method that recursively gets all types from an assembly symbol, including nested types:
+
+```csharp
+private static IEnumerable<INamedTypeSymbol> GetAllTypes(IAssemblySymbol assembly)
+{
+    var stack = new Stack<INamedTypeSymbol>();
+    
+    // Push all top-level types from all modules in the assembly
+    foreach (var module in assembly.Modules)
+    {
+        foreach (var type in module.GlobalNamespace.GetTypeMembers())
+        {
+            stack.Push(type);
+        }
+        
+        // Also process all namespaces recursively
+        foreach (var namespaceMember in module.GlobalNamespace.GetNamespaceMembers())
+        {
+            ProcessNamespace(namespaceMember, stack);
+        }
+    }
+
+    while (stack.Count > 0)
+    {
+        var type = stack.Pop();
+        yield return type;
+
+        // Push all nested types to be processed
+        foreach (var nestedType in type.GetTypeMembers())
+        {
+            stack.Push(nestedType);
+        }
+    }
+}
+
+private static void ProcessNamespace(INamespaceSymbol namespaceSymbol, Stack<INamedTypeSymbol> stack)
+{
+    // Add all types in this namespace
+    foreach (var type in namespaceSymbol.GetTypeMembers())
+    {
+        stack.Push(type);
+    }
+
+    // Recursively process child namespaces
+    foreach (var childNamespace in namespaceSymbol.GetNamespaceMembers())
+    {
+        ProcessNamespace(childNamespace, stack);
+    }
+}
+```
+
+### Key Features:
+
+1. **Recursive Processing**:
+   - Handles nested types (types within types)
+   - Processes all namespaces recursively
+
+2. **Stack-Based Approach**:
+   - Uses a stack to avoid recursion depth limitations
+   - More efficient than pure recursive methods for deep type hierarchies
+
+3. **Complete Coverage**:
+   - Gets all types from all modules in the assembly
+   - Includes types from all namespaces
+
+4. **Roslyn-Specific**:
+   - Works with `INamedTypeSymbol` from the Roslyn API
+   - Compatible with source generator context
+
+### Usage Example:
+
+```csharp
+foreach (var assembly in compilation.SourceModule.ReferencedAssemblySymbols)
+{
+    foreach (var type in GetAllTypes(assembly))
+    {
+        // Process each type
+        if (type.GetAttributes().Any(/* your condition */))
+        {
+            // Do something with matching types
+        }
+    }
+}
+```
+
+### Performance Considerations:
+
+1. **Lazy Evaluation**: The method uses `yield return` for lazy evaluation
+2. **Minimal Allocation**: Only allocates a stack for processing
+3. **Early Exit**: You can break/return from the loop when you find what you need
+
+This implementation will find all types in referenced assemblies, which is exactly what you need for your source generator to process `DataContract` types from external assemblies.
