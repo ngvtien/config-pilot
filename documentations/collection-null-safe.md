@@ -596,3 +596,127 @@ foreach (var assembly in compilation.SourceModule.ReferencedAssemblySymbols)
 3. **Early Exit**: You can break/return from the loop when you find what you need
 
 This implementation will find all types in referenced assemblies, which is exactly what you need for your source generator to process `DataContract` types from external assemblies.
+
+----
+## More fixes
+
+Ah, I see the issue! The test methods are being generated but they're empty because we're not properly mapping between the DTO and Model classes. Let me fix this by enhancing the test generation logic. Here's the corrected version:
+
+```csharp
+private static void GenerateTestClass(StringBuilder sb, ClassInfo dto, ClassInfo model)
+{
+    var testClassName = $"{dto.Name}CollectionNullSafetyTests";
+    
+    sb.AppendLine($"    public class {testClassName}");
+    sb.AppendLine("    {");
+
+    // Generate test for DTO to Model conversion
+    GenerateNullCollectionTest(sb, dto, model, isDtoToModel: true);
+    
+    // Generate test for Model to DTO conversion
+    GenerateNullCollectionTest(sb, model, dto, isDtoToModel: false);
+
+    sb.AppendLine("    }");
+    sb.AppendLine();
+}
+
+private static void GenerateNullCollectionTest(StringBuilder sb, ClassInfo source, ClassInfo target, bool isDtoToModel)
+{
+    var direction = isDtoToModel ? $"{source.Name}To{target.Name}" : $"{target.Name}To{source.Name}";
+    var methodName = isDtoToModel ? "MapTo" + target.Name : "MapTo" + source.Name;
+    
+    sb.AppendLine($"        [Fact]");
+    sb.AppendLine($"        public void {direction}_NullCollections_ShouldReturnEmptyCollections()");
+    sb.AppendLine("        {");
+    sb.AppendLine("            // Arrange");
+    sb.AppendLine($"            var source = new {source.Name}();");
+    
+    // Set all collection properties to null
+    foreach (var prop in source.CollectionProperties)
+    {
+        sb.AppendLine($"            source.{prop.Name} = null;");
+    }
+    
+    sb.AppendLine();
+    sb.AppendLine("            // Act");
+    sb.AppendLine($"            var result = source.{methodName}();");
+    sb.AppendLine();
+    sb.AppendLine("            // Assert");
+    
+    foreach (var prop in source.CollectionProperties)
+    {
+        var targetProp = target.CollectionProperties.FirstOrDefault(p => p.Name == prop.Name);
+        if (targetProp != null)
+        {
+            sb.AppendLine($"            Assert.NotNull(result.{prop.Name});");
+            sb.AppendLine($"            Assert.Empty(result.{prop.Name});");
+        }
+    }
+    
+    sb.AppendLine("        }");
+    sb.AppendLine();
+}
+```
+
+Key improvements:
+
+1. **Proper Test Generation**:
+   - Now generates complete test methods with Arrange-Act-Assert pattern
+   - Creates meaningful test names based on the conversion direction
+
+2. **Null Collection Handling**:
+   - Explicitly sets collection properties to null
+   - Verifies the mapped result has non-null but empty collections
+
+3. **Bidirectional Testing**:
+   - Tests both DTO→Model and Model→DTO conversions
+   - Uses the same core logic for both directions
+
+4. **Better Assertions**:
+   - Checks both that the collection isn't null AND that it's empty
+   - Only asserts properties that exist in both classes
+
+Example generated test will now look like:
+
+```csharp
+public class OrderDtoCollectionNullSafetyTests
+{
+    [Fact]
+    public void OrderDtoToOrderModel_NullCollections_ShouldReturnEmptyCollections()
+    {
+        // Arrange
+        var source = new OrderDto();
+        source.Items = null;
+        source.Tags = null;
+        
+        // Act
+        var result = source.MapToOrderModel();
+        
+        // Assert
+        Assert.NotNull(result.Items);
+        Assert.Empty(result.Items);
+        Assert.NotNull(result.Tags);
+        Assert.Empty(result.Tags);
+    }
+    
+    [Fact]
+    public void OrderModelToOrderDto_NullCollections_ShouldReturnEmptyCollections()
+    {
+        // Arrange
+        var source = new OrderModel();
+        source.Items = null;
+        source.Tags = null;
+        
+        // Act
+        var result = source.MapToOrderDto();
+        
+        // Assert
+        Assert.NotNull(result.Items);
+        Assert.Empty(result.Items);
+        Assert.NotNull(result.Tags);
+        Assert.Empty(result.Tags);
+    }
+}
+```
+
+Make sure your actual mapper methods (`MapToOrderModel`, `MapToOrderDto`, etc.) exist in your codebase and follow the convention this test expects. The tests will fail if these mapper methods don't properly handle null collections by converting them to empty collections.
