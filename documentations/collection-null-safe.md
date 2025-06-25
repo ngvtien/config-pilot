@@ -1117,3 +1117,73 @@ private static string SanitizeNamespace(string namespaceName)
                        .Replace("-", "_");
 }
 ```
+
+## Ensure unique method names
+```csharp
+private static void GenerateMappingTest(StringBuilder sb, MappingPair mapping)
+{
+    // Create a unique test method name by including the method name
+    var testMethodName = $"{SanitizeNamespace(mapping.Source.Namespace)}_{mapping.Source.Name}_" +
+                         $"{mapping.MethodName}_To_{mapping.Target.Name}_NullCollections";
+
+    // Ensure the method name is valid and unique by adding a hash if needed
+    testMethodName = EnsureUniqueMethodName(testMethodName, mapping);
+
+    var sourceVar = mapping.Source.Name.ToLower();
+    var targetVar = mapping.Target.Name.ToLower();
+
+    // Get fully qualified type names
+    var sourceType = $"{mapping.Source.Namespace}.{mapping.Source.Name}";
+    var targetType = $"{mapping.Target.Namespace}.{mapping.Target.Name}";
+
+    sb.AppendLine($"        [Fact]");
+    sb.AppendLine($"        public void {testMethodName}()");
+    sb.AppendLine("        {");
+    sb.AppendLine($"            var {sourceVar} = new AutoFaker<{sourceType}>()");
+
+    foreach (var prop in mapping.Source.CollectionProperties)
+    {
+        sb.AppendLine($"                .Ignore(x => x.{prop.Name})");
+    }
+
+    sb.AppendLine("                .Generate();");
+    sb.AppendLine();
+    sb.AppendLine($"            var {targetVar} = {sourceVar}.{mapping.MethodName}();");
+    sb.AppendLine();
+
+    foreach (var prop in mapping.Source.CollectionProperties)
+    {
+        if (mapping.Target.CollectionProperties.Any(p => p.Name == prop.Name))
+        {
+            sb.AppendLine($"            {targetVar}.{prop.Name}.Should().NotBeNull();");
+            sb.AppendLine($"            {targetVar}.{prop.Name}.Should().BeEmpty();");
+        }
+    }
+
+    sb.AppendLine("        }");
+    sb.AppendLine();
+}
+
+private static string EnsureUniqueMethodName(string baseName, MappingPair mapping)
+{
+    // Create a unique suffix based on the method's metadata
+    var uniqueSuffix = $"_{Math.Abs(mapping.MethodName.GetHashCode())}";
+    
+    // Trim to stay within reasonable method name length
+    var maxLength = 100 - uniqueSuffix.Length;
+    if (baseName.Length > maxLength)
+    {
+        baseName = baseName.Substring(0, maxLength);
+    }
+    
+    return baseName + uniqueSuffix;
+}
+
+private static string SanitizeNamespace(string namespaceName)
+{
+    return namespaceName.Replace(".", "_")
+                       .Replace("+", "_")
+                       .Replace("-", "_")
+                       .Replace(" ", "_");
+}
+```
