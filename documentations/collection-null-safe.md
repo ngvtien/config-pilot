@@ -65,46 +65,6 @@ using System.Text;
 [Generator]
 public class CollectionNullSafetyGenerator : IIncrementalGenerator
 {
-
-[Generator]
-public class CollectionNullSafetyGenerator : IIncrementalGenerator
-{
-    public void Initialize(IncrementalGeneratorInitializationContext context)
-    {
-        // Register a compilation start action
-        context.RegisterCompilationStartAction(compilationContext =>
-        {
-            // Get all classes with DataContract attribute from all referenced assemblies
-            var dataContractClasses = compilationContext.Compilation.SourceModule.ReferencedAssemblySymbols
-                .SelectMany(assembly => assembly.GetTypeByMetadataName("System.Runtime.Serialization.DataContractAttribute")?
-                    .GetAttributes()?
-                    .Select(attr => attr.AttributeClass?.ContainingType) ?? Enumerable.Empty<INamedTypeSymbol>())
-                .Where(type => type != null)
-                .Distinct(SymbolEqualityComparer.Default)
-                .ToImmutableArray();
-
-            // Get model classes from current project (if needed)
-            var modelClasses = compilationContext.SyntaxProvider
-                .CreateSyntaxProvider(
-                    predicate: static (s, _) => IsModelClass(s),
-                    transform: static (ctx, _) => GetClassInfo(ctx))
-                .Where(static m => m is not null);
-
-            // Combine both collections
-            var allClasses = modelClasses.Collect()
-                .Select(static (classes, _) => 
-                {
-                    // Convert dataContractClasses to your ClassInfo format
-                    var externalClassInfos = dataContractClasses.Select(/* convert INamedTypeSymbol to ClassInfo */);
-                    return classes.Concat(externalClassInfos).ToImmutableArray();
-                });
-
-            // Generate test code
-            compilationContext.RegisterSourceOutput(allClasses, 
-                static (spc, classes) => GenerateTests(spc, classes));
-        });
-    }
-
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         // Find all classes with DataContract attribute
@@ -373,3 +333,171 @@ public class CollectionNullSafetyGenerator : IIncrementalGenerator
         string ElementType);
 }
 ```
+
+---
+
+## By CompileProvider
+
+I'll help you modify the original code to use `CompilationProvider` to find `DataContract` classes from referenced assemblies while keeping the existing functionality for local model classes. Here's the complete solution:
+
+```csharp
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
+using System.Text;
+
+[Generator]
+public class CollectionNullSafetyGenerator : IIncrementalGenerator
+{
+    public void Initialize(IncrementalGeneratorInitializationContext context)
+    {
+        // Get the compilation provider
+        var compilationProvider = context.CompilationProvider;
+        
+        // Find DataContract classes from all referenced assemblies
+        var referencedDataContractClasses = compilationProvider.Select(
+            static (compilation, _) => GetDataContractClassesFromCompilation(compilation));
+
+        // Find all regular model classes (not DataContract) from current project
+        var modelClasses = context.SyntaxProvider
+            .CreateSyntaxProvider(
+                predicate: static (s, _) => IsModelClass(s),
+                transform: static (ctx, _) => GetClassInfo(ctx))
+            .Where(static m => m is not null);
+
+        // Combine both collections
+        var allClasses = referencedDataContractClasses
+            .Combine(modelClasses.Collect())
+            .Select(static (pair, _) => pair.Left.Concat(pair.Right).ToImmutableArray());
+
+        // Generate test code
+        context.RegisterSourceOutput(allClasses, static (spc, classes) => GenerateTests(spc, classes));
+    }
+
+    private static ImmutableArray<ClassInfo> GetDataContractClassesFromCompilation(Compilation compilation)
+    {
+        var dataContractAttribute = compilation.GetTypeByMetadataName("System.Runtime.Serialization.DataContractAttribute");
+        if (dataContractAttribute is null)
+            return ImmutableArray<ClassInfo>.Empty;
+
+        var result = new List<ClassInfo>();
+        
+        foreach (var assembly in compilation.SourceModule.ReferencedAssemblySymbols)
+        {
+            foreach (var type in GetAllTypes(assembly))
+            {
+                if (type.DeclaringSyntaxReferences.Length == 0 && // Only from metadata (not source)
+                    type.GetAttributes().Any(ad => 
+                        SymbolEqualityComparer.Default.Equals(ad.AttributeClass, dataContractAttribute)))
+                {
+                    var collectionProperties = GetCollectionPropertiesFromSymbol(type);
+                    if (collectionProperties.Count > 0)
+                    {
+                        result.Add(new ClassInfo(
+                            type.Name,
+                            type.ContainingNamespace.ToDisplayString(),
+                            true,
+                            collectionProperties));
+                    }
+                }
+            }
+        }
+        
+        return result.ToImmutableArray();
+    }
+
+    private static List<PropertyInfo> GetCollectionPropertiesFromSymbol(INamedTypeSymbol type)
+    {
+        var properties = new List<PropertyInfo>();
+        
+        foreach (var member in type.GetMembers())
+        {
+            if (member is IPropertySymbol property && 
+                IsCollectionType(property.Type))
+            {
+                properties.Add(new PropertyInfo(
+                    property.Name,
+                    property.Type.ToDisplayString(),
+                    GetCollectionElementType(property.Type)));
+            }
+        }
+        
+        return properties;
+    }
+
+    private static bool IsCollectionType(ITypeSymbol typeSymbol)
+    {
+        var typeName = typeSymbol.ToDisplayString();
+        
+        if (typeName.EndsWith("[]"))
+            return true;
+            
+        if (typeSymbol is INamedTypeSymbol namedType && 
+            namedType.IsGenericType &&
+            namedType.TypeArguments.Length == 1)
+        {
+            var fullName = namedType.ConstructedFrom?.ToDisplayString() ?? "";
+            return fullName.Contains("Collection<") ||
+                   fullName.Contains("List<") ||
+                   fullName.Contains("ICollection<") ||
+                   fullName.Contains("IList<") ||
+                   fullName.Contains("IEnumerable<");
+        }
+        
+        return false;
+    }
+
+    private static string GetCollectionElementType(ITypeSymbol typeSymbol)
+    {
+        if (typeSymbol is IArrayTypeSymbol arrayType)
+            return arrayType.ElementType.ToDisplayString();
+            
+        if (typeSymbol is INamedTypeSymbol namedType && 
+            namedType.IsGenericType &&
+            namedType.TypeArguments.Length == 1)
+        {
+            return namedType.TypeArguments[0].ToDisplayString();
+        }
+        
+        return "object";
+    }
+
+    // All the remaining methods stay exactly the same as in your original code:
+    // IsModelClass, GetClassInfo, IsCollectionProperty, GenerateTests, 
+    // GenerateTestClass, GenerateDtoToModelTest, GenerateModelToDtoTest,
+    // GetCollectionInitializer, and the record definitions
+    // ...
+    // [Rest of your original code remains unchanged]
+}
+```
+
+### Key Changes Made:
+
+1. **Added Compilation Analysis**:
+   - Created `GetDataContractClassesFromCompilation` to find `DataContract` classes in referenced assemblies
+   - Uses `CompilationProvider` to get access to all referenced types
+
+2. **Symbol-Based Property Analysis**:
+   - Added `GetCollectionPropertiesFromSymbol` to analyze properties from metadata
+   - Added `IsCollectionType` and `GetCollectionElementType` that work with symbols instead of syntax
+
+3. **Combined Approach**:
+   - Keeps the original syntax-based analysis for local model classes
+   - Adds compilation-based analysis for external `DataContract` classes
+   - Merges both results for test generation
+
+4. **Filtering**:
+   - Only processes types from metadata (`DeclaringSyntaxReferences.Length == 0`)
+   - Only includes types that actually have collection properties
+
+### Benefits of This Approach:
+
+1. **Works with Referenced Assemblies**: Can now find `DataContract` classes even if they're not in source code
+2. **Maintains Existing Functionality**: Still processes local model classes the same way
+3. **More Accurate Type Analysis**: Uses Roslyn symbols for more reliable type information
+4. **Better Performance**: Only processes types that actually have the `DataContract` attribute
+
+The rest of your original code (test generation, etc.) can remain exactly the same since we're still producing the same `ClassInfo` records, just getting them from a different source.
