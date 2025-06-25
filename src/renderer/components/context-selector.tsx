@@ -26,10 +26,12 @@ interface ContextSelectorProps {
 
 export function ContextSelector({ context, onContextChange }: ContextSelectorProps) {
   const [isEditing, setIsEditing] = useState(false)
-  const [formData, setFormData] = useState<ContextData>(context)
+  // Use lazy initial state to prevent re-initialization on re-renders
+  const [formData, setFormData] = useState<ContextData>(() => context)
   const mountTimeRef = useRef(Date.now())
   const lastContextRef = useRef<ContextData>(context)
   const formDataInitializedRef = useRef(false)
+   const isEditingRef = useRef(false)
 
   // Debug: Log when component mounts
   useEffect(() => {
@@ -37,32 +39,28 @@ export function ContextSelector({ context, onContextChange }: ContextSelectorPro
     console.log("🔧 Mount timestamp:", new Date(mountTimeRef.current).toISOString())
   }, [])
 
+  // Keep isEditingRef synchronized with isEditing state
+  useEffect(() => {
+    isEditingRef.current = isEditing
+  }, [isEditing])
+
   // Debug: Track context prop changes
   useEffect(() => {
-    const timeSinceMount = Date.now() - mountTimeRef.current
-    const contextChanged = JSON.stringify(context) !== JSON.stringify(lastContextRef.current)
+    // Skip updates if we're currently editing
+    if (isEditing) {
+      console.log("⚠️ Skipping formData update - user is editing")
+      return
+    }
 
-    if (contextChanged) {
-      console.log("🔄 Context prop changed:", {
-        timeSinceMount: `${timeSinceMount}ms`,
-        from: lastContextRef.current,
-        to: context,
-        isEditing,
-        formDataInitialized: formDataInitializedRef.current,
-      })
-
-      // Only update formData if we're not editing or if this is the initial load
-      if (!isEditing || !formDataInitializedRef.current) {
-        console.log("✅ Updating formData with new context")
-        setFormData(context)
-        formDataInitializedRef.current = true
-      } else {
-        console.log("⚠️ Skipping formData update - user is editing")
-      }
-
+    // Only update if context actually changed
+    if (JSON.stringify(context) !== JSON.stringify(lastContextRef.current)) {
+      console.log("✅ Updating formData with new context")
+      setFormData(context)
+      formDataInitializedRef.current = true
       lastContextRef.current = context
     }
-  }, [context, isEditing])
+  }, [context])
+
 
   // Debug: Track formData changes
   useEffect(() => {
@@ -116,12 +114,12 @@ export function ContextSelector({ context, onContextChange }: ContextSelectorPro
     setFormData(context) // Ensure we start with the latest context
     setIsEditing(true)
   }
-
+    
   const handleFieldChange = (field: keyof ContextData, value: string | number) => {
     const oldValue = formData[field]
     console.log(`🔧 Field '${field}' changed:`, { from: oldValue, to: value })
 
-    setFormData((prev) => {
+    setFormData((prev: any) => {
       const updated = { ...prev, [field]: value }
       console.log("📝 Updated formData:", updated)
       return updated
@@ -152,8 +150,8 @@ export function ContextSelector({ context, onContextChange }: ContextSelectorPro
           <Label htmlFor="env" className="text-xs font-medium">
             Environment:
           </Label>
-          <Select value={formData.environment} onValueChange={(value) => handleFieldChange("environment", value)}>
-            <SelectTrigger className="h-8 w-32">
+          <Select value={formData.environment} onValueChange={(value: string) => handleFieldChange("environment", value)}>
+            <SelectTrigger id="env" className="h-8 w-32">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -171,9 +169,9 @@ export function ContextSelector({ context, onContextChange }: ContextSelectorPro
           </Label>
           <Select
             value={formData.instance.toString()}
-            onValueChange={(value) => handleFieldChange("instance", Number(value))}
+            onValueChange={(value: any) => handleFieldChange("instance", Number(value))}
           >
-            <SelectTrigger className="h-8 w-40">
+            <SelectTrigger id="instance" className="h-8 w-40">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -225,7 +223,7 @@ export function ContextSelector({ context, onContextChange }: ContextSelectorPro
             id="product"
             type="text"
             value={formData.product}
-            onChange={(e) => handleFieldChange("product", e.target.value)}
+            onChange={(e: { target: { value: string | number } }) => handleFieldChange("product", e.target.value)}
             className="h-8 w-20"
           />
         </div>
@@ -238,7 +236,7 @@ export function ContextSelector({ context, onContextChange }: ContextSelectorPro
             id="customer"
             type="text"
             value={formData.customer}
-            onChange={(e) => handleFieldChange("customer", e.target.value)}
+            onChange={(e: { target: { value: string | number } }) => handleFieldChange("customer", e.target.value)}
             className="h-8 w-20"
           />
         </div>
@@ -251,7 +249,7 @@ export function ContextSelector({ context, onContextChange }: ContextSelectorPro
             id="version"
             type="text"
             value={formData.version}
-            onChange={(e) => handleFieldChange("version", e.target.value)}
+            onChange={(e: { target: { value: string | number } }) => handleFieldChange("version", e.target.value)}
             className="h-8 w-20"
           />
         </div>

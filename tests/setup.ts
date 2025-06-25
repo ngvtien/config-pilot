@@ -55,5 +55,35 @@ Object.defineProperty(window, 'localStorage', {
   writable: true
 })
 
-// Remove the React mock - it's not needed and causes circular dependency
-// The useState hook works fine without mocking in tests
+// Add this to existing mocks
+Object.defineProperty(Element.prototype, 'hasPointerCapture', {
+  value: vi.fn().mockReturnValue(false),
+  writable: true,
+});
+
+Object.defineProperty(Element.prototype, 'setPointerCapture', {
+  value: vi.fn(),
+  writable: true,
+});
+
+Object.defineProperty(Element.prototype, 'releasePointerCapture', {
+  value: vi.fn(),
+  writable: true,
+});
+
+// Mock scrollIntoView for Radix UI Select
+Object.defineProperty(Element.prototype, 'scrollIntoView', {
+  value: vi.fn(),
+  writable: true,
+});
+
+// Mock console methods for React DOM
+Object.defineProperty(global.console, 'warn', {
+  value: vi.fn(),
+  writable: true,
+});
+
+Object.defineProperty(global.console, 'error', {
+  value: vi.fn(),
+  writable: true,
+});

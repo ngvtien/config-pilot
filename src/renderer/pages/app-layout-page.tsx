@@ -181,7 +181,7 @@ export default function AppLayoutPage({
       if (savedSettings) {
         try {
           const settingsData = JSON.parse(savedSettings)
-          setLocalSettings((prev) => ({ ...prev, ...settingsData }))
+          setLocalSettings((prev: any) => ({ ...prev, ...settingsData }))
         } catch (e) {
           console.error("Error parsing saved settings:", e)
         }
@@ -290,7 +290,7 @@ export default function AppLayoutPage({
             context={context}
             schemaPath="/src/mock/schema/secrets.schema.json"
             baseDirectory= {settings.baseDirectory}
-            onChange={(value) => {
+            onChange={(value: string) => {
               // Save changes to localStorage for persistence
               localStorage.setItem(`secrets_editor_${context.environment}`, value)
               console.log(`Secrets updated for ${context.environment}:`, value)
@@ -303,7 +303,7 @@ export default function AppLayoutPage({
             context={context}
             schemaPath="/src/mock/schema/values.schema.json"
             baseDirectory= {settings.baseDirectory}
-            onChange={(value) => {
+            onChange={(value: string) => {
               // Save changes to localStorage for persistence
               localStorage.setItem(`value_editor_${context.environment}`, value)
               console.log(`Values updated for ${context.environment}:`, value)
