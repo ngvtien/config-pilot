@@ -17,6 +17,9 @@ export interface ConfigJsonData {
 /**
  * Generates a Kubernetes ConfigMap from key-value pairs
  */
+/**
+ * Generates a Kubernetes ConfigMap from key-value pairs
+ */
 export function generateConfigMap(values: Record<string, string>, namespace = "default", name = "app-config"): string {
   if (!values || Object.keys(values).length === 0) {
     return `apiVersion: v1
@@ -37,7 +40,7 @@ data: {}`
     data: values,
   }
 
-  // Convert to YAML format
+  // Convert to YAML format with proper escaping
   const yamlOutput = `apiVersion: ${configMap.apiVersion}
 kind: ${configMap.kind}
 metadata:
@@ -45,7 +48,11 @@ metadata:
   namespace: ${configMap.metadata.namespace}
 data:
 ${Object.entries(configMap.data)
-  .map(([key, value]) => `  ${key}: ${JSON.stringify(value)}`)
+  .map(([key, value]) => {
+    // Use YAML dump for proper escaping instead of JSON.stringify
+    const yamlValue = yaml.dump(value, { flowLevel: 0, indent: 0 }).trim()
+    return `  ${key}: ${yamlValue}`
+  })
   .join("\n")}`
 
   return yamlOutput
@@ -60,12 +67,24 @@ export function generateConfigJson(values: Record<string, string>): string {
   }
 
   try {
+    // Parse string values that might be JSON back to objects for proper formatting
+    const parsedValues: Record<string, any> = {}
+    Object.entries(values).forEach(([key, value]) => {
+      try {
+        // Try to parse as JSON first
+        parsedValues[key] = JSON.parse(value)
+      } catch {
+        // If parsing fails, keep as string
+        parsedValues[key] = value
+      }
+    })
+
     const config: ConfigJsonData = {
       metadata: {
         generatedAt: new Date().toISOString(),
         type: "configuration",
       },
-      configuration: values,
+      configuration: parsedValues,
     }
 
     return JSON.stringify(config, null, 2)
@@ -81,7 +100,6 @@ export function generateConfigJson(values: Record<string, string>): string {
     )
   }
 }
-
 /**
  * Copies content to clipboard with error handling
  */

@@ -128,11 +128,12 @@ resources:
     try {
       const values = (yaml.load(yamlContent) as Record<string, any>) || {}
 
-      // Convert nested objects to strings for ConfigMap
+      // Convert nested objects to strings for ConfigMap using YAML formatting
       const flattenedValues: Record<string, string> = {}
       Object.entries(values).forEach(([key, value]) => {
         if (typeof value === "object" && value !== null) {
-          flattenedValues[key] = JSON.stringify(value)
+          // Use YAML dump for proper formatting instead of JSON.stringify
+          flattenedValues[key] = yaml.dump(value, { flowLevel: 0, indent: 2 }).trim()
         } else {
           flattenedValues[key] = String(value)
         }
@@ -149,21 +150,31 @@ resources:
     }
   }
 
+
+
   const generateConfigJsonOutput = () => {
     try {
       const values = (yaml.load(yamlContent) as Record<string, any>) || {}
 
-      // Convert to string values for the generator
-      const stringValues: Record<string, string> = {}
+      // Keep objects as objects for JSON output, only stringify when necessary
+      const processedValues: Record<string, any> = {}
       Object.entries(values).forEach(([key, value]) => {
         if (typeof value === "object" && value !== null) {
-          stringValues[key] = JSON.stringify(value)
+          // Keep objects as objects for proper JSON formatting
+          processedValues[key] = value
         } else {
-          stringValues[key] = String(value)
+          processedValues[key] = value
         }
       })
 
-      return generateConfigJson(stringValues)
+      // Pass the processed values directly to maintain proper JSON structure
+      return JSON.stringify({
+        metadata: {
+          generatedAt: new Date().toISOString(),
+          type: "configuration",
+        },
+        configuration: processedValues,
+      }, null, 2)
     } catch (error) {
       console.error("Error generating Config.json:", error)
       return "Error generating Config.json"
