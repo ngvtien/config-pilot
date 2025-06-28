@@ -240,6 +240,11 @@ class SchemaService {
           continue;
         }
 
+  // Filter out only 'kind' at root level - it's auto-generated and shouldn't be user-configurable
+  if (!path && key === 'kind') {
+    continue;
+  }        
+
         const childPath = currentPath ? `${currentPath}.${key}` : key;
         const subTree = this.buildSchemaTree(
           propSchema as JSONSchema7,

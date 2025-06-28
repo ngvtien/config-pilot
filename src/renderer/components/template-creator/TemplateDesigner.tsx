@@ -19,7 +19,9 @@ import { Template, TemplateResource, TemplateField } from '@/shared/types/templa
 import { Textarea } from '@/renderer/components/ui/textarea'
 import { SchemaFieldSelectionModal } from './SchemaFieldSelectionModal'
 import { joinPath } from '@/renderer/lib/path-utils'
-import { generateHelmResourceTemplate } from '@/renderer/utils/helm-template-generator'
+import { generateHelmResourceTemplate, generateResourceYamlPreview } from '@/renderer/utils/helm-template-generator'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/renderer/components/ui/tooltip'
+import { YamlPreview } from './YamlPreview'
 
 interface TemplateDesignerProps {
   initialTemplate?: Template
@@ -84,10 +86,13 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
   });
 
   const [selectedResource, setSelectedResource] = useState<KubernetesResourceSchema | null>(null);
-
   const [isSchemaModalOpen, setIsSchemaModalOpen] = useState(false)
   const [selectedResourceForSchema, setSelectedResourceForSchema] = useState<KubernetesResourceSchema | null>(null)
   const [selectedResourceIndex, setSelectedResourceIndex] = useState<number | null>(null)
+
+  const [isYamlPreviewOpen, setIsYamlPreviewOpen] = useState(false)
+  const [previewYamlContent, setPreviewYamlContent] = useState('')
+  const [previewResourceKind, setPreviewResourceKind] = useState('')
 
   const dropdownRef = useRef<HTMLDivElement>(null)
 
@@ -536,13 +541,13 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
   const handleKindSelect = (resource: KubernetesResourceSchema) => {
     // Check if resource is already selected
     console.log('handleKindSelect received resource:', resource);
-    
+
     // Ensure apiVersion is always present - fallback calculation
     if (!resource.apiVersion && resource.group && resource.version) {
       resource.apiVersion = resource.group === 'core' ? resource.version : `${resource.group}/${resource.version}`
       console.log('✅ Added fallback apiVersion:', resource.apiVersion)
     }
-    
+
     // Use the actual apiVersion for duplicate check instead of manually constructing it
     const isAlreadySelected = selectedResources.some(r =>
       r.kind === resource.kind && r.apiVersion === resource.apiVersion
@@ -714,18 +719,18 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
     try {
       // Create the template folder structure: {baseDirectory}/{template-name}
       const templateDir = joinPath(settingsData.baseDirectory, template.name)
-      
+
       // Ensure the template directory exists
       await window.electronAPI.createDirectory(templateDir)
-      
+
       // Create helm subdirectory
       const helmDir = joinPath(templateDir, 'helm')
       await window.electronAPI.createDirectory(helmDir)
-      
+
       // Create kustomize subdirectory  
       const kustomizeDir = joinPath(templateDir, 'kustomize')
       await window.electronAPI.createDirectory(kustomizeDir)
-      
+
       // Prepare template metadata
       const templateMetadata = {
         name: template.name,
@@ -741,27 +746,27 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       }
-      
+
       // Save template.metadata.json in the template directory
       const metadataPath = joinPath(templateDir, 'template.metadata.json')
       await window.electronAPI.writeFile(metadataPath, JSON.stringify(templateMetadata, null, 2))
-      
+
       // Generate and save template.schema.json (JSON Schema for validation)
       const schemaPath = joinPath(templateDir, 'template.schema.json')
       const templateSchema = generateTemplateSchema(templateMetadata)
       await window.electronAPI.writeFile(schemaPath, JSON.stringify(templateSchema, null, 2))
-      
+
       // Generate Helm files
       await generateHelmFiles(helmDir, templateMetadata)
-      
+
       // Generate Kustomize files
       await generateKustomizeFiles(kustomizeDir, templateMetadata)
-      
+
       console.log('✅ Template saved successfully to:', templateDir)
-      
+
       // Optional: Show success notification to user
       // You might want to add a toast notification here
-      
+
     } catch (error) {
       console.error('❌ Failed to save template:', error)
       // Optional: Show error notification to user
@@ -771,137 +776,137 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
   /**
    * Generate JSON Schema for template validation
    */
-/**
- * Generates a simplified template schema that groups fields by resource type
- * Creates a user-friendly structure like deployment.replicas, configmap.data, etc.
- * @param template - The template containing selected resources and fields
- * @returns JSON Schema object for form generation
- */
-const generateTemplateSchema = (template: Template): any => {
-  const schema = {
-    $schema: "http://json-schema.org/draft-07/schema#",
-    type: "object",
-    title: template.name,
-    description: template.description,
-    properties: {} as any,
-    required: [] as string[]
-  };
-
-  template.resources.forEach((resource) => {
-    // Use lowercase resource kind as the property key (e.g., "deployment", "configmap")
-    const resourceKey = resource.kind.toLowerCase();
-    
-    // Initialize the resource object in the schema
-    schema.properties[resourceKey] = {
+  /**
+   * Generates a simplified template schema that groups fields by resource type
+   * Creates a user-friendly structure like deployment.replicas, configmap.data, etc.
+   * @param template - The template containing selected resources and fields
+   * @returns JSON Schema object for form generation
+   */
+  const generateTemplateSchema = (template: Template): any => {
+    const schema = {
+      $schema: "http://json-schema.org/draft-07/schema#",
       type: "object",
-      title: `${resource.kind} Configuration`,
-      description: `Configuration for ${resource.kind} resource`,
+      title: template.name,
+      description: template.description,
       properties: {} as any,
       required: [] as string[]
     };
 
-    // Process each selected field for this resource
-    resource.selectedFields.forEach(field => {
-      // Extract the final property name from the path (e.g., "spec.replicas" -> "replicas")
-      const fieldParts = field.path.split('.');
-      const fieldName = fieldParts[fieldParts.length - 1].replace(/\[\]/g, '');
-      
-      // Create the field schema based on the field type and constraints
-      const fieldSchema: any = {
-        title: fieldName.charAt(0).toUpperCase() + fieldName.slice(1), // Capitalize first letter
-        description: field.description || `Configuration for ${fieldName}`
+    template.resources.forEach((resource) => {
+      // Use lowercase resource kind as the property key (e.g., "deployment", "configmap")
+      const resourceKey = resource.kind.toLowerCase();
+
+      // Initialize the resource object in the schema
+      schema.properties[resourceKey] = {
+        type: "object",
+        title: `${resource.kind} Configuration`,
+        description: `Configuration for ${resource.kind} resource`,
+        properties: {} as any,
+        required: [] as string[]
       };
 
-      // Set the type and constraints based on the field type
-      switch (field.type) {
-        case 'string':
-          fieldSchema.type = 'string';
-          if (field.constraints?.enum) {
-            fieldSchema.enum = field.constraints.enum;
-          }
-          if (field.constraints?.pattern) {
-            fieldSchema.pattern = field.constraints.pattern;
-          }
-          if (field.constraints?.minLength) {
-            fieldSchema.minLength = field.constraints.minLength;
-          }
-          if (field.constraints?.maxLength) {
-            fieldSchema.maxLength = field.constraints.maxLength;
-          }
-          break;
-          
-        case 'number':
-        case 'integer':
-          fieldSchema.type = field.type;
-          if (field.constraints?.minimum !== undefined) {
-            fieldSchema.minimum = field.constraints.minimum;
-          }
-          if (field.constraints?.maximum !== undefined) {
-            fieldSchema.maximum = field.constraints.maximum;
-          }
-          // Set sensible defaults for common fields
-          if (fieldName === 'replicas') {
-            fieldSchema.default = 1;
-          }
-          break;
-          
-        case 'boolean':
-          fieldSchema.type = 'boolean';
-          break;
-          
-        case 'array':
-          fieldSchema.type = 'array';
-          fieldSchema.items = {
-            type: 'string' // Default to string, could be enhanced based on array item type
-          };
-          if (field.constraints?.minItems !== undefined) {
-            fieldSchema.minItems = field.constraints.minItems;
-          }
-          if (field.constraints?.maxItems !== undefined) {
-            fieldSchema.maxItems = field.constraints.maxItems;
-          }
-          break;
-          
-        case 'object':
-          fieldSchema.type = 'object';
-          fieldSchema.additionalProperties = true;
-          // Set default empty object for common object fields
-          if (fieldName === 'env' || fieldName === 'data' || fieldName === 'labels' || fieldName === 'annotations') {
-            fieldSchema.default = {};
-          }
-          break;
-          
-        default:
-          fieldSchema.type = 'string';
-      }
+      // Process each selected field for this resource
+      resource.selectedFields.forEach(field => {
+        // Extract the final property name from the path (e.g., "spec.replicas" -> "replicas")
+        const fieldParts = field.path.split('.');
+        const fieldName = fieldParts[fieldParts.length - 1].replace(/\[\]/g, '');
 
-      // Add examples if available
-      if (field.example !== undefined) {
-        fieldSchema.examples = [field.example];
-      }
+        // Create the field schema based on the field type and constraints
+        const fieldSchema: any = {
+          title: fieldName.charAt(0).toUpperCase() + fieldName.slice(1), // Capitalize first letter
+          description: field.description || `Configuration for ${fieldName}`
+        };
 
-      // Set default value if available and not already set
-      if (field.default !== undefined && fieldSchema.default === undefined) {
-        fieldSchema.default = field.default;
-      }
+        // Set the type and constraints based on the field type
+        switch (field.type) {
+          case 'string':
+            fieldSchema.type = 'string';
+            if (field.constraints?.enum) {
+              fieldSchema.enum = field.constraints.enum;
+            }
+            if (field.constraints?.pattern) {
+              fieldSchema.pattern = field.constraints.pattern;
+            }
+            if (field.constraints?.minLength) {
+              fieldSchema.minLength = field.constraints.minLength;
+            }
+            if (field.constraints?.maxLength) {
+              fieldSchema.maxLength = field.constraints.maxLength;
+            }
+            break;
 
-      // Add field to the resource schema
-      schema.properties[resourceKey].properties[fieldName] = fieldSchema;
-      
-      // Mark as required if specified
-      if (field.required) {
-        schema.properties[resourceKey].required.push(fieldName);
+          case 'number':
+          case 'integer':
+            fieldSchema.type = field.type;
+            if (field.constraints?.minimum !== undefined) {
+              fieldSchema.minimum = field.constraints.minimum;
+            }
+            if (field.constraints?.maximum !== undefined) {
+              fieldSchema.maximum = field.constraints.maximum;
+            }
+            // Set sensible defaults for common fields
+            if (fieldName === 'replicas') {
+              fieldSchema.default = 1;
+            }
+            break;
+
+          case 'boolean':
+            fieldSchema.type = 'boolean';
+            break;
+
+          case 'array':
+            fieldSchema.type = 'array';
+            fieldSchema.items = {
+              type: 'string' // Default to string, could be enhanced based on array item type
+            };
+            if (field.constraints?.minItems !== undefined) {
+              fieldSchema.minItems = field.constraints.minItems;
+            }
+            if (field.constraints?.maxItems !== undefined) {
+              fieldSchema.maxItems = field.constraints.maxItems;
+            }
+            break;
+
+          case 'object':
+            fieldSchema.type = 'object';
+            fieldSchema.additionalProperties = true;
+            // Set default empty object for common object fields
+            if (fieldName === 'env' || fieldName === 'data' || fieldName === 'labels' || fieldName === 'annotations') {
+              fieldSchema.default = {};
+            }
+            break;
+
+          default:
+            fieldSchema.type = 'string';
+        }
+
+        // Add examples if available
+        if (field.example !== undefined) {
+          fieldSchema.examples = [field.example];
+        }
+
+        // Set default value if available and not already set
+        if (field.default !== undefined && fieldSchema.default === undefined) {
+          fieldSchema.default = field.default;
+        }
+
+        // Add field to the resource schema
+        schema.properties[resourceKey].properties[fieldName] = fieldSchema;
+
+        // Mark as required if specified
+        if (field.required) {
+          schema.properties[resourceKey].required.push(fieldName);
+        }
+      });
+
+      // Add the resource to the main required array if it has required fields
+      if (schema.properties[resourceKey].required.length > 0) {
+        schema.required.push(resourceKey);
       }
     });
 
-    // Add the resource to the main required array if it has required fields
-    if (schema.properties[resourceKey].required.length > 0) {
-      schema.required.push(resourceKey);
-    }
-  });
-
-  return schema;
-};
+    return schema;
+  };
 
   /**
    * Generate Helm Chart files
@@ -916,42 +921,51 @@ const generateTemplateSchema = (template: Template): any => {
       version: '0.1.0',
       appVersion: '1.0.0'
     }
-    
+
     const chartContent = `# Generated Helm Chart for ${templateMetadata.name}\napiVersion: ${chartYaml.apiVersion}\nname: ${chartYaml.name}\ndescription: ${chartYaml.description}\ntype: ${chartYaml.type}\nversion: ${chartYaml.version}\nappVersion: ${chartYaml.appVersion}`
-    
+
     const chartPath = joinPath(helmDir, 'Chart.yaml')
     await window.electronAPI.writeFile(chartPath, chartContent)
-    
+
     // Generate values.yaml
     const valuesContent = generateValuesYaml(templateMetadata)
     const valuesPath = joinPath(helmDir, 'values.yaml')
     await window.electronAPI.writeFile(valuesPath, valuesContent)
-    
+
     // Create templates directory
     const templatesDir = joinPath(helmDir, 'templates')
     await window.electronAPI.createDirectory(templatesDir)
-    
+
     // Generate individual resource template files
+    // for (const resource of templateMetadata.resources) {
+    //   const resourceFileName = `${resource.kind.toLowerCase()}.yaml`
+    //   const resourcePath = joinPath(templatesDir, resourceFileName)
+
+    //   const resourceTemplate = generateHelmResourceTemplate(resource, templateMetadata.name)
+    //   await window.electronAPI.writeFile(resourcePath, resourceTemplate)
+    // }
+    // Generate individual resource template files using the enhanced function
     for (const resource of templateMetadata.resources) {
       const resourceFileName = `${resource.kind.toLowerCase()}.yaml`
       const resourcePath = joinPath(templatesDir, resourceFileName)
-      
-      const resourceTemplate = generateHelmResourceTemplate(resource, templateMetadata.name)
+
+      // Use the enhanced function with Helm helpers enabled
+      const resourceTemplate = generateHelmResourceTemplate(resource, templateMetadata.name, true)
       await window.electronAPI.writeFile(resourcePath, resourceTemplate)
     }
   }
-  
+
   /**
    * Generate values.yaml content for Helm chart
    */
   const generateValuesYaml = (templateMetadata: any): string => {
     let valuesContent = `# Default values for ${templateMetadata.name}\n# This is a YAML-formatted file.\n\n`
-    
+
     templateMetadata.resources.forEach((resource: any) => {
       const resourceKey = resource.kind.toLowerCase()
       valuesContent += `${resourceKey}:\n`
       valuesContent += `  enabled: true\n`
-      
+
       if (resource.selectedFields && resource.selectedFields.length > 0) {
         resource.selectedFields.forEach((field: any) => {
           const fieldKey = field.path.split('.').pop() || field.title.toLowerCase().replace(/\s+/g, '')
@@ -961,23 +975,23 @@ const generateTemplateSchema = (template: Template): any => {
       }
       valuesContent += '\n'
     })
-    
+
     return valuesContent
   }
-  
+
   /**
    * Generate Helm resource template
    */
   // const generateHelmResourceTemplate = (resource: any, templateName: string): string => {
   //   const chartName = templateName.toLowerCase().replace(/[^a-z0-9-]/g, '-')
-    
+
   //   let template = `apiVersion: ${resource.apiVersion}\n`
   //   template += `kind: ${resource.kind}\n`
   //   template += `metadata:\n`
   //   template += `  name: {{ include "${chartName}.fullname" . }}\n`
   //   template += `  labels:\n`
   //   template += `    {{- include "${chartName}.labels" . | nindent 4 }}\n`
-    
+
   //   if (resource.kind === 'Deployment' || resource.kind === 'StatefulSet' || resource.kind === 'DaemonSet') {
   //     template += `spec:\n`
   //     template += `  replicas: {{ .Values.${resource.kind.toLowerCase()}.replicas | default 1 }}\n`
@@ -1000,10 +1014,26 @@ const generateTemplateSchema = (template: Template): any => {
   //       template += `  # Based on selected fields: ${resource.selectedFields.map((f: any) => f.path).join(', ')}\n`
   //     }
   //   }
-    
+
   //   return template
   // }
-  
+
+
+  /**
+   * Handle YAML preview for a specific resource
+   */
+  const handlePreviewYaml = (resource: TemplateResource) => {
+    if (!resource.selectedFields || resource.selectedFields.length === 0) {
+      setPreviewYamlContent('# No fields selected for this resource\n# Please select fields to generate YAML preview')
+    } else {
+      const yamlContent = generateResourceYamlPreview(resource, template.name || 'template')
+      setPreviewYamlContent(yamlContent)
+    }
+    setPreviewResourceKind(resource.kind)
+    setIsYamlPreviewOpen(true)
+  }
+
+
   /**
    * Generate Kustomize files
    */
@@ -1012,17 +1042,17 @@ const generateTemplateSchema = (template: Template): any => {
     const kustomizationContent = generateKustomizationYaml(templateMetadata)
     const kustomizationPath = joinPath(kustomizeDir, 'kustomization.yaml')
     await window.electronAPI.writeFile(kustomizationPath, kustomizationContent)
-    
+
     // Generate individual resource files for Kustomize
     for (const resource of templateMetadata.resources) {
       const resourceFileName = `${resource.kind.toLowerCase()}.yaml`
       const resourcePath = joinPath(kustomizeDir, resourceFileName)
-      
+
       const resourceManifest = generateKustomizeResourceManifest(resource, templateMetadata.name)
       await window.electronAPI.writeFile(resourcePath, resourceManifest)
     }
   }
-  
+
   /**
    * Generate kustomization.yaml content
    */
@@ -1032,24 +1062,24 @@ const generateTemplateSchema = (template: Template): any => {
     content += `metadata:\n`
     content += `  name: ${templateMetadata.name.toLowerCase()}\n\n`
     content += `resources:\n`
-    
+
     templateMetadata.resources.forEach((resource: any) => {
       content += `- ${resource.kind.toLowerCase()}.yaml\n`
     })
-    
+
     content += `\n# Add common labels to all resources\n`
     content += `commonLabels:\n`
     content += `  app: ${templateMetadata.name.toLowerCase()}\n`
     content += `  version: v1.0.0\n\n`
-    
+
     content += `# Add common annotations\n`
     content += `commonAnnotations:\n`
     content += `  generated-by: config-pilot\n`
     content += `  template: ${templateMetadata.name}\n`
-    
+
     return content
   }
-  
+
   /**
    * Generate Kustomize resource manifest
    */
@@ -1058,13 +1088,13 @@ const generateTemplateSchema = (template: Template): any => {
     manifest += `kind: ${resource.kind}\n`
     manifest += `metadata:\n`
     manifest += `  name: ${templateName.toLowerCase()}-${resource.kind.toLowerCase()}\n`
-    
+
     if (resource.namespace) {
       manifest += `  namespace: ${resource.namespace}\n`
     }
-    
+
     manifest += `spec:\n`
-    
+
     if (resource.kind === 'Deployment' || resource.kind === 'StatefulSet' || resource.kind === 'DaemonSet') {
       manifest += `  replicas: 1\n`
       manifest += `  selector:\n`
@@ -1086,10 +1116,10 @@ const generateTemplateSchema = (template: Template): any => {
         manifest += `  # Based on selected fields: ${resource.selectedFields.map((f: any) => f.path).join(', ')}\n`
       }
     }
-    
+
     return manifest
   }
-  
+
   /**
    * Get default value for field type
    */
@@ -1103,7 +1133,7 @@ const generateTemplateSchema = (template: Template): any => {
       default: return '""'
     }
   }
-    
+
   /**
    * Check if template has data to enable buttons
    */
@@ -1396,7 +1426,7 @@ const generateTemplateSchema = (template: Template): any => {
                           schemaResource.schema = resourceSchema.schema
                           console.log('✅ Schema found and assigned');
                         }
-                        else{
+                        else {
                           console.warn('❌ No schema found for kind:', resource.kind);
                         }
                       }
@@ -1420,18 +1450,68 @@ const generateTemplateSchema = (template: Template): any => {
                           </p>
                         )}
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation(); // Prevent tile click when removing
-                          removeResource(resource);
-                        }}
-                        className="text-red-500 hover:text-red-700 hover:bg-red-50/80 p-2 h-auto rounded-full transition-colors"
-                        aria-label="Remove resource"
-                      >
-                        <TrashIcon className="h-4 w-4" />
-                      </Button>
+
+                      <div className="flex items-center gap-1">
+                        <TooltipProvider delayDuration={200}>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation(); // Prevent tile click when previewing YAML
+                                  handlePreviewYaml(resource);
+                                }}
+                                className="text-blue-500 hover:text-blue-700 hover:bg-blue-50/80 p-2 h-auto rounded-full transition-colors"
+                                aria-label="Preview YAML"
+                              >
+                                <FileText className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent
+                              side="left"
+                              align="end"
+                              alignOffset={-22}
+                              sideOffset={5}
+                              className="z-[9999] bg-gray-900 text-white text-xs px-2 py-1 rounded shadow-lg border-0 animate-none"
+                              avoidCollisions={true}
+                              collisionPadding={20}
+                            >
+                              Preview YAML
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                        <TooltipProvider delayDuration={200}>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation(); // Prevent tile click when removing
+                                  removeResource(resource);
+                                }}
+                                className="text-red-500 hover:text-red-700 hover:bg-red-50/80 p-2 h-auto rounded-full transition-colors"
+                                aria-label="Remove resource"
+                              >
+                                <TrashIcon className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent
+                              side="left"
+                              align="end"
+                              alignOffset={-22}
+                              sideOffset={5}
+                              className="z-[9999] bg-gray-900 text-white text-xs px-2 py-1 rounded shadow-lg border-0 animate-none"
+                              avoidCollisions={true}
+                              collisionPadding={20}
+                            >
+                              Remove resource
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </div>
+
                     </div>
 
                     {resource.selectedFields && resource.selectedFields.length > 0 && (
@@ -1511,6 +1591,14 @@ const generateTemplateSchema = (template: Template): any => {
         onFieldsChange={handleFieldSelectionChange}
         userDataDir={userDataDir}
         k8sVersion={kubernetesVersion}
+      />
+
+      {/* YAML Preview Modal */}
+      <YamlPreview
+        isOpen={isYamlPreviewOpen}
+        onClose={() => setIsYamlPreviewOpen(false)}
+        yamlContent={previewYamlContent}
+        resourceKind={previewResourceKind}
       />
 
     </div>
