@@ -181,14 +181,12 @@ resources:
     }
   }
 
+  /**
+   * Copies the provided text to the clipboard
+   * @param text - The text content to copy
+   */  
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text)
-    // Simple toast notification
-    const toast = document.createElement("div")
-    toast.textContent = "Copied to clipboard!"
-    toast.className = "fixed top-4 right-4 px-4 py-2 rounded-md text-white z-50 bg-green-500"
-    document.body.appendChild(toast)
-    setTimeout(() => document.body.removeChild(toast), 2000)
   }
 
   const renderDisplayContent = () => {
@@ -213,7 +211,7 @@ resources:
     }
 
     return (
-      <div className="h-full">
+      <div className="h-full" data-testid="yaml-output-editor">
         <CodeMirror
           value={content}
           height="100%"
@@ -284,6 +282,8 @@ resources:
           <div
             className="w-0.5 bg-transparent hover:bg-primary/20 cursor-col-resize flex-shrink-0 transition-all duration-200 group-hover:w-1 group-hover:bg-border"
             onMouseDown={handleMouseDown}
+            role="separator"
+            aria-label="Resize panels"
             style={{
               backgroundColor: isDragging ? "hsl(var(--primary))" : undefined,
               width: isDragging ? "4px" : undefined,
@@ -318,6 +318,7 @@ resources:
                               displayFormat === "configmap" ? generateConfigMapOutput() : generateConfigJsonOutput()
                             copyToClipboard(content)
                           }}
+                          aria-label="Copy to clipboard"
                           className="hover:bg-muted"
                         >
                           <Copy className="h-4 w-4" />
