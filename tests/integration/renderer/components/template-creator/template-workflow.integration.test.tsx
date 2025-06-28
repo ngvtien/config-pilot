@@ -92,7 +92,7 @@ describe('Template Creator Workflow Integration', () => {
     }, { timeout: 3000 });
     
     // The component should render successfully without errors
-    expect(screen.getByText('Template Designer')).toBeInTheDocument();
+    expect(screen.getByText('Deployment Template Designer')).toBeInTheDocument();
     expect(screen.getByText(/using Kubernetes 1.28.0/)).toBeInTheDocument();
   });
 });

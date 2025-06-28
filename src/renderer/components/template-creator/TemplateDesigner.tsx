@@ -1118,7 +1118,7 @@ const generateTemplateSchema = (template: Template): any => {
             <div>
               <CardTitle className="flex items-center gap-2">
                 <FileText className="h-5 w-5" />
-                Template Designer
+                Deployment Template Designer
               </CardTitle>
               <CardDescription>
                 Select a Kubernetes resource kind to create a template (using Kubernetes {kubernetesVersion})
