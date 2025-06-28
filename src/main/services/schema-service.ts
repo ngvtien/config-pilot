@@ -240,10 +240,10 @@ class SchemaService {
           continue;
         }
 
-  // Filter out only 'kind' at root level - it's auto-generated and shouldn't be user-configurable
-  if (!path && key === 'kind') {
-    continue;
-  }        
+        // Filter out only 'kind' at root level - it's auto-generated and shouldn't be user-configurable
+        if (!path && key === 'kind') {
+          continue;
+        }
 
         const childPath = currentPath ? `${currentPath}.${key}` : key;
         const subTree = this.buildSchemaTree(
@@ -266,23 +266,29 @@ class SchemaService {
       }];
     }
 
-    // Handle array types
+    // Only create children for arrays of objects, not primitive types
     if (schema.type === "array" && schema.items) {
       const currentPath = path ? `${path}.${name}` : name;
-      const items = this.buildSchemaTree(
-        schema.items as JSONSchema7,
-        definitions,
-        "[]",
-        `${currentPath}[]`,
-        []
-      );
+      const itemsSchema = schema.items as JSONSchema7;
+
+      let children: SchemaTreeNode[] = [];
+      if (itemsSchema.type === "object" || itemsSchema.$ref) {
+        children = this.buildSchemaTree(
+          schema.items as JSONSchema7,
+          definitions,
+          "[]",
+          `${currentPath}[]`,
+          []
+        );
+      }
+
       return [{
         name,
         type: "array",
         path: currentPath,
         description: schema.description,
         required: requiredFields.includes(name),
-        children: items
+        children: children.length > 0 ? children : undefined
       }];
     }
 
