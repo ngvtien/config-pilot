@@ -1189,17 +1189,6 @@ private static string SanitizeNamespace(string namespaceName)
 ```
 ### Collection in `OperationContract`s
 ```csharp
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Linq;
-using System.Text;
-
-namespace SourceGenerators;
-
-
 [Generator]
 public class WcfCollectionOperationContractsGenerator : IIncrementalGenerator
 {
@@ -1289,6 +1278,13 @@ public class WcfCollectionOperationContractsGenerator : IIncrementalGenerator
         var classDecl = (ClassDeclarationSyntax)context.Node;
         var semanticModel = context.SemanticModel;
 
+        // Get the full type name including namespace
+        var typeSymbol = semanticModel.GetDeclaredSymbol(classDecl);
+        if (typeSymbol == null) return null;
+
+        var fullTypeName = typeSymbol.ToDisplayString();
+        var simpleName = classDecl.Identifier.ValueText;
+
         var properties = new List<DataMemberInfo>();
 
         foreach (var member in classDecl.Members.OfType<PropertyDeclarationSyntax>())
@@ -1305,7 +1301,8 @@ public class WcfCollectionOperationContractsGenerator : IIncrementalGenerator
 
         return new DataContractInfo
         {
-            Name = classDecl.Identifier.ValueText,
+            Name = simpleName,
+            FullTypeName = fullTypeName,
             Properties = properties
         };
     }
@@ -1343,7 +1340,22 @@ public class WcfCollectionOperationContractsGenerator : IIncrementalGenerator
         sb.AppendLine("// ServiceContracts and OperationContracts that contain collection types");
         sb.AppendLine();
 
-        var dataContractLookup = dataContracts.ToDictionary(dc => dc.Name, dc => dc);
+        // Create lookup using full type name, handling duplicates
+        var dataContractLookup = new Dictionary<string, DataContractInfo>();
+        var simpleNameLookup = new Dictionary<string, List<DataContractInfo>>();
+
+        foreach (var dataContract in dataContracts)
+        {
+            // Add to full type name lookup (this should be unique)
+            dataContractLookup[dataContract.FullTypeName] = dataContract;
+
+            // Add to simple name lookup for fallback searches
+            if (!simpleNameLookup.ContainsKey(dataContract.Name))
+            {
+                simpleNameLookup[dataContract.Name] = new List<DataContractInfo>();
+            }
+            simpleNameLookup[dataContract.Name].Add(dataContract);
+        }
 
         foreach (var serviceContract in serviceContracts)
         {
@@ -1351,16 +1363,20 @@ public class WcfCollectionOperationContractsGenerator : IIncrementalGenerator
 
             foreach (var operation in serviceContract.Operations)
             {
-                bool hasCollectionType = IsCollectionType(operation.ReturnType) || 
-                                         HasNestedCollectionType(operation.ReturnType, dataContractLookup);
+                bool hasCollectionType = false;
 
                 // Check return type
+                if (IsCollectionType(operation.ReturnType) || 
+                    HasNestedCollectionType(operation.ReturnType, dataContractLookup, simpleNameLookup))
+                {
+                    hasCollectionType = true;
+                }
 
                 // Check parameters
                 foreach (var param in operation.Parameters)
                 {
                     if (IsCollectionType(param.Type) || 
-                        HasNestedCollectionType(param.Type, dataContractLookup))
+                        HasNestedCollectionType(param.Type, dataContractLookup, simpleNameLookup))
                     {
                         hasCollectionType = true;
                         break;
@@ -1392,7 +1408,7 @@ public class WcfCollectionOperationContractsGenerator : IIncrementalGenerator
                         }
                     }
                     
-                    sb.AppendLine($"//     Reason: {GetCollectionReason(operation, dataContractLookup)}");
+                    sb.AppendLine($"//     Reason: {GetCollectionReason(operation, dataContractLookup, simpleNameLookup)}");
                     sb.AppendLine();
                 }
                 
@@ -1427,26 +1443,42 @@ public class WcfCollectionOperationContractsGenerator : IIncrementalGenerator
         return collectionTypes.Any(ct => typeName.Contains(ct));
     }
 
-    private static bool HasNestedCollectionType(string typeName, Dictionary<string, DataContractInfo> dataContractLookup)
+    private static bool HasNestedCollectionType(string typeName, 
+        Dictionary<string, DataContractInfo> dataContractLookup,
+        Dictionary<string, List<DataContractInfo>> simpleNameLookup)
     {
-        // Extract the base type name (remove namespace and generic parameters)
-        var baseTypeName = ExtractBaseTypeName(typeName);
-        
-        if (dataContractLookup.TryGetValue(baseTypeName, out var dataContract))
+        // First try to find by full type name
+        if (dataContractLookup.TryGetValue(typeName, out var dataContract))
         {
-            return HasCollectionInDataContract(dataContract, dataContractLookup, new HashSet<string>());
+            return HasCollectionInDataContract(dataContract, dataContractLookup, simpleNameLookup, new HashSet<string>());
+        }
+
+        // Fallback: extract base type name and search by simple name
+        var baseTypeName = ExtractBaseTypeName(typeName);
+        if (simpleNameLookup.TryGetValue(baseTypeName, out var dataContracts))
+        {
+            // If there are multiple matches, check all of them
+            foreach (var dc in dataContracts)
+            {
+                if (HasCollectionInDataContract(dc, dataContractLookup, simpleNameLookup, new HashSet<string>()))
+                {
+                    return true;
+                }
+            }
         }
 
         return false;
     }
 
     private static bool HasCollectionInDataContract(DataContractInfo dataContract, 
-        Dictionary<string, DataContractInfo> dataContractLookup, HashSet<string> visited)
+        Dictionary<string, DataContractInfo> dataContractLookup,
+        Dictionary<string, List<DataContractInfo>> simpleNameLookup,
+        HashSet<string> visited)
     {
-        if (visited.Contains(dataContract.Name))
+        if (visited.Contains(dataContract.FullTypeName))
             return false; // Prevent infinite recursion
 
-        visited.Add(dataContract.Name);
+        visited.Add(dataContract.FullTypeName);
 
         foreach (var property in dataContract.Properties)
         {
@@ -1454,16 +1486,28 @@ public class WcfCollectionOperationContractsGenerator : IIncrementalGenerator
             if (IsCollectionType(property.Type))
                 return true;
 
-            // Check nested data contracts
-            var baseTypeName = ExtractBaseTypeName(property.Type);
-            if (dataContractLookup.TryGetValue(baseTypeName, out var nestedDataContract))
+            // Check nested data contracts by full type name first
+            if (dataContractLookup.TryGetValue(property.Type, out var nestedDataContract))
             {
-                if (HasCollectionInDataContract(nestedDataContract, dataContractLookup, visited))
+                if (HasCollectionInDataContract(nestedDataContract, dataContractLookup, simpleNameLookup, visited))
                     return true;
+            }
+            else
+            {
+                // Fallback: check by simple name
+                var baseTypeName = ExtractBaseTypeName(property.Type);
+                if (simpleNameLookup.TryGetValue(baseTypeName, out var nestedDataContracts))
+                {
+                    foreach (var ndc in nestedDataContracts)
+                    {
+                        if (HasCollectionInDataContract(ndc, dataContractLookup, simpleNameLookup, visited))
+                            return true;
+                    }
+                }
             }
         }
 
-        visited.Remove(dataContract.Name);
+        visited.Remove(dataContract.FullTypeName);
         return false;
     }
 
@@ -1488,14 +1532,15 @@ public class WcfCollectionOperationContractsGenerator : IIncrementalGenerator
     }
 
     private static string GetCollectionReason(OperationContractInfo operation, 
-        Dictionary<string, DataContractInfo> dataContractLookup)
+        Dictionary<string, DataContractInfo> dataContractLookup,
+        Dictionary<string, List<DataContractInfo>> simpleNameLookup)
     {
         var reasons = new List<string>();
 
         // Check return type
         if (IsCollectionType(operation.ReturnType))
             reasons.Add($"Return type '{operation.ReturnType}' is a collection");
-        else if (HasNestedCollectionType(operation.ReturnType, dataContractLookup))
+        else if (HasNestedCollectionType(operation.ReturnType, dataContractLookup, simpleNameLookup))
             reasons.Add($"Return type '{operation.ReturnType}' contains nested collections");
 
         // Check parameters
@@ -1503,7 +1548,7 @@ public class WcfCollectionOperationContractsGenerator : IIncrementalGenerator
         {
             if (IsCollectionType(param.Type))
                 reasons.Add($"Parameter '{param.Name}' of type '{param.Type}' is a collection");
-            else if (HasNestedCollectionType(param.Type, dataContractLookup))
+            else if (HasNestedCollectionType(param.Type, dataContractLookup, simpleNameLookup))
                 reasons.Add($"Parameter '{param.Name}' of type '{param.Type}' contains nested collections");
         }
 
@@ -1533,6 +1578,7 @@ public class WcfCollectionOperationContractsGenerator : IIncrementalGenerator
     private class DataContractInfo
     {
         public string Name { get; set; } = string.Empty;
+        public string FullTypeName { get; set; } = string.Empty;
         public List<DataMemberInfo> Properties { get; set; } = new();
     }
 
