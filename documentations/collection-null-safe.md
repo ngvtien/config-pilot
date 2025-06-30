@@ -1187,3 +1187,359 @@ private static string SanitizeNamespace(string namespaceName)
                        .Replace(" ", "_");
 }
 ```
+### Collection in `OperationContract`s
+```csharp
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
+using System.Text;
+
+namespace SourceGenerators;
+
+
+[Generator]
+public class WcfCollectionOperationContractsGenerator : IIncrementalGenerator
+{
+    public void Initialize(IncrementalGeneratorInitializationContext context)
+    {
+        // Filter for interfaces with ServiceContract attribute
+        var serviceContractInterfaces = context.SyntaxProvider
+            .CreateSyntaxProvider(
+                predicate: static (s, _) => IsServiceContractInterface(s),
+                transform: static (ctx, _) => GetServiceContractInfo(ctx))
+            .Where(static m => m is not null);
+
+        // Filter for classes with DataContract attribute
+        var dataContractClasses = context.SyntaxProvider
+            .CreateSyntaxProvider(
+                predicate: static (s, _) => IsDataContractClass(s),
+                transform: static (ctx, _) => GetDataContractInfo(ctx))
+            .Where(static m => m is not null);
+
+        // Combine both providers
+        var combined = serviceContractInterfaces.Collect()
+            .Combine(dataContractClasses.Collect());
+
+        context.RegisterSourceOutput(combined, static (spc, source) =>
+        {
+            var serviceContracts = source.Left;
+            var dataContracts = source.Right;
+            
+            GenerateCollectionOperationsList(spc, serviceContracts, dataContracts);
+        });
+    }
+
+    private static bool IsServiceContractInterface(SyntaxNode node)
+    {
+        return node is InterfaceDeclarationSyntax interfaceDecl &&
+               interfaceDecl.AttributeLists.Any(attrList =>
+                   attrList.Attributes.Any(attr =>
+                       attr.Name.ToString().Contains("ServiceContract")));
+    }
+
+    private static bool IsDataContractClass(SyntaxNode node)
+    {
+        return node is ClassDeclarationSyntax classDecl &&
+               classDecl.AttributeLists.Any(attrList =>
+                   attrList.Attributes.Any(attr =>
+                       attr.Name.ToString().Contains("DataContract")));
+    }
+
+    private static ServiceContractInfo? GetServiceContractInfo(GeneratorSyntaxContext context)
+    {
+        var interfaceDecl = (InterfaceDeclarationSyntax)context.Node;
+        var semanticModel = context.SemanticModel;
+
+        var serviceContractName = interfaceDecl.Identifier.ValueText;
+        var operations = new List<OperationContractInfo>();
+
+        foreach (var member in interfaceDecl.Members.OfType<MethodDeclarationSyntax>())
+        {
+            if (HasOperationContractAttribute(member))
+            {
+                var returnType = GetTypeName(member.ReturnType, semanticModel);
+                var parameters = member.ParameterList.Parameters
+                    .Select(p => new ParameterInfo
+                    {
+                        Name = p.Identifier.ValueText,
+                        Type = GetTypeName(p.Type, semanticModel)
+                    }).ToList();
+
+                operations.Add(new OperationContractInfo
+                {
+                    Name = member.Identifier.ValueText,
+                    ReturnType = returnType,
+                    Parameters = parameters
+                });
+            }
+        }
+
+        return new ServiceContractInfo
+        {
+            Name = serviceContractName,
+            Operations = operations
+        };
+    }
+
+    private static DataContractInfo? GetDataContractInfo(GeneratorSyntaxContext context)
+    {
+        var classDecl = (ClassDeclarationSyntax)context.Node;
+        var semanticModel = context.SemanticModel;
+
+        var properties = new List<DataMemberInfo>();
+
+        foreach (var member in classDecl.Members.OfType<PropertyDeclarationSyntax>())
+        {
+            if (HasDataMemberAttribute(member))
+            {
+                properties.Add(new DataMemberInfo
+                {
+                    Name = member.Identifier.ValueText,
+                    Type = GetTypeName(member.Type, semanticModel)
+                });
+            }
+        }
+
+        return new DataContractInfo
+        {
+            Name = classDecl.Identifier.ValueText,
+            Properties = properties
+        };
+    }
+
+    private static bool HasOperationContractAttribute(MethodDeclarationSyntax method)
+    {
+        return method.AttributeLists.Any(attrList =>
+            attrList.Attributes.Any(attr =>
+                attr.Name.ToString().Contains("OperationContract")));
+    }
+
+    private static bool HasDataMemberAttribute(PropertyDeclarationSyntax property)
+    {
+        return property.AttributeLists.Any(attrList =>
+            attrList.Attributes.Any(attr =>
+                attr.Name.ToString().Contains("DataMember")));
+    }
+
+    private static string GetTypeName(TypeSyntax? typeSyntax, SemanticModel semanticModel)
+    {
+        if (typeSyntax == null) return "void";
+
+        var typeInfo = semanticModel.GetTypeInfo(typeSyntax);
+        return typeInfo.Type?.ToDisplayString() ?? typeSyntax.ToString();
+    }
+
+    private static void GenerateCollectionOperationsList(
+        SourceProductionContext context,
+        ImmutableArray<ServiceContractInfo> serviceContracts,
+        ImmutableArray<DataContractInfo> dataContracts)
+    {
+        var sb = new StringBuilder();
+        
+        sb.AppendLine("// Generated by WcfCollectionOperationContractsGenerator");
+        sb.AppendLine("// ServiceContracts and OperationContracts that contain collection types");
+        sb.AppendLine();
+
+        var dataContractLookup = dataContracts.ToDictionary(dc => dc.Name, dc => dc);
+
+        foreach (var serviceContract in serviceContracts)
+        {
+            var filteredOperations = new List<OperationContractInfo>();
+
+            foreach (var operation in serviceContract.Operations)
+            {
+                bool hasCollectionType = IsCollectionType(operation.ReturnType) || 
+                                         HasNestedCollectionType(operation.ReturnType, dataContractLookup);
+
+                // Check return type
+
+                // Check parameters
+                foreach (var param in operation.Parameters)
+                {
+                    if (IsCollectionType(param.Type) || 
+                        HasNestedCollectionType(param.Type, dataContractLookup))
+                    {
+                        hasCollectionType = true;
+                        break;
+                    }
+                }
+
+                if (hasCollectionType)
+                {
+                    filteredOperations.Add(operation);
+                }
+            }
+
+            if (filteredOperations.Any())
+            {
+                sb.AppendLine($"// ServiceContract: {serviceContract.Name}");
+                sb.AppendLine($"// Operations with collection types:");
+
+                foreach (var operation in filteredOperations)
+                {
+                    sb.AppendLine($"//   - {operation.Name}");
+                    sb.AppendLine($"//     Return: {operation.ReturnType}");
+                    
+                    if (operation.Parameters.Any())
+                    {
+                        sb.AppendLine($"//     Parameters:");
+                        foreach (var param in operation.Parameters)
+                        {
+                            sb.AppendLine($"//       - {param.Name}: {param.Type}");
+                        }
+                    }
+                    
+                    sb.AppendLine($"//     Reason: {GetCollectionReason(operation, dataContractLookup)}");
+                    sb.AppendLine();
+                }
+                
+                sb.AppendLine();
+            }
+        }
+
+        context.AddSource("WcfCollectionOperations.g.cs", sb.ToString());
+    }
+
+    private static bool IsCollectionType(string typeName)
+    {
+        // Check for arrays
+        if (typeName.EndsWith("[]"))
+            return true;
+
+        // Check for generic collection types
+        var collectionTypes = new[]
+        {
+            "System.Collections.Generic.List<",
+            "System.Collections.Generic.IList<",
+            "System.Collections.Generic.Collection<",
+            "System.Collections.Generic.ICollection<",
+            "System.Collections.Generic.IEnumerable<",
+            "List<",
+            "IList<",
+            "Collection<",
+            "ICollection<",
+            "IEnumerable<"
+        };
+
+        return collectionTypes.Any(ct => typeName.Contains(ct));
+    }
+
+    private static bool HasNestedCollectionType(string typeName, Dictionary<string, DataContractInfo> dataContractLookup)
+    {
+        // Extract the base type name (remove namespace and generic parameters)
+        var baseTypeName = ExtractBaseTypeName(typeName);
+        
+        if (dataContractLookup.TryGetValue(baseTypeName, out var dataContract))
+        {
+            return HasCollectionInDataContract(dataContract, dataContractLookup, new HashSet<string>());
+        }
+
+        return false;
+    }
+
+    private static bool HasCollectionInDataContract(DataContractInfo dataContract, 
+        Dictionary<string, DataContractInfo> dataContractLookup, HashSet<string> visited)
+    {
+        if (visited.Contains(dataContract.Name))
+            return false; // Prevent infinite recursion
+
+        visited.Add(dataContract.Name);
+
+        foreach (var property in dataContract.Properties)
+        {
+            // Check if property itself is a collection
+            if (IsCollectionType(property.Type))
+                return true;
+
+            // Check nested data contracts
+            var baseTypeName = ExtractBaseTypeName(property.Type);
+            if (dataContractLookup.TryGetValue(baseTypeName, out var nestedDataContract))
+            {
+                if (HasCollectionInDataContract(nestedDataContract, dataContractLookup, visited))
+                    return true;
+            }
+        }
+
+        visited.Remove(dataContract.Name);
+        return false;
+    }
+
+    private static string ExtractBaseTypeName(string typeName)
+    {
+        // Remove namespace
+        var lastDot = typeName.LastIndexOf('.');
+        if (lastDot >= 0)
+            typeName = typeName.Substring(lastDot + 1);
+
+        // Remove generic parameters
+        var genericStart = typeName.IndexOf('<');
+        if (genericStart >= 0)
+            typeName = typeName.Substring(0, genericStart);
+
+        // Remove array notation
+        var arrayStart = typeName.IndexOf('[');
+        if (arrayStart >= 0)
+            typeName = typeName.Substring(0, arrayStart);
+
+        return typeName;
+    }
+
+    private static string GetCollectionReason(OperationContractInfo operation, 
+        Dictionary<string, DataContractInfo> dataContractLookup)
+    {
+        var reasons = new List<string>();
+
+        // Check return type
+        if (IsCollectionType(operation.ReturnType))
+            reasons.Add($"Return type '{operation.ReturnType}' is a collection");
+        else if (HasNestedCollectionType(operation.ReturnType, dataContractLookup))
+            reasons.Add($"Return type '{operation.ReturnType}' contains nested collections");
+
+        // Check parameters
+        foreach (var param in operation.Parameters)
+        {
+            if (IsCollectionType(param.Type))
+                reasons.Add($"Parameter '{param.Name}' of type '{param.Type}' is a collection");
+            else if (HasNestedCollectionType(param.Type, dataContractLookup))
+                reasons.Add($"Parameter '{param.Name}' of type '{param.Type}' contains nested collections");
+        }
+
+        return string.Join(", ", reasons);
+    }
+
+    // Data models
+    private class ServiceContractInfo
+    {
+        public string Name { get; set; } = string.Empty;
+        public List<OperationContractInfo> Operations { get; set; } = new();
+    }
+
+    private class OperationContractInfo
+    {
+        public string Name { get; set; } = string.Empty;
+        public string ReturnType { get; set; } = string.Empty;
+        public List<ParameterInfo> Parameters { get; set; } = new();
+    }
+
+    private class ParameterInfo
+    {
+        public string Name { get; set; } = string.Empty;
+        public string Type { get; set; } = string.Empty;
+    }
+
+    private class DataContractInfo
+    {
+        public string Name { get; set; } = string.Empty;
+        public List<DataMemberInfo> Properties { get; set; } = new();
+    }
+
+    private class DataMemberInfo
+    {
+        public string Name { get; set; } = string.Empty;
+        public string Type { get; set; } = string.Empty;
+    }
+}
+```
