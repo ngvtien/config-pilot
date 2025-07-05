@@ -13,13 +13,14 @@ import { Checkbox } from '@/renderer/components/ui/checkbox'
 import { ScrollArea } from '@/renderer/components/ui/scroll-area'
 import { Separator } from '@/renderer/components/ui/separator'
 import { Card, CardContent, CardHeader, CardTitle } from '@/renderer/components/ui/card'
-import { ChevronRight, ChevronDown } from 'lucide-react'
+import { ChevronRight, ChevronDown, Copy, Check } from 'lucide-react'
 import { DescriptionTooltip } from './DescriptionTooltip'
 import type { KubernetesResourceSchema } from '@/renderer/services/kubernetes-schema-indexer'
 import type { TemplateField, TemplateResource } from '@/shared/types/template'
 import { SchemaTreeNode } from '../../../shared/types/schema';
 import { SchemaTreeView } from './SchemaTreeView';
-
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
+import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 
 // interface SchemaFieldSelectionModalProps {
 //     isOpen: boolean
@@ -901,18 +902,61 @@ export function SchemaFieldSelectionModal({
                 {/* Schema Preview Modal */}
                 {showSchemaPreview && (
                     <Dialog open={showSchemaPreview} onOpenChange={setShowSchemaPreview}>
-                        <DialogContent className="max-w-4xl h-[80vh]">
+                        <DialogContent className="max-w-6xl h-[85vh] flex flex-col">
                             <DialogHeader>
-                                <DialogTitle>Raw Schema Structure - {resource?.kind}</DialogTitle>
+                                <DialogTitle className="flex items-center justify-between">
+                                    <span>Raw Schema Structure - {resource?.kind}</span>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={async () => {
+                                            try {
+                                                await navigator.clipboard.writeText(JSON.stringify(resource?.schema, null, 2))
+                                                // You could add a toast notification here
+                                            } catch (error) {
+                                                console.error('Failed to copy to clipboard:', error)
+                                            }
+                                        }}
+                                        className="flex items-center space-x-2"
+                                    >
+                                        <Copy className="h-4 w-4" />
+                                        <span>Copy</span>
+                                    </Button>
+                                </DialogTitle>
                                 <DialogDescription>
-                                    This shows the actual schema data being parsed
+                                    This shows the actual schema data being parsed with syntax highlighting and line numbers
                                 </DialogDescription>
                             </DialogHeader>
-                            <ScrollArea className="flex-1">
-                                <pre className="text-xs bg-gray-100 dark:bg-gray-800 p-4 rounded overflow-auto">
-                                    {JSON.stringify(resource?.schema, null, 2)}
-                                </pre>
-                            </ScrollArea>
+                            <div className="flex-1 min-h-0">
+                                <ScrollArea className="h-full">
+                                    <SyntaxHighlighter
+                                        language="json"
+                                        style={oneDark}
+                                        showLineNumbers={true}
+                                        lineNumberStyle={{
+                                            minWidth: '3em',
+                                            paddingRight: '1em',
+                                            color: '#6b7280',
+                                            borderRight: '1px solid #374151',
+                                            marginRight: '1em',
+                                            textAlign: 'right'
+                                        }}
+                                        customStyle={{
+                                            margin: 0,
+                                            borderRadius: '0.5rem',
+                                            fontSize: '0.875rem',
+                                            lineHeight: '1.5'
+                                        }}
+                                        codeTagProps={{
+                                            style: {
+                                                fontFamily: 'Fira Code, Monaco, Cascadia Code, Roboto Mono, Consolas, Courier New, monospace'
+                                            }
+                                        }}
+                                    >
+                                        {JSON.stringify(resource?.schema, null, 2)}
+                                    </SyntaxHighlighter>
+                                </ScrollArea>
+                            </div>
                             <DialogFooter>
                                 <Button onClick={() => setShowSchemaPreview(false)}>
                                     Close
