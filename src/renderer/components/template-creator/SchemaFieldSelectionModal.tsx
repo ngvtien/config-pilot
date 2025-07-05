@@ -22,13 +22,6 @@ import { SchemaTreeView } from './SchemaTreeView';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 
-// interface SchemaFieldSelectionModalProps {
-//     isOpen: boolean
-//     onClose: () => void
-//     resource: KubernetesResourceSchema | null
-//     selectedFields: TemplateField[]
-//     onFieldsChange: (fields: TemplateField[]) => void
-// }
 interface SchemaFieldSelectionModalProps {
     isOpen: boolean
     onClose: () => void
@@ -174,6 +167,7 @@ export function SchemaFieldSelectionModal({
     const [schemaTree, setSchemaTree] = useState<SchemaTreeNode[]>([]);
     const [isLoadingSchema, setIsLoadingSchema] = useState(false);
     const [highlightedFieldPath, setHighlightedFieldPath] = useState<string | null>(null);
+    const [showSelectedPreview, setShowSelectedPreview] = useState(false)
 
     // Generate resource key for persistence (fix undefined apiVersion)
     //const resourceKey = resource ? (resource.key || `${resource.kind}-${resource.apiVersion || resource.group + '/' + resource.version}`) : '';
@@ -480,6 +474,75 @@ export function SchemaFieldSelectionModal({
             setShowSchemaPreview(true)
         }
     }
+
+    /**
+     * Handle preview of selected fields only
+     */
+    const handlePreviewSelected = () => {
+        if (localSelectedFields.length > 0) {
+            setShowSelectedPreview(true)
+        }
+
+    }
+
+const generateSelectedFieldsSchema = () => {
+  if (!resource?.schema || !localSelectedFields.length) {
+    return resource?.schema || {};
+  }
+
+  // Strip resource prefix from selected field paths
+  const resourcePrefix = resource.key + '.';
+  const strippedPaths = localSelectedFields.map(field => 
+    field.path.startsWith(resourcePrefix) 
+      ? field.path.substring(resourcePrefix.length)
+      : field.path
+  );
+
+  console.log('🔍 Final selected field paths:', strippedPaths);
+
+  // Build filtered schema
+  const filterSchema = (schema: any, currentPath: string = ''): any => {
+    if (!schema || typeof schema !== 'object') return schema;
+
+    if (schema.type === 'object' && schema.properties) {
+      const filteredProperties: any = {};
+      const filteredRequired: string[] = [];
+
+      Object.keys(schema.properties).forEach(key => {
+        const fullPath = currentPath ? `${currentPath}.${key}` : key;
+        
+        // Include if directly selected or parent of selected field
+        const isDirectlySelected = strippedPaths.includes(fullPath);
+        const isParentOfSelected = strippedPaths.some(path => path.startsWith(fullPath + '.'));
+        
+        if (isDirectlySelected || isParentOfSelected) {
+          //console.log(`✅ INCLUDING: ${key} (${fullPath})`);
+          filteredProperties[key] = filterSchema(schema.properties[key], fullPath);
+          
+          // Include in required if originally required
+          if (schema.required?.includes(key)) {
+            filteredRequired.push(key);
+          }
+        } 
+        // else {
+        //   console.log(`❌ EXCLUDING: ${key} (${fullPath})`);
+        // }
+      });
+
+      return {
+        ...schema,
+        properties: filteredProperties,
+        ...(filteredRequired.length > 0 && { required: filteredRequired })
+      };
+    }
+
+    return schema;
+  };
+
+  const filteredSchema = filterSchema(resource.schema);
+  console.log('🎯 Filtered schema generated:', filteredSchema);
+  return filteredSchema;
+};
 
     // /**
     //  * Handle schema preview - fetch schema on-demand for both CRD and vanilla K8s resources
@@ -837,8 +900,8 @@ export function SchemaFieldSelectionModal({
                                             <div
                                                 key={field.path}
                                                 className={`p-3 border rounded-lg cursor-pointer transition-all duration-300 ${highlightedFieldPath === field.path
-                                                        ? 'hover:bg-gray-50 dark:hover:bg-gray-800 transform scale-105 shadow-lg'
-                                                        : 'hover:bg-gray-50 dark:hover:bg-gray-800'
+                                                    ? 'hover:bg-gray-50 dark:hover:bg-gray-800 transform scale-105 shadow-lg'
+                                                    : 'hover:bg-gray-50 dark:hover:bg-gray-800'
                                                     }`}
                                                 onClick={() => handleSelectedFieldClick(field.path)}
                                             >
@@ -883,13 +946,22 @@ export function SchemaFieldSelectionModal({
                 <Separator />
 
                 <DialogFooter className="flex-shrink-0 flex flex-row justify-between items-center w-full">
-                    <Button
-                        variant="outline"
-                        onClick={handlePreviewSchema}
-                        className="mr-auto"
-                    >
-                        Preview Schema
-                    </Button>
+                    <div className="flex space-x-2 mr-auto">
+                        <Button
+                            variant="outline"
+                            onClick={handlePreviewSchema}
+                        >
+                            Preview Schema
+                        </Button>
+                        <Button
+                            variant="outline"
+                            onClick={handlePreviewSelected}
+                            disabled={localSelectedFields.length === 0}
+                            className={localSelectedFields.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}
+                        >
+                            Preview Selected ({localSelectedFields.length})
+                        </Button>
+                    </div>
                     <div className="flex space-x-2 ml-auto">
                         <Button variant="outline" onClick={handleCancel}>
                             Cancel
@@ -899,13 +971,81 @@ export function SchemaFieldSelectionModal({
                         </Button>
                     </div>
                 </DialogFooter>
-                {/* Schema Preview Modal */}
+
+                {showSelectedPreview && (
+                    <Dialog open={showSelectedPreview} onOpenChange={setShowSelectedPreview}>
+                        <DialogContent className="max-w-6xl h-[85vh] flex flex-col">
+                            <DialogHeader>
+                                <DialogTitle className="flex items-center justify-between">
+                                    <span>Selected Fields Schema - {resource?.kind} ({localSelectedFields.length} fields)</span>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={async () => {
+                                            try {
+                                                const selectedSchema = generateSelectedFieldsSchema()
+                                                await navigator.clipboard.writeText(JSON.stringify(selectedSchema, null, 2))
+                                                // You could add a toast notification here
+                                            } catch (error) {
+                                                console.error('Failed to copy to clipboard:', error)
+                                            }
+                                        }}
+                                        className="flex items-center space-x-2"
+                                    >
+                                        <Copy className="h-4 w-4" />
+                                        <span>Copy</span>
+                                    </Button>
+                                </DialogTitle>
+                                <DialogDescription>
+                                    This shows the schema structure for only the selected fields with syntax highlighting and line numbers
+                                </DialogDescription>
+                            </DialogHeader>
+                            <div className="flex-1 min-h-0">
+                                <ScrollArea className="h-full">
+                                    <SyntaxHighlighter
+                                        language="json"
+                                        style={oneDark}
+                                        showLineNumbers={true}
+                                        lineNumberStyle={{
+                                            minWidth: '3em',
+                                            paddingRight: '1em',
+                                            color: '#6b7280',
+                                            borderRight: '1px solid #374151',
+                                            marginRight: '1em',
+                                            textAlign: 'right'
+                                        }}
+                                        customStyle={{
+                                            margin: 0,
+                                            borderRadius: '0.5rem',
+                                            fontSize: '0.875rem',
+                                            lineHeight: '1.5'
+                                        }}
+                                        codeTagProps={{
+                                            style: {
+                                                fontFamily: 'Fira Code, Monaco, Cascadia Code, Roboto Mono, Consolas, Courier New, monospace'
+                                            }
+                                        }}
+                                    >
+                                        {JSON.stringify(generateSelectedFieldsSchema(), null, 2)}
+                                    </SyntaxHighlighter>
+                                </ScrollArea>
+                            </div>
+                            <DialogFooter>
+                                <Button onClick={() => setShowSelectedPreview(false)}>
+                                    Close
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+                )}
+
+                {/* Original Schema Preview Modal */}
                 {showSchemaPreview && (
                     <Dialog open={showSchemaPreview} onOpenChange={setShowSchemaPreview}>
                         <DialogContent className="max-w-6xl h-[85vh] flex flex-col">
                             <DialogHeader>
                                 <DialogTitle className="flex items-center justify-between">
-                                    <span>Raw Schema Structure - {resource?.kind}</span>
+                                    <span>Full Schema Preview - {resource?.kind}</span>
                                     <Button
                                         variant="outline"
                                         size="sm"
@@ -924,7 +1064,7 @@ export function SchemaFieldSelectionModal({
                                     </Button>
                                 </DialogTitle>
                                 <DialogDescription>
-                                    This shows the actual schema data being parsed with syntax highlighting and line numbers
+                                    This shows the complete schema structure with syntax highlighting and line numbers
                                 </DialogDescription>
                             </DialogHeader>
                             <div className="flex-1 min-h-0">
