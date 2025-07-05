@@ -345,63 +345,165 @@ export function SchemaFieldSelectionModal({
             persistExpandedNodes(resourceKey, expandedObjects)
         }
     }, [expandedObjects, resourceKey])
+    
+    // const filteredSchema = useMemo(() => {
+    //     if (!resource?.schema || !localSelectedFields.length) {
+    //         return resource?.schema || {};
+    //     }
 
-    const filteredSchema = useMemo(() => {
-        if (!resource?.schema || !localSelectedFields.length) {
-            return resource?.schema || {};
-        }
+    //     // Strip resource prefix from selected field paths
+    //     const resourcePrefix = resource.key + '.';
+    //     const strippedPaths = localSelectedFields.map(field =>
+    //         field.path.startsWith(resourcePrefix)
+    //             ? field.path.substring(resourcePrefix.length)
+    //             : field.path
+    //     );
 
-        // Strip resource prefix from selected field paths
-        const resourcePrefix = resource.key + '.';
-        const strippedPaths = localSelectedFields.map(field =>
-            field.path.startsWith(resourcePrefix)
-                ? field.path.substring(resourcePrefix.length)
-                : field.path
-        );
+    //     console.log('🔍 Final selected field paths:', strippedPaths);
 
-        console.log('🔍 Final selected field paths:', strippedPaths);
+    //     // Build filtered schema
+    //     const filterSchema = (schema: any, currentPath: string = ''): any => {
+    //         if (!schema || typeof schema !== 'object') return schema;
 
-        // Build filtered schema
-        const filterSchema = (schema: any, currentPath: string = ''): any => {
-            if (!schema || typeof schema !== 'object') return schema;
+    //         if (schema.type === 'object' && schema.properties) {
+    //             const filteredProperties: any = {};
+    //             const filteredRequired: string[] = [];
 
-            if (schema.type === 'object' && schema.properties) {
-                const filteredProperties: any = {};
-                const filteredRequired: string[] = [];
+    //             Object.keys(schema.properties).forEach(key => {
+    //                 const fullPath = currentPath ? `${currentPath}.${key}` : key;
 
-                Object.keys(schema.properties).forEach(key => {
-                    const fullPath = currentPath ? `${currentPath}.${key}` : key;
+    //                 // Include if directly selected or parent of selected field
+    //                 const isDirectlySelected = strippedPaths.includes(fullPath);
+    //                 const isParentOfSelected = strippedPaths.some(path => path.startsWith(fullPath + '.'));
 
-                    // Include if directly selected or parent of selected field
-                    const isDirectlySelected = strippedPaths.includes(fullPath);
-                    const isParentOfSelected = strippedPaths.some(path => path.startsWith(fullPath + '.'));
+    //                 if (isDirectlySelected || isParentOfSelected) {
+    //                     filteredProperties[key] = filterSchema(schema.properties[key], fullPath);
 
-                    if (isDirectlySelected || isParentOfSelected) {
-                        filteredProperties[key] = filterSchema(schema.properties[key], fullPath);
+    //                     // Include in required if originally required
+    //                     if (schema.required?.includes(key)) {
+    //                         filteredRequired.push(key);
+    //                     }
+    //                 }
+    //             });
 
-                        // Include in required if originally required
-                        if (schema.required?.includes(key)) {
-                            filteredRequired.push(key);
-                        }
-                    }
-                });
+    //             return {
+    //                 ...schema,
+    //                 properties: filteredProperties,
+    //                 ...(filteredRequired.length > 0 && { required: filteredRequired })
+    //             };
+    //         }
 
-                return {
-                    ...schema,
-                    properties: filteredProperties,
-                    ...(filteredRequired.length > 0 && { required: filteredRequired })
-                };
-            }
+    //         return schema;
+    //     };
 
-            return schema;
-        };
-
-        const result = filterSchema(resource.schema);
-        console.log('🎯 Filtered schema generated:', result);
-        return result;
-    }, [resource?.schema, localSelectedFields, resource?.key]);
+    //     const result = filterSchema(resource.schema);
+    //     console.log('🎯 Filtered schema generated:', result);
+    //     return result;
+    // }, [resource?.schema, localSelectedFields, resource?.key]);
 
     // Add memoized string version to avoid repeated JSON.stringify calls
+    
+const filteredSchema = useMemo(() => {
+  if (!resource || !resource.schema || !localSelectedFields.length) return null;
+
+  console.log('🔍 DEBUG: Resource info:', {
+    resourceKey: resource.key,
+    resourceSource: resource.source,
+    isCRD: resource.source === 'cluster-crds',
+    selectedFieldsCount: localSelectedFields.length
+  });
+
+  const selectedPaths = localSelectedFields.map(field => field.path);
+  console.log('🔍 DEBUG: Selected field paths:', selectedPaths);
+
+  // Strip prefixes from selected paths to match schema structure
+  const strippedPaths = selectedPaths.map(path => {
+    if (resource.source === 'cluster-crds') {
+      // For CRDs, extract the kind from the resource key and strip it from paths
+      const parts = resource.key.split('/');
+      const kind = parts[parts.length - 1]; // Get the kind (e.g., "Application")
+      const kindPrefix = `${kind}.`;
+      
+      console.log('🔍 DEBUG: CRD field processing:', {
+        originalPath: path,
+        kind: kind,
+        kindPrefix: kindPrefix,
+        startsWithKindPrefix: path.startsWith(kindPrefix)
+      });
+      
+      if (path.startsWith(kindPrefix)) {
+        const strippedPath = path.substring(kindPrefix.length);
+        console.log('🔍 DEBUG: Stripped CRD path:', strippedPath);
+        return strippedPath;
+      } else {
+        console.log('🔍 DEBUG: Using CRD path as-is:', path);
+        return path;
+      }
+    } else {
+      // For standard Kubernetes resources, strip the full resource key prefix
+      const resourcePrefix = `${resource.key}.`;
+      if (path.startsWith(resourcePrefix)) {
+        return path.substring(resourcePrefix.length);
+      }
+      return path;
+    }
+  });
+
+  console.log('🔍 DEBUG: Final stripped paths:', strippedPaths);
+  console.log('🔍 DEBUG: Schema structure keys:', Object.keys(resource.schema.properties || {}));
+
+    // Build filtered schema
+    const filterSchema = (schema: any, currentPath: string = ''): any => {
+        if (!schema || typeof schema !== 'object') return schema;
+
+        if (schema.type === 'object' && schema.properties) {
+            const filteredProperties: any = {};
+            const filteredRequired: string[] = [];
+
+            Object.keys(schema.properties).forEach(key => {
+                const fullPath = currentPath ? `${currentPath}.${key}` : key;
+
+                // Include if directly selected or parent of selected field
+                const isDirectlySelected = strippedPaths.includes(fullPath);
+                const isParentOfSelected = strippedPaths.some(path => path.startsWith(fullPath + '.'));
+
+                console.log('🔍 DEBUG: Schema property check:', {
+                    key,
+                    fullPath,
+                    isDirectlySelected,
+                    isParentOfSelected,
+                    willInclude: isDirectlySelected || isParentOfSelected
+                });
+
+                if (isDirectlySelected || isParentOfSelected) {
+                    filteredProperties[key] = filterSchema(schema.properties[key], fullPath);
+
+                    // Include in required if originally required
+                    if (schema.required?.includes(key)) {
+                        filteredRequired.push(key);
+                    }
+                }
+            });
+
+            return {
+                ...schema,
+                properties: filteredProperties,
+                ...(filteredRequired.length > 0 && { required: filteredRequired })
+            };
+        }
+
+        return schema;
+    };
+
+    const result = filterSchema(resource.schema);
+    console.log('🎯 DEBUG: Filtered schema result:', {
+        hasProperties: !!result.properties,
+        propertyCount: Object.keys(result.properties || {}).length,
+        propertyKeys: Object.keys(result.properties || {})
+    });
+    return result;
+}, [resource?.schema, localSelectedFields, resource?.key, resource?.source]);
+
     const memoizedSelectedSchema = useMemo(() => {
         return JSON.stringify(filteredSchema, null, 2);
     }, [filteredSchema]);
