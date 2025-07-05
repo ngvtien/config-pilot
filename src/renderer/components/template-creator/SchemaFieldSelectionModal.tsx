@@ -169,17 +169,64 @@ export function SchemaFieldSelectionModal({
     const [highlightedFieldPath, setHighlightedFieldPath] = useState<string | null>(null);
     const [showSelectedPreview, setShowSelectedPreview] = useState(false)
 
-    // Generate resource key for persistence (fix undefined apiVersion)
-    //const resourceKey = resource ? (resource.key || `${resource.kind}-${resource.apiVersion || resource.group + '/' + resource.version}`) : '';
-    //const resourceKey = resource ? (resource.key || `io.k8s.api.${resource.group || 'core'}.${resource.version}.${resource.kind}`) : '';
+    const [useSimpleView, setUseSimpleView] = useState(true)
+    const [isSchemaLarge, setIsSchemaLarge] = useState(false)
+    const [isRenderingSchema, setIsRenderingSchema] = useState(false)
 
-    // console.log('🔍 Resource object:', resource);
-    // console.log('🔍 Resource key:', resource?.key);
-    // console.log('🔍 Resource kind:', resource?.kind);
-    // console.log('🔍 Resource apiVersion:', resource?.apiVersion);
-    // console.log('🔍 Resource group:', resource?.group);
+    const memoizedFullSchema = useMemo(() => {
+        if (!resource?.schema) return '{}'
+        return JSON.stringify(resource.schema, null, 2)
+    }, [resource?.schema])
+
+    const schemaMetrics = useMemo(() => {
+        const schemaSize = memoizedFullSchema.length
+        const isLarge = schemaSize > 100000 // 100KB threshold
+        const isTooLarge = schemaSize > 500000 // 500KB threshold - don't render at all
+        const lineCount = memoizedFullSchema.split('\n').length
+
+        return {
+            size: schemaSize,
+            isLarge,
+            isTooLarge,
+            lineCount,
+            sizeFormatted: (schemaSize / 1024).toFixed(1) + 'KB'
+        }
+    }, [memoizedFullSchema])
+
+    useEffect(() => {
+        setIsSchemaLarge(schemaMetrics.isLarge)
+        // Always use simple view for full schema preview
+        setUseSimpleView(true)
+    }, [schemaMetrics.isLarge])
+
+    // Handle schema rendering with loading state
+    const handleSchemaRender = async (renderFunction: () => void) => {
+        if (schemaMetrics.isLarge) {
+            setIsRenderingSchema(true)
+            // Use setTimeout to allow UI to update with loading state
+            setTimeout(() => {
+                renderFunction()
+                setIsRenderingSchema(false)
+            }, 100)
+        } else {
+            renderFunction()
+        }
+    }
+
+    // Handle view toggle with loading state
+    const handleViewToggle = () => {
+        if (schemaMetrics.isLarge) {
+            setIsRenderingSchema(true)
+            setTimeout(() => {
+                setUseSimpleView(!useSimpleView)
+                setIsRenderingSchema(false)
+            }, 100)
+        } else {
+            setUseSimpleView(!useSimpleView)
+        }
+    }
+
     const resourceKey = resource?.key || '';
-    //console.log('🔍 Final resourceKey:', resourceKey);
 
     useEffect(() => {
         if (resource && isOpen) {
@@ -298,6 +345,66 @@ export function SchemaFieldSelectionModal({
             persistExpandedNodes(resourceKey, expandedObjects)
         }
     }, [expandedObjects, resourceKey])
+
+    const filteredSchema = useMemo(() => {
+        if (!resource?.schema || !localSelectedFields.length) {
+            return resource?.schema || {};
+        }
+
+        // Strip resource prefix from selected field paths
+        const resourcePrefix = resource.key + '.';
+        const strippedPaths = localSelectedFields.map(field =>
+            field.path.startsWith(resourcePrefix)
+                ? field.path.substring(resourcePrefix.length)
+                : field.path
+        );
+
+        console.log('🔍 Final selected field paths:', strippedPaths);
+
+        // Build filtered schema
+        const filterSchema = (schema: any, currentPath: string = ''): any => {
+            if (!schema || typeof schema !== 'object') return schema;
+
+            if (schema.type === 'object' && schema.properties) {
+                const filteredProperties: any = {};
+                const filteredRequired: string[] = [];
+
+                Object.keys(schema.properties).forEach(key => {
+                    const fullPath = currentPath ? `${currentPath}.${key}` : key;
+
+                    // Include if directly selected or parent of selected field
+                    const isDirectlySelected = strippedPaths.includes(fullPath);
+                    const isParentOfSelected = strippedPaths.some(path => path.startsWith(fullPath + '.'));
+
+                    if (isDirectlySelected || isParentOfSelected) {
+                        filteredProperties[key] = filterSchema(schema.properties[key], fullPath);
+
+                        // Include in required if originally required
+                        if (schema.required?.includes(key)) {
+                            filteredRequired.push(key);
+                        }
+                    }
+                });
+
+                return {
+                    ...schema,
+                    properties: filteredProperties,
+                    ...(filteredRequired.length > 0 && { required: filteredRequired })
+                };
+            }
+
+            return schema;
+        };
+
+        const result = filterSchema(resource.schema);
+        console.log('🎯 Filtered schema generated:', result);
+        return result;
+    }, [resource?.schema, localSelectedFields, resource?.key]);
+
+    // Add memoized string version to avoid repeated JSON.stringify calls
+    const memoizedSelectedSchema = useMemo(() => {
+        return JSON.stringify(filteredSchema, null, 2);
+    }, [filteredSchema]);
 
     /**
      * Resolve schema references recursively
@@ -485,101 +592,6 @@ export function SchemaFieldSelectionModal({
 
     }
 
-const generateSelectedFieldsSchema = () => {
-  if (!resource?.schema || !localSelectedFields.length) {
-    return resource?.schema || {};
-  }
-
-  // Strip resource prefix from selected field paths
-  const resourcePrefix = resource.key + '.';
-  const strippedPaths = localSelectedFields.map(field => 
-    field.path.startsWith(resourcePrefix) 
-      ? field.path.substring(resourcePrefix.length)
-      : field.path
-  );
-
-  console.log('🔍 Final selected field paths:', strippedPaths);
-
-  // Build filtered schema
-  const filterSchema = (schema: any, currentPath: string = ''): any => {
-    if (!schema || typeof schema !== 'object') return schema;
-
-    if (schema.type === 'object' && schema.properties) {
-      const filteredProperties: any = {};
-      const filteredRequired: string[] = [];
-
-      Object.keys(schema.properties).forEach(key => {
-        const fullPath = currentPath ? `${currentPath}.${key}` : key;
-        
-        // Include if directly selected or parent of selected field
-        const isDirectlySelected = strippedPaths.includes(fullPath);
-        const isParentOfSelected = strippedPaths.some(path => path.startsWith(fullPath + '.'));
-        
-        if (isDirectlySelected || isParentOfSelected) {
-          //console.log(`✅ INCLUDING: ${key} (${fullPath})`);
-          filteredProperties[key] = filterSchema(schema.properties[key], fullPath);
-          
-          // Include in required if originally required
-          if (schema.required?.includes(key)) {
-            filteredRequired.push(key);
-          }
-        } 
-        // else {
-        //   console.log(`❌ EXCLUDING: ${key} (${fullPath})`);
-        // }
-      });
-
-      return {
-        ...schema,
-        properties: filteredProperties,
-        ...(filteredRequired.length > 0 && { required: filteredRequired })
-      };
-    }
-
-    return schema;
-  };
-
-  const filteredSchema = filterSchema(resource.schema);
-  console.log('🎯 Filtered schema generated:', filteredSchema);
-  return filteredSchema;
-};
-
-    // /**
-    //  * Handle schema preview - fetch schema on-demand for both CRD and vanilla K8s resources
-    //  */
-    // const handlePreviewSchema = async () => {
-    //     try {
-    //         let schemaToUse;
-
-    //         // Check if we have an originalSchema (this means it's a properly structured resource)
-    //         // For CRDs, fetch via IPC
-    //         if (resource.source === 'cluster-crds') {
-    //             const cacheKey = `crd-${resource.group}-${resource.version}-${resource.kind}`;
-    //             console.log('🔍 Fetching CRD schema for:', cacheKey);
-    //             schemaToUse = await window.electronAPI.invoke('schema:getRawCRDSchema', cacheKey);
-    //         }
-    //         // For vanilla Kubernetes resources, fetch via IPC
-    //         else if (resource.source === 'kubernetes') {
-    //             const resourceKey = `${resource.group}/${resource.version}/${resource.kind}`;
-    //             console.log('🔍 Fetching K8s schema for:', resourceKey);
-    //             schemaToUse = await window.electronAPI.invoke('schema:getResourceSchema', resourceKey);
-    //         }
-    //         // Fallback to existing schema if available
-    //         else {
-    //             schemaToUse = resource.schema;
-    //         }
-
-    //         if (schemaToUse) {
-    //             console.log('🔍 Raw Schema Structure:', JSON.stringify(schemaToUse, null, 2));
-    //             console.log('🔍 Parsed Schema Properties:', schemaProperties);
-    //             setShowSchemaPreview(true);
-    //         } else {
-    //             console.warn('No schema available for preview');
-    //         }
-    //     } catch (error) {
-    //         console.error('Error fetching schema:', error);
-    //     }
-    // }
     /**
      * Handle field selection with persistence
      */
@@ -983,8 +995,7 @@ const generateSelectedFieldsSchema = () => {
                                         size="sm"
                                         onClick={async () => {
                                             try {
-                                                const selectedSchema = generateSelectedFieldsSchema()
-                                                await navigator.clipboard.writeText(JSON.stringify(selectedSchema, null, 2))
+                                                await navigator.clipboard.writeText(memoizedSelectedSchema)
                                                 // You could add a toast notification here
                                             } catch (error) {
                                                 console.error('Failed to copy to clipboard:', error)
@@ -1026,7 +1037,7 @@ const generateSelectedFieldsSchema = () => {
                                             }
                                         }}
                                     >
-                                        {JSON.stringify(generateSelectedFieldsSchema(), null, 2)}
+                                        {memoizedSelectedSchema}
                                     </SyntaxHighlighter>
                                 </ScrollArea>
                             </div>
@@ -1039,63 +1050,86 @@ const generateSelectedFieldsSchema = () => {
                     </Dialog>
                 )}
 
-                {/* Original Schema Preview Modal */}
+                {/* Full Schema Preview Modal - Simple View Only */}
                 {showSchemaPreview && (
                     <Dialog open={showSchemaPreview} onOpenChange={setShowSchemaPreview}>
                         <DialogContent className="max-w-6xl h-[85vh] flex flex-col">
                             <DialogHeader>
                                 <DialogTitle className="flex items-center justify-between">
-                                    <span>Full Schema Preview - {resource?.kind}</span>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={async () => {
-                                            try {
-                                                await navigator.clipboard.writeText(JSON.stringify(resource?.schema, null, 2))
-                                                // You could add a toast notification here
-                                            } catch (error) {
-                                                console.error('Failed to copy to clipboard:', error)
-                                            }
-                                        }}
-                                        className="flex items-center space-x-2"
-                                    >
-                                        <Copy className="h-4 w-4" />
-                                        <span>Copy</span>
-                                    </Button>
+                                    <div className="flex items-center space-x-2">
+                                        <span>Full Schema Preview - {resource?.kind}</span>
+                                        <Badge variant="outline" className="text-xs">
+                                            {schemaMetrics.sizeFormatted} • {schemaMetrics.lineCount.toLocaleString()} lines
+                                        </Badge>
+                                        {schemaMetrics.isTooLarge && (
+                                            <Badge variant="destructive" className="text-xs">
+                                                Too Large to Display
+                                            </Badge>
+                                        )}
+                                        {isSchemaLarge && !schemaMetrics.isTooLarge && (
+                                            <Badge variant="warning" className="text-xs">
+                                                Large Schema
+                                            </Badge>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center space-x-2">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={async () => {
+                                                try {
+                                                    await navigator.clipboard.writeText(memoizedFullSchema)
+                                                } catch (error) {
+                                                    console.error('Failed to copy to clipboard:', error)
+                                                }
+                                            }}
+                                            className="flex items-center space-x-2"
+                                        >
+                                            <Copy className="h-4 w-4" />
+                                            <span>Copy</span>
+                                        </Button>
+                                    </div>
                                 </DialogTitle>
                                 <DialogDescription>
-                                    This shows the complete schema structure with syntax highlighting and line numbers
+                                    {schemaMetrics.isTooLarge
+                                        ? 'Schema is too large to display in the UI. Use the copy button to get the full content.'
+                                        : 'Complete schema structure in plain text format for optimal performance'
+                                    }
                                 </DialogDescription>
                             </DialogHeader>
                             <div className="flex-1 min-h-0">
-                                <ScrollArea className="h-full">
-                                    <SyntaxHighlighter
-                                        language="json"
-                                        style={oneDark}
-                                        showLineNumbers={true}
-                                        lineNumberStyle={{
-                                            minWidth: '3em',
-                                            paddingRight: '1em',
-                                            color: '#6b7280',
-                                            borderRight: '1px solid #374151',
-                                            marginRight: '1em',
-                                            textAlign: 'right'
-                                        }}
-                                        customStyle={{
-                                            margin: 0,
-                                            borderRadius: '0.5rem',
-                                            fontSize: '0.875rem',
-                                            lineHeight: '1.5'
-                                        }}
-                                        codeTagProps={{
-                                            style: {
-                                                fontFamily: 'Fira Code, Monaco, Cascadia Code, Roboto Mono, Consolas, Courier New, monospace'
-                                            }
-                                        }}
-                                    >
-                                        {JSON.stringify(resource?.schema, null, 2)}
-                                    </SyntaxHighlighter>
-                                </ScrollArea>
+                                {schemaMetrics.isTooLarge ? (
+                                    // Show message for extremely large schemas
+                                    <div className="flex items-center justify-center h-full bg-gray-50 dark:bg-gray-900 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-700">
+                                        <div className="text-center p-8">
+                                            <div className="text-6xl mb-4">📄</div>
+                                            <h3 className="text-lg font-semibold mb-2">Schema Too Large to Display</h3>
+                                            <p className="text-gray-600 dark:text-gray-400 mb-4">
+                                                This schema is {schemaMetrics.sizeFormatted} ({schemaMetrics.lineCount.toLocaleString()} lines) which is too large to render safely.
+                                            </p>
+                                            <p className="text-sm text-gray-500 dark:text-gray-500">
+                                                Use the Copy button above to get the full schema content.
+                                            </p>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    // Simple, performant text view
+                                    <ScrollArea className="h-full">
+                                        <pre
+                                            className="w-full h-full p-4 font-mono text-sm bg-gray-900 text-gray-100 border-0 overflow-auto whitespace-pre-wrap break-words rounded-lg"
+                                            style={{
+                                                fontFamily: 'Fira Code, Monaco, Cascadia Code, Roboto Mono, Consolas, Courier New, monospace',
+                                                fontSize: '0.875rem',
+                                                lineHeight: '1.5',
+                                                margin: 0,
+                                                minHeight: '100%',
+                                                tabSize: 2
+                                            }}
+                                        >
+                                            {memoizedFullSchema}
+                                        </pre>
+                                    </ScrollArea>
+                                )}
                             </div>
                             <DialogFooter>
                                 <Button onClick={() => setShowSchemaPreview(false)}>
