@@ -1440,40 +1440,18 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
                     {/* Subtle accent line */}
                     <div className={`absolute top-0 left-0 right-0 h-1 ${scheme.accent.replace('text-', 'bg-')} transition-all duration-300 group-hover:h-2`}></div>
 
-    {/* Progress indicator for field selection */}
-    {/* <div className="absolute top-2 right-2">
-      <div className="relative w-8 h-8">
-        <svg className="w-8 h-8 transform -rotate-90" viewBox="0 0 32 32">
-          <circle
-            cx="16" cy="16" r="14"
-            fill="none" stroke="currentColor" strokeWidth="2"
-            className="text-gray-200"
-          />
-          <circle
-            cx="16" cy="16" r="14"
-            fill="none" stroke="currentColor" strokeWidth="2"
-            className={scheme.accent}
-            strokeDasharray={`${(resource.selectedFields?.length || 0) * 2} 88`}
-            strokeLinecap="round"
-          />
-        </svg>
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className="text-xs font-semibold">{resource.selectedFields?.length || 0}</span>
-        </div>
-      </div>
-    </div> */}
                     <div className="flex justify-between items-start mb-4">
                       <div className="flex-1">
                         <h3 className={`font-semibold text-lg ${scheme.accent} mb-1`}>{resource.kind}</h3>
                         <p className="text-sm text-gray-600 font-medium">{resource.apiVersion}</p>
                         {resource.namespace && (
                           <p className="text-xs text-gray-500 mt-1 bg-white/50 px-2 py-1 rounded-full inline-block">
-            📁 {resource.namespace}
-          </p>
+                            📁 {resource.namespace}
+                          </p>
                         )}
 
-                                {/* Status indicators */}
-        <div className="flex items-center gap-2 mt-2">
+                        {/* Status indicators */}
+                        {/* <div className="flex items-center gap-2 mt-2">
           {resource.selectedFields && resource.selectedFields.length > 0 ? (
             <Badge className="bg-green-100 text-green-800 text-xs">
               ✅ {resource.selectedFields.length} fields configured
@@ -1483,7 +1461,7 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
               ⚠️ Not configured
             </Badge>
           )}
-        </div>
+        </div> */}
                       </div>
 
                       <div className="flex items-center gap-1">
@@ -1551,7 +1529,7 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
 
                     {resource.selectedFields && resource.selectedFields.length > 0 && (
                       <div className="mb-2">
-                        <h4 className="text-sm font-semibold mb-2 text-gray-700">Selected Fields:</h4>
+                        <h4 className="text-sm font-semibold mb-2 text-gray-700">✅ {resource.selectedFields.length} Selected Fields:</h4>
                         <div className="space-y-2 max-h-20 overflow-y-auto">
                           {resource.selectedFields.map((field, fieldIndex) => (
                             <div key={fieldIndex} className="flex items-center justify-between bg-white/60 rounded-lg p-2">

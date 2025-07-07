@@ -377,111 +377,6 @@ export function SchemaFieldSelectionModal({
         }
     }, [expandedObjects, resourceKey])
 
-    const filteredSchema = useMemo(() => {
-        if (!resource || !resource.schema || !localSelectedFields.length) return null;
-
-        console.log('🔍 DEBUG: Resource info:', {
-            resourceKey: resource.key,
-            resourceSource: resource.source,
-            isCRD: resource.source === 'cluster-crds',
-            selectedFieldsCount: localSelectedFields.length
-        });
-
-        const selectedPaths = localSelectedFields.map(field => field.path);
-        console.log('🔍 DEBUG: Selected field paths:', selectedPaths);
-
-        // Strip prefixes from selected paths to match schema structure
-        const strippedPaths = selectedPaths.map(path => {
-            if (resource.source === 'cluster-crds') {
-                // For CRDs, extract the kind from the resource key and strip it from paths
-                const parts = resource.key.split('/');
-                const kind = parts[parts.length - 1]; // Get the kind (e.g., "Application")
-                const kindPrefix = `${kind}.`;
-
-                console.log('🔍 DEBUG: CRD field processing:', {
-                    originalPath: path,
-                    kind: kind,
-                    kindPrefix: kindPrefix,
-                    startsWithKindPrefix: path.startsWith(kindPrefix)
-                });
-
-                if (path.startsWith(kindPrefix)) {
-                    const strippedPath = path.substring(kindPrefix.length);
-                    console.log('🔍 DEBUG: Stripped CRD path:', strippedPath);
-                    return strippedPath;
-                } else {
-                    console.log('🔍 DEBUG: Using CRD path as-is:', path);
-                    return path;
-                }
-            } else {
-                // For standard Kubernetes resources, strip the full resource key prefix
-                const resourcePrefix = `${resource.key}.`;
-                if (path.startsWith(resourcePrefix)) {
-                    return path.substring(resourcePrefix.length);
-                }
-                return path;
-            }
-        });
-
-        console.log('🔍 DEBUG: Final stripped paths:', strippedPaths);
-        console.log('🔍 DEBUG: Schema structure keys:', Object.keys(resource.schema.properties || {}));
-
-        // Build filtered schema
-        const filterSchema = (schema: any, currentPath: string = ''): any => {
-            if (!schema || typeof schema !== 'object') return schema;
-
-            if (schema.type === 'object' && schema.properties) {
-                const filteredProperties: any = {};
-                const filteredRequired: string[] = [];
-
-                Object.keys(schema.properties).forEach(key => {
-                    const fullPath = currentPath ? `${currentPath}.${key}` : key;
-
-                    // Include if directly selected or parent of selected field
-                    const isDirectlySelected = strippedPaths.includes(fullPath);
-                    const isParentOfSelected = strippedPaths.some(path => path.startsWith(fullPath + '.'));
-
-                    console.log('🔍 DEBUG: Schema property check:', {
-                        key,
-                        fullPath,
-                        isDirectlySelected,
-                        isParentOfSelected,
-                        willInclude: isDirectlySelected || isParentOfSelected
-                    });
-
-                    if (isDirectlySelected || isParentOfSelected) {
-                        filteredProperties[key] = filterSchema(schema.properties[key], fullPath);
-
-                        // Include in required if originally required
-                        if (schema.required?.includes(key)) {
-                            filteredRequired.push(key);
-                        }
-                    }
-                });
-
-                return {
-                    ...schema,
-                    properties: filteredProperties,
-                    ...(filteredRequired.length > 0 && { required: filteredRequired })
-                };
-            }
-
-            return schema;
-        };
-
-        const result = filterSchema(resource.schema);
-        console.log('🎯 DEBUG: Filtered schema result:', {
-            hasProperties: !!result.properties,
-            propertyCount: Object.keys(result.properties || {}).length,
-            propertyKeys: Object.keys(result.properties || {})
-        });
-        return result;
-    }, [resource?.schema, localSelectedFields, resource?.key, resource?.source]);
-
-    const memoizedSelectedSchema = useMemo(() => {
-        return JSON.stringify(filteredSchema, null, 2);
-    }, [filteredSchema]);
-
     /**
      * Resolve schema references recursively
      * @param property - The schema property that might contain $ref
@@ -500,6 +395,7 @@ export function SchemaFieldSelectionModal({
         // Handle $ref properties
         if (property.$ref && typeof property.$ref === 'string') {
             const refPath = property.$ref.replace('#/', '').split('/')
+            console.log('🔍 DEBUG: Resolving $ref:', property.$ref, 'refPath:', refPath)
 
             // Prevent circular references
             if (visited.has(property.$ref)) {
@@ -514,10 +410,80 @@ export function SchemaFieldSelectionModal({
 
             visited.add(property.$ref)
 
-            // Navigate to the referenced schema
-            let resolved = fullSchema
+            // Try multiple locations for definitions
+            let resolved = null
+
+            // 1. Try the standard path from the ref
+            let current = fullSchema
             for (const segment of refPath) {
-                resolved = resolved?.[segment]
+                current = current?.[segment]
+            }
+            if (current) {
+                resolved = current
+                console.log('🔍 DEBUG: Found reference at standard path:', resolved)
+            }
+
+            // 2. If not found, try looking in CRD schema structure
+            if (!resolved && fullSchema.spec?.versions?.[0]?.schema?.openAPIV3Schema) {
+                current = fullSchema.spec.versions[0].schema.openAPIV3Schema
+                for (const segment of refPath) {
+                    current = current?.[segment]
+                }
+                if (current) {
+                    resolved = current
+                    console.log('🔍 DEBUG: Found reference in CRD schema:', resolved)
+                }
+            }
+
+            // 3. Try looking in components/schemas (OpenAPI 3.0 style)
+            if (!resolved && fullSchema.components?.schemas) {
+                const defName = refPath[refPath.length - 1] // Get the last part of the path
+                resolved = fullSchema.components.schemas[defName]
+                if (resolved) {
+                    console.log('🔍 DEBUG: Found reference in components.schemas:', resolved)
+                }
+            }
+
+            // 4. Try looking for ObjectMeta specifically in common locations
+            if (!resolved && property.$ref.includes('ObjectMeta')) {
+                // Look for ObjectMeta in various possible locations
+                const objectMetaLocations = [
+                    fullSchema.definitions?.['io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta'],
+                    fullSchema.spec?.versions?.[0]?.schema?.openAPIV3Schema?.definitions?.['io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta'],
+                    fullSchema.components?.schemas?.ObjectMeta,
+                    fullSchema.components?.schemas?.['io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta']
+                ]
+
+                for (const location of objectMetaLocations) {
+                    if (location) {
+                        resolved = location
+                        console.log('🔍 DEBUG: Found ObjectMeta at specific location:', resolved)
+                        break
+                    }
+                }
+            }
+
+            // 5. If still not found, create a basic ObjectMeta structure
+            if (!resolved && property.$ref.includes('ObjectMeta')) {
+                resolved = {
+                    type: 'object',
+                    properties: {
+                        name: { type: 'string', description: 'Name must be unique within a namespace.' },
+                        namespace: { type: 'string', description: 'Namespace defines the space within which each name must be unique.' },
+                        uid: { type: 'string', description: 'UID is the unique in time and space value for this object.' },
+                        resourceVersion: { type: 'string', description: 'An opaque value that represents the internal version of this object.' },
+                        generation: { type: 'integer', description: 'A sequence number representing a specific generation of the desired state.' },
+                        creationTimestamp: { type: 'string', format: 'date-time', description: 'CreationTimestamp is a timestamp representing the server time when this object was created.' },
+                        deletionTimestamp: { type: 'string', format: 'date-time', description: 'DeletionTimestamp is RFC 3339 date and time at which this resource will be deleted.' },
+                        deletionGracePeriodSeconds: { type: 'integer', description: 'Number of seconds allowed for this object to gracefully terminate.' },
+                        labels: { type: 'object', additionalProperties: { type: 'string' }, description: 'Map of string keys and values that can be used to organize and categorize objects.' },
+                        annotations: { type: 'object', additionalProperties: { type: 'string' }, description: 'Annotations is an unstructured key value map stored with a resource.' },
+                        ownerReferences: { type: 'array', items: { type: 'object' }, description: 'List of objects depended by this object.' },
+                        finalizers: { type: 'array', items: { type: 'string' }, description: 'Must be empty before the object is deleted from the registry.' },
+                        managedFields: { type: 'array', items: { type: 'object' }, description: 'ManagedFields maps workflow-id and version to the set of fields that are managed by that workflow.' }
+                    }
+                }
+                console.log('🔍 DEBUG: Created fallback ObjectMeta structure')
             }
 
             if (resolved) {
@@ -526,6 +492,7 @@ export function SchemaFieldSelectionModal({
                 return { resolved: result.resolved, isReference: true }
             }
 
+            console.log('🔍 DEBUG: Could not resolve reference:', property.$ref)
             return {
                 resolved: { type: 'unknown', description: `Unresolved reference: ${property.$ref}` },
                 isReference: true
@@ -560,6 +527,184 @@ export function SchemaFieldSelectionModal({
 
         return { resolved: property, isReference: false }
     }
+
+    /**
+     * Build filtered schema from full schema based on selected fields
+     */
+    const filteredSchema = useMemo(() => {
+        if (!resource?.schema || localSelectedFields.length === 0) {
+            return {}
+        }
+
+        console.log('🔍 DEBUG: Building filtered schema from selected fields')
+        console.log('🔍 DEBUG: Selected fields:', localSelectedFields.map(f => f.path))
+        console.log('🔍 DEBUG: Resource info:', { source: resource.source, key: resource.key, kind: resource.kind })
+
+        // DUMP ORIGINAL SCHEMA STRUCTURE
+        //console.log('🔍 DEBUG: ORIGINAL SCHEMA DUMP:')
+        //console.log(JSON.stringify(resource.schema, null, 2))
+
+        // FIRST: Resolve all $ref in the schema before filtering
+        const resolveEntireSchema = (schema: any): any => {
+            if (!schema || typeof schema !== 'object') {
+                return schema
+            }
+
+            // If this is a $ref, resolve it
+            if (schema.$ref) {
+                const { resolved } = resolveSchemaReference(schema, resource.schema)
+                return resolveEntireSchema(resolved) // Recursively resolve in case the resolved schema has more $ref
+            }
+
+            // If this is an object with properties, resolve each property
+            if (schema.properties) {
+                const resolvedProperties: any = {}
+                Object.keys(schema.properties).forEach(key => {
+                    resolvedProperties[key] = resolveEntireSchema(schema.properties[key])
+                })
+                return { ...schema, properties: resolvedProperties }
+            }
+
+            // If this is an array with items, resolve the items
+            if (schema.items) {
+                return { ...schema, items: resolveEntireSchema(schema.items) }
+            }
+
+            return schema
+        }
+
+        // Start with a fully resolved schema (no $ref)
+        const resolvedSchema = resolveEntireSchema(resource.schema)
+        console.log('🔍 DEBUG: Schema fully resolved, root properties:', Object.keys(resolvedSchema.properties || {}))
+
+        // DUMP RESOLVED SCHEMA STRUCTURE
+        // console.log('🔍 DEBUG: RESOLVED SCHEMA DUMP:')
+        // console.log(JSON.stringify(resolvedSchema, null, 2))
+
+        // Get selected field paths (normalize them)
+        const selectedPaths = new Set(localSelectedFields.map(f => {
+            console.log('🔍 DEBUG: Processing original path:', f.path)
+
+            let normalizedPath = f.path
+
+            // Handle CRD paths first
+            if (resource.source === 'cluster-crds' && normalizedPath.startsWith('spec.versions[0].schema.openAPIV3Schema.properties.')) {
+                normalizedPath = normalizedPath.replace('spec.versions[0].schema.openAPIV3Schema.properties.', '')
+                console.log('🔍 DEBUG: CRD spec normalized path:', normalizedPath)
+            }
+
+            // Handle standard paths
+            if (normalizedPath.startsWith('properties.')) {
+                normalizedPath = normalizedPath.replace('properties.', '')
+                console.log('🔍 DEBUG: Standard normalized path:', normalizedPath)
+            }
+
+            // Handle CRD kind prefix paths (e.g., 'Application.apiVersion' -> 'apiVersion')
+            if (resource.source === 'cluster-crds' && resource?.kind && normalizedPath.startsWith(resource.kind + '.')) {
+                normalizedPath = normalizedPath.replace(resource.kind + '.', '')
+                console.log('🔍 DEBUG: CRD kind prefix normalized path:', normalizedPath)
+            }
+            // Handle standard resource prefix paths (e.g., 'io.k8s.api.core.v1.ConfigMap.apiVersion' -> 'apiVersion')
+            else if (resource?.key && normalizedPath.startsWith(resource.key + '.')) {
+                normalizedPath = normalizedPath.replace(resource.key + '.', '')
+                console.log('🔍 DEBUG: Resource prefix normalized path:', normalizedPath)
+            }
+
+            if (normalizedPath === f.path) {
+                console.log('🔍 DEBUG: No normalization needed:', normalizedPath)
+            }
+
+            console.log('🔍 DEBUG: Final normalized path:', normalizedPath)
+            return normalizedPath
+        }))
+
+        console.log('🔍 DEBUG: Final selected paths set:', Array.from(selectedPaths))
+
+        // ===== DUMP SELECTED FIELDS SCHEMA =====
+        console.log('🎯 DEBUG: SELECTED FIELDS SCHEMA DUMP:')
+        console.log('Selected Fields Array:')
+        localSelectedFields.forEach((field, index) => {
+            console.log(`Field ${index + 1}:`, {
+                path: field.path,
+                title: field.title,
+                type: field.type,
+                required: field.required,
+                description: field.description
+            })
+        })
+
+        // ===== DUMP NORMALIZED PATHS =====
+        // console.log('🎯 DEBUG: NORMALIZED PATHS:')
+        // Array.from(selectedPaths).forEach((path, index) => {
+        //     console.log(`Normalized Path ${index + 1}: "${path}"`)
+        // })
+
+        // Filter the RESOLVED schema properties to only include selected fields
+        const filterProperties = (schema: any, currentPath = '', depth = 0) => {
+            const indent = '  '.repeat(depth)
+            console.log(`${indent}🔍 DEBUG: filterProperties called with currentPath: "${currentPath}", depth: ${depth}`)
+            if (!schema?.properties) {
+                console.log(`${indent}🔍 DEBUG: No properties found in schema`)
+                return schema
+            }
+
+            console.log(`${indent}🔍 DEBUG: Schema properties available:`, Object.keys(schema.properties))
+
+            const filteredProps: any = {}
+
+            Object.entries(schema.properties).forEach(([key, property]: [string, any]) => {
+                const fieldPath = currentPath ? `${currentPath}.${key}` : key
+
+                // Include if this field is selected OR if it has selected children
+                const isSelected = selectedPaths.has(fieldPath)
+                const hasSelectedChildren = Array.from(selectedPaths).some(path =>
+                    path.startsWith(fieldPath + '.')
+                )
+
+                //console.log(`${indent}🔍 DEBUG: Checking field "${fieldPath}" - selected: ${isSelected}, hasChildren: ${hasSelectedChildren}`)
+                //console.log(`${indent}🔍 DEBUG: Property "${key}" type:`, property.type)
+
+                if (isSelected || hasSelectedChildren) {
+                    //console.log(`${indent}🔍 DEBUG: INCLUDING field "${fieldPath}"`)
+                    filteredProps[key] = { ...property }
+
+                    // Recursively filter nested properties
+                    if (property.properties && hasSelectedChildren) {
+                        //console.log(`${indent}🔍 DEBUG: Recursively filtering nested properties for "${fieldPath}"`)
+                        const nestedFiltered = filterProperties(property, fieldPath, depth + 1)
+                        filteredProps[key] = {
+                            ...filteredProps[key],
+                            properties: nestedFiltered.properties
+                        }
+                    }
+                } else {
+                    console.log(`${indent}🔍 DEBUG: EXCLUDING field "${fieldPath}"`)
+                }
+            })
+
+            console.log(`${indent}🔍 DEBUG: Filtered properties at depth ${depth}:`, Object.keys(filteredProps))
+            return { ...schema, properties: filteredProps }
+        }
+
+        const filtered = filterProperties(resolvedSchema, '', 0)
+        //console.log('🎯 DEBUG: Final filtered schema properties:', Object.keys(filtered.properties || {}))
+
+        // DUMP FINAL FILTERED SCHEMA
+        //console.log('🔍 DEBUG: FINAL FILTERED SCHEMA DUMP:')
+        //console.log(JSON.stringify(filtered, null, 2))
+
+        return filtered
+    }, [resource?.schema, localSelectedFields, resource?.source, resource?.key, resource?.kind])
+    const memoizedSelectedSchema = useMemo(() => {
+        return JSON.stringify(filteredSchema, null, 2);
+    }, [filteredSchema]);
+
+    useEffect(() => {
+        if (resourceKey && filteredSchema && Object.keys(filteredSchema).length > 0) {
+            console.log('🔄 Persisting filtered schema for resource:', resourceKey)
+            persistSelectedFieldsSchema(resourceKey, filteredSchema)
+        }
+    }, [filteredSchema, resourceKey])
 
     /**
      * Parse schema properties with reference resolution
@@ -668,9 +813,7 @@ export function SchemaFieldSelectionModal({
 
     }
 
-    /**
-     * Handle field selection with persistence
-     */
+    // Update the handleFieldToggle function to ensure immediate persistence (around line 812)
     const handleFieldToggle = (property: SchemaProperty, checked: boolean) => {
         const field: TemplateField = {
             path: property.path,
@@ -686,7 +829,17 @@ export function SchemaFieldSelectionModal({
             setLocalSelectedFields(prev => {
                 // Remove any child fields if selecting parent object
                 const filteredFields = prev.filter(f => !f.path.startsWith(property.path + '.'))
-                return [...filteredFields, field]
+                const newFields = [...filteredFields, field]
+
+                // Trigger immediate persistence of filtered schema
+                setTimeout(() => {
+                    if (resourceKey) {
+                        const currentFilteredSchema = /* filteredSchema will be recalculated */
+                            console.log('🔄 Field added, persisting updated schema:', property.path)
+                    }
+                }, 0)
+
+                return newFields
             })
 
             // Auto-expand object if it has children
@@ -696,10 +849,20 @@ export function SchemaFieldSelectionModal({
         } else {
             setLocalSelectedFields(prev => {
                 // Remove this field and any child fields
-                return prev.filter(f => !f.path.startsWith(property.path) && f.path !== property.path)
+                const newFields = prev.filter(f => !f.path.startsWith(property.path) && f.path !== property.path)
+
+                // Trigger immediate persistence of filtered schema
+                setTimeout(() => {
+                    if (resourceKey) {
+                        console.log('🔄 Field removed, persisting updated schema:', property.path)
+                    }
+                }, 0)
+
+                return newFields
             })
         }
     }
+
 
     /**
      * Clear all selected fields
@@ -884,6 +1047,13 @@ export function SchemaFieldSelectionModal({
      * Handle save with persistence
      */
     const handleSave = () => {
+
+        // Persist the filtered schema when saving
+        if (resourceKey && filteredSchema && Object.keys(filteredSchema).length > 0) {
+            console.log('💾 Saving filtered schema on confirm:', resourceKey)
+            persistSelectedFieldsSchema(resourceKey, filteredSchema)
+        }
+
         onFieldsChange(localSelectedFields)
         onClose()
     }
