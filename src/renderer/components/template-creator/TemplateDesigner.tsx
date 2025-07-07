@@ -22,6 +22,7 @@ import { joinPath } from '@/renderer/lib/path-utils'
 import { generateHelmResourceTemplate, generateResourceYamlPreview } from '@/renderer/utils/helm-template-generator'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/renderer/components/ui/tooltip'
 import { YamlPreview } from './YamlPreview'
+import { generateYamlFromFilteredSchema } from '../../utils/schema-yaml-generator'
 
 interface TemplateDesignerProps {
   initialTemplate?: Template
@@ -1022,17 +1023,32 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
   /**
    * Handle YAML preview for a specific resource
    */
-  const handlePreviewYaml = (resource: TemplateResource) => {
-    if (!resource.selectedFields || resource.selectedFields.length === 0) {
-      setPreviewYamlContent('# No fields selected for this resource\n# Please select fields to generate YAML preview')
-    } else {
-      const yamlContent = generateResourceYamlPreview(resource, template.name || 'template')
-      setPreviewYamlContent(yamlContent)
-    }
-    setPreviewResourceKind(resource.kind)
-    setIsYamlPreviewOpen(true)
+  // const handlePreviewYaml = (resource: TemplateResource) => {
+  //   if (!resource.selectedFields || resource.selectedFields.length === 0) {
+  //     setPreviewYamlContent('# No fields selected for this resource\n# Please select fields to generate YAML preview')
+  //   } else {
+  //     const yamlContent = generateResourceYamlPreview(resource, template.name || 'template')
+  //     setPreviewYamlContent(yamlContent)
+  //   }
+  //   setPreviewResourceKind(resource.kind)
+  //   setIsYamlPreviewOpen(true)
+  // }
+  
+const handlePreviewYaml = (resource: TemplateResource) => {
+  if (!resource.selectedFields || resource.selectedFields.length === 0) {
+    setPreviewYamlContent('# No fields selected for this resource\n# Please select fields to generate YAML preview')
+  } else {
+    // Use the new filtered schema approach
+    const resourceKey = resource.apiVersion ? 
+      `${resource.apiVersion}/${resource.kind}` : 
+      resource.kind
+    
+    const yamlContent = generateYamlFromFilteredSchema(resourceKey, resource)
+    setPreviewYamlContent(yamlContent)
   }
-
+  setPreviewResourceKind(resource.kind)
+  setIsYamlPreviewOpen(true)
+}
 
   /**
    * Generate Kustomize files
