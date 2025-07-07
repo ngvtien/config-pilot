@@ -98,6 +98,20 @@ contextBridge.exposeInMainWorld("electronAPI", {
       'schema:getCRDSchemaTree',
       'schema:getRawCRDSchema',
 
+      // Templates management
+      'template:create',
+      'template:load',
+      'template:getAll',
+      'template:search',
+      'template:validate',
+      'template:generate',
+      'template:export',
+      'template:import',
+      'template:delete',
+      'template:getCompatibleForProject',
+      'template:generateForProject',
+      'template:validateForProject',
+      'template:getUsageStats',
     ]
     if (validChannels.includes(channel)) {
       return ipcRenderer.invoke(channel, ...args)
@@ -254,5 +268,36 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getSecureCredentials: (key: string) =>
     ipcRenderer.invoke('credentials:get', key),
   deleteSecureCredentials: (key: string) =>
-    ipcRenderer.invoke('credentials:delete', key)
+    ipcRenderer.invoke('credentials:delete', key),
+
+  // Template Management
+  template: {
+    create: (templateData: any) =>
+      ipcRenderer.invoke('template:create', templateData),
+    load: (templateId: string) =>
+      ipcRenderer.invoke('template:load', templateId),
+    getAll: () =>
+      ipcRenderer.invoke('template:getAll'),
+    search: (query: string) =>
+      ipcRenderer.invoke('template:search', query),
+    validate: (template: any) =>
+      ipcRenderer.invoke('template:validate', template),
+    generate: (params: { templateId: string; context: any; outputPath: string; format?: string }) =>
+      ipcRenderer.invoke('template:generate', params),
+    export: (params: { templateId: string; exportPath: string }) =>
+      ipcRenderer.invoke('template:export', params),
+    import: (importPath: string) =>
+      ipcRenderer.invoke('template:import', importPath),
+    delete: (templateId: string) =>
+      ipcRenderer.invoke('template:delete', templateId),
+    getCompatibleForProject: (project: any) =>
+      ipcRenderer.invoke('template:getCompatibleForProject', project),
+    generateForProject: (params: { templateId: string; project: any; context: any; format?: string }) =>
+      ipcRenderer.invoke('template:generateForProject', params),
+    validateForProject: (params: { templateId: string; project: any; context: any }) =>
+      ipcRenderer.invoke('template:validateForProject', params),
+    getUsageStats: (project: any) =>
+      ipcRenderer.invoke('template:getUsageStats', project)
+  },
+
 })

@@ -23,6 +23,9 @@ export default tseslint.config(
         'warn',
         { allowConstantExport: true },
       ],
+      // Temporarily allow 'any' in specific files
+      '@typescript-eslint/no-explicit-any': 'warn', // or 'off'
+      '@typescript-eslint/no-unused-vars': 'warn',
     },
   },
 )

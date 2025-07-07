@@ -19,6 +19,8 @@ import { PlatformDetectionService } from './services/platform-detection-service'
 import { crdManagementService } from './services/crd-management-service'
 import { CRDImportRequest, CRDSchema } from "@/shared/types/kubernetes"
 import { schemaService } from './services/schema-service';
+import { templateManager } from "./template-manager";
+import { templateService } from "./services/template-service";
 
 const execPromise = util.promisify(exec)
 
@@ -923,5 +925,60 @@ export function setupIpcHandlers(): void {
     } catch (error) {
       throw new Error(`Failed to validate CRD: ${error}`)
     }
+  })
+
+
+  // Template management handlers
+  ipcMain.handle('template:create', async (_, templateData) => {
+    return await templateManager.createTemplateFromDesigner(templateData)
+  })
+
+  ipcMain.handle('template:load', async (_, templateId: string) => {
+    return await templateService.loadTemplate(templateId)
+  })
+
+  ipcMain.handle('template:getAll', async () => {
+    return await templateService.getTemplates()
+  })
+
+  ipcMain.handle('template:search', async (_, query: string) => {
+    return await templateService.searchTemplates(query)
+  })
+
+  ipcMain.handle('template:validate', async (_, template) => {
+    return await templateService.validateTemplate(template)
+  })
+
+  ipcMain.handle('template:generate', async (_, { templateId, context, outputPath, format }) => {
+    return await templateService.generateTemplate(templateId, context, outputPath, format)
+  })
+
+  ipcMain.handle('template:export', async (_, { templateId, exportPath }) => {
+    return await templateService.exportTemplate(templateId, exportPath)
+  })
+
+  ipcMain.handle('template:import', async (_, importPath: string) => {
+    return await templateService.importTemplate(importPath)
+  })
+
+  ipcMain.handle('template:delete', async (_, templateId: string) => {
+    return await templateService.deleteTemplate(templateId)
+  })
+
+  // Project-template integration handlers
+  ipcMain.handle('template:getCompatibleForProject', async (_, project) => {
+    return await templateManager.getCompatibleTemplates(project)
+  })
+
+  ipcMain.handle('template:generateForProject', async (_, { templateId, project, context, format }) => {
+    return await templateManager.generateTemplateForProject(templateId, project, context, format)
+  })
+
+  ipcMain.handle('template:validateForProject', async (_, { templateId, project, context }) => {
+    return await templateManager.validateTemplateForProject(templateId, project, context)
+  })
+
+  ipcMain.handle('template:getUsageStats', async (_, project) => {
+    return await templateManager.getTemplateUsageStats(project)
   })
 }

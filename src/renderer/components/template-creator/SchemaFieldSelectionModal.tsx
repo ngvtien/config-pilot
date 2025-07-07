@@ -48,7 +48,8 @@ interface SchemaProperty {
 // Persistence keys for localStorage
 const STORAGE_KEYS = {
     SELECTED_FIELDS: 'schema-field-selection-selected-fields',
-    EXPANDED_NODES: 'schema-field-selection-expanded-nodes'
+    EXPANDED_NODES: 'schema-field-selection-expanded-nodes',
+    SELECTED_FIELDS_SCHEMA: 'schema-field-selection-selected-fields-schema'
 }
 
 const convertToTreeNodes = (properties: SchemaProperty[]): SchemaTreeNode[] => {
@@ -147,6 +148,36 @@ function persistExpandedNodes(resourceKey: string, expandedNodes: Set<string>) {
         sessionStorage.setItem(STORAGE_KEYS.EXPANDED_NODES, JSON.stringify(allExpanded))
     } catch (error) {
         console.warn('Failed to persist expanded nodes:', error)
+    }
+}
+
+/**
+ * Get persisted selected fields schema from localStorage
+ */
+function getPersistedSelectedFieldsSchema(resourceKey: string): any | null {
+    try {
+        const stored = localStorage.getItem(STORAGE_KEYS.SELECTED_FIELDS_SCHEMA)
+        if (stored) {
+            const allSchemas = JSON.parse(stored)
+            return allSchemas[resourceKey] || null
+        }
+    } catch (error) {
+        console.warn('Failed to load persisted selected fields schema:', error)
+    }
+    return null
+}
+
+/**
+ * Persist selected fields schema to localStorage
+ */
+function persistSelectedFieldsSchema(resourceKey: string, schema: any) {
+    try {
+        const stored = localStorage.getItem(STORAGE_KEYS.SELECTED_FIELDS_SCHEMA)
+        const allSchemas = stored ? JSON.parse(stored) : {}
+        allSchemas[resourceKey] = schema
+        localStorage.setItem(STORAGE_KEYS.SELECTED_FIELDS_SCHEMA, JSON.stringify(allSchemas))
+    } catch (error) {
+        console.warn('Failed to persist selected fields schema:', error)
     }
 }
 
@@ -345,164 +376,107 @@ export function SchemaFieldSelectionModal({
             persistExpandedNodes(resourceKey, expandedObjects)
         }
     }, [expandedObjects, resourceKey])
-    
-    // const filteredSchema = useMemo(() => {
-    //     if (!resource?.schema || !localSelectedFields.length) {
-    //         return resource?.schema || {};
-    //     }
 
-    //     // Strip resource prefix from selected field paths
-    //     const resourcePrefix = resource.key + '.';
-    //     const strippedPaths = localSelectedFields.map(field =>
-    //         field.path.startsWith(resourcePrefix)
-    //             ? field.path.substring(resourcePrefix.length)
-    //             : field.path
-    //     );
+    const filteredSchema = useMemo(() => {
+        if (!resource || !resource.schema || !localSelectedFields.length) return null;
 
-    //     console.log('🔍 Final selected field paths:', strippedPaths);
+        console.log('🔍 DEBUG: Resource info:', {
+            resourceKey: resource.key,
+            resourceSource: resource.source,
+            isCRD: resource.source === 'cluster-crds',
+            selectedFieldsCount: localSelectedFields.length
+        });
 
-    //     // Build filtered schema
-    //     const filterSchema = (schema: any, currentPath: string = ''): any => {
-    //         if (!schema || typeof schema !== 'object') return schema;
+        const selectedPaths = localSelectedFields.map(field => field.path);
+        console.log('🔍 DEBUG: Selected field paths:', selectedPaths);
 
-    //         if (schema.type === 'object' && schema.properties) {
-    //             const filteredProperties: any = {};
-    //             const filteredRequired: string[] = [];
+        // Strip prefixes from selected paths to match schema structure
+        const strippedPaths = selectedPaths.map(path => {
+            if (resource.source === 'cluster-crds') {
+                // For CRDs, extract the kind from the resource key and strip it from paths
+                const parts = resource.key.split('/');
+                const kind = parts[parts.length - 1]; // Get the kind (e.g., "Application")
+                const kindPrefix = `${kind}.`;
 
-    //             Object.keys(schema.properties).forEach(key => {
-    //                 const fullPath = currentPath ? `${currentPath}.${key}` : key;
-
-    //                 // Include if directly selected or parent of selected field
-    //                 const isDirectlySelected = strippedPaths.includes(fullPath);
-    //                 const isParentOfSelected = strippedPaths.some(path => path.startsWith(fullPath + '.'));
-
-    //                 if (isDirectlySelected || isParentOfSelected) {
-    //                     filteredProperties[key] = filterSchema(schema.properties[key], fullPath);
-
-    //                     // Include in required if originally required
-    //                     if (schema.required?.includes(key)) {
-    //                         filteredRequired.push(key);
-    //                     }
-    //                 }
-    //             });
-
-    //             return {
-    //                 ...schema,
-    //                 properties: filteredProperties,
-    //                 ...(filteredRequired.length > 0 && { required: filteredRequired })
-    //             };
-    //         }
-
-    //         return schema;
-    //     };
-
-    //     const result = filterSchema(resource.schema);
-    //     console.log('🎯 Filtered schema generated:', result);
-    //     return result;
-    // }, [resource?.schema, localSelectedFields, resource?.key]);
-
-    // Add memoized string version to avoid repeated JSON.stringify calls
-    
-const filteredSchema = useMemo(() => {
-  if (!resource || !resource.schema || !localSelectedFields.length) return null;
-
-  console.log('🔍 DEBUG: Resource info:', {
-    resourceKey: resource.key,
-    resourceSource: resource.source,
-    isCRD: resource.source === 'cluster-crds',
-    selectedFieldsCount: localSelectedFields.length
-  });
-
-  const selectedPaths = localSelectedFields.map(field => field.path);
-  console.log('🔍 DEBUG: Selected field paths:', selectedPaths);
-
-  // Strip prefixes from selected paths to match schema structure
-  const strippedPaths = selectedPaths.map(path => {
-    if (resource.source === 'cluster-crds') {
-      // For CRDs, extract the kind from the resource key and strip it from paths
-      const parts = resource.key.split('/');
-      const kind = parts[parts.length - 1]; // Get the kind (e.g., "Application")
-      const kindPrefix = `${kind}.`;
-      
-      console.log('🔍 DEBUG: CRD field processing:', {
-        originalPath: path,
-        kind: kind,
-        kindPrefix: kindPrefix,
-        startsWithKindPrefix: path.startsWith(kindPrefix)
-      });
-      
-      if (path.startsWith(kindPrefix)) {
-        const strippedPath = path.substring(kindPrefix.length);
-        console.log('🔍 DEBUG: Stripped CRD path:', strippedPath);
-        return strippedPath;
-      } else {
-        console.log('🔍 DEBUG: Using CRD path as-is:', path);
-        return path;
-      }
-    } else {
-      // For standard Kubernetes resources, strip the full resource key prefix
-      const resourcePrefix = `${resource.key}.`;
-      if (path.startsWith(resourcePrefix)) {
-        return path.substring(resourcePrefix.length);
-      }
-      return path;
-    }
-  });
-
-  console.log('🔍 DEBUG: Final stripped paths:', strippedPaths);
-  console.log('🔍 DEBUG: Schema structure keys:', Object.keys(resource.schema.properties || {}));
-
-    // Build filtered schema
-    const filterSchema = (schema: any, currentPath: string = ''): any => {
-        if (!schema || typeof schema !== 'object') return schema;
-
-        if (schema.type === 'object' && schema.properties) {
-            const filteredProperties: any = {};
-            const filteredRequired: string[] = [];
-
-            Object.keys(schema.properties).forEach(key => {
-                const fullPath = currentPath ? `${currentPath}.${key}` : key;
-
-                // Include if directly selected or parent of selected field
-                const isDirectlySelected = strippedPaths.includes(fullPath);
-                const isParentOfSelected = strippedPaths.some(path => path.startsWith(fullPath + '.'));
-
-                console.log('🔍 DEBUG: Schema property check:', {
-                    key,
-                    fullPath,
-                    isDirectlySelected,
-                    isParentOfSelected,
-                    willInclude: isDirectlySelected || isParentOfSelected
+                console.log('🔍 DEBUG: CRD field processing:', {
+                    originalPath: path,
+                    kind: kind,
+                    kindPrefix: kindPrefix,
+                    startsWithKindPrefix: path.startsWith(kindPrefix)
                 });
 
-                if (isDirectlySelected || isParentOfSelected) {
-                    filteredProperties[key] = filterSchema(schema.properties[key], fullPath);
-
-                    // Include in required if originally required
-                    if (schema.required?.includes(key)) {
-                        filteredRequired.push(key);
-                    }
+                if (path.startsWith(kindPrefix)) {
+                    const strippedPath = path.substring(kindPrefix.length);
+                    console.log('🔍 DEBUG: Stripped CRD path:', strippedPath);
+                    return strippedPath;
+                } else {
+                    console.log('🔍 DEBUG: Using CRD path as-is:', path);
+                    return path;
                 }
-            });
+            } else {
+                // For standard Kubernetes resources, strip the full resource key prefix
+                const resourcePrefix = `${resource.key}.`;
+                if (path.startsWith(resourcePrefix)) {
+                    return path.substring(resourcePrefix.length);
+                }
+                return path;
+            }
+        });
 
-            return {
-                ...schema,
-                properties: filteredProperties,
-                ...(filteredRequired.length > 0 && { required: filteredRequired })
-            };
-        }
+        console.log('🔍 DEBUG: Final stripped paths:', strippedPaths);
+        console.log('🔍 DEBUG: Schema structure keys:', Object.keys(resource.schema.properties || {}));
 
-        return schema;
-    };
+        // Build filtered schema
+        const filterSchema = (schema: any, currentPath: string = ''): any => {
+            if (!schema || typeof schema !== 'object') return schema;
 
-    const result = filterSchema(resource.schema);
-    console.log('🎯 DEBUG: Filtered schema result:', {
-        hasProperties: !!result.properties,
-        propertyCount: Object.keys(result.properties || {}).length,
-        propertyKeys: Object.keys(result.properties || {})
-    });
-    return result;
-}, [resource?.schema, localSelectedFields, resource?.key, resource?.source]);
+            if (schema.type === 'object' && schema.properties) {
+                const filteredProperties: any = {};
+                const filteredRequired: string[] = [];
+
+                Object.keys(schema.properties).forEach(key => {
+                    const fullPath = currentPath ? `${currentPath}.${key}` : key;
+
+                    // Include if directly selected or parent of selected field
+                    const isDirectlySelected = strippedPaths.includes(fullPath);
+                    const isParentOfSelected = strippedPaths.some(path => path.startsWith(fullPath + '.'));
+
+                    console.log('🔍 DEBUG: Schema property check:', {
+                        key,
+                        fullPath,
+                        isDirectlySelected,
+                        isParentOfSelected,
+                        willInclude: isDirectlySelected || isParentOfSelected
+                    });
+
+                    if (isDirectlySelected || isParentOfSelected) {
+                        filteredProperties[key] = filterSchema(schema.properties[key], fullPath);
+
+                        // Include in required if originally required
+                        if (schema.required?.includes(key)) {
+                            filteredRequired.push(key);
+                        }
+                    }
+                });
+
+                return {
+                    ...schema,
+                    properties: filteredProperties,
+                    ...(filteredRequired.length > 0 && { required: filteredRequired })
+                };
+            }
+
+            return schema;
+        };
+
+        const result = filterSchema(resource.schema);
+        console.log('🎯 DEBUG: Filtered schema result:', {
+            hasProperties: !!result.properties,
+            propertyCount: Object.keys(result.properties || {}).length,
+            propertyKeys: Object.keys(result.properties || {})
+        });
+        return result;
+    }, [resource?.schema, localSelectedFields, resource?.key, resource?.source]);
 
     const memoizedSelectedSchema = useMemo(() => {
         return JSON.stringify(filteredSchema, null, 2);

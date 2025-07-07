@@ -4,6 +4,7 @@ import path from 'path';
 import { initializeSchemaHandlers, setupIpcHandlers } from './ipc-handlers';
 import waitOn from 'wait-on';
 import { initK8sService } from './k8s-service-client';
+import { templateManager } from './template-manager';
 
 interface WindowState {
   width: number;
@@ -133,6 +134,10 @@ app.whenReady().then(async () => {
   const savedConfigPath = store.get('kubeConfigPath') as string | undefined;
   setupIpcHandlers();
   initializeSchemaHandlers();
+
+  // Add template service initialization
+  await templateManager.initialize();
+
   // Add window control handlers
   ipcMain.on('window:minimize', () => {
     if (mainWindow) mainWindow.minimize();

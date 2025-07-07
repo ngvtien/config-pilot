@@ -54,6 +54,7 @@ vi.mock('@/renderer/lib/path-utils', () => ({
   joinPath: vi.fn((...paths) => paths.join('/'))
 }));
 
+// Fixed: Added missing Copy export to lucide-react mock
 vi.mock('lucide-react', () => ({
   Search: () => <div data-testid="search-icon" />,
   FileText: () => <div data-testid="file-text-icon" />,
@@ -63,7 +64,9 @@ vi.mock('lucide-react', () => ({
   Eye: () => <div data-testid="eye-icon" />,
   Save: () => <div data-testid="save-icon" />,
   FileJson: () => <div data-testid="file-json-icon" />,
-  FileCode: () => <div data-testid="file-code-icon" />
+  FileCode: () => <div data-testid="file-code-icon" />,
+  Copy: () => <div data-testid="copy-icon" />,
+  X: () => <div data-testid="x-icon" />
 }));
 
 vi.mock('@rjsf/core', () => ({

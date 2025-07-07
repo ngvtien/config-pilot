@@ -1413,14 +1413,14 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
                 return (
                   <div
                     key={`${resource.apiVersion}-${resource.kind}-${index}`}
-                    className={`${scheme.bg} ${scheme.border} ${scheme.hover} rounded-xl p-5 border-2 hover:shadow-lg hover:scale-105 transition-all duration-300 relative overflow-hidden cursor-pointer`}
+                    className={`${scheme.bg} ${scheme.border} ${scheme.hover} rounded-xl p-5 border-2 hover:shadow-lg hover:scale-105 transition-all duration-300 relative overflow-hidden cursor-pointer group`}
                     onClick={async () => {
                       const schemaResource = resource.originalSchema || resource;
                       if (resource.source == 'kubernetes') {
                         console.log('🔍 Requesting schema for kind:', resource.kind);
                         console.log('🔍 Schema indexer initialized:', !!kubernetesSchemaIndexer.lazyIndex);
 
-                        var versions = await kubernetesSchemaIndexer.getKindVersions(resource.kind);
+                        const versions = await kubernetesSchemaIndexer.getKindVersions(resource.kind);
                         const resourceSchema = versions?.[0]
                         if (resourceSchema) {
                           schemaResource.schema = resourceSchema.schema
@@ -1438,17 +1438,52 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
 
                   >
                     {/* Subtle accent line */}
-                    <div className={`absolute top-0 left-0 right-0 h-1 ${scheme.accent.replace('text-', 'bg-')}`}></div>
+                    <div className={`absolute top-0 left-0 right-0 h-1 ${scheme.accent.replace('text-', 'bg-')} transition-all duration-300 group-hover:h-2`}></div>
 
+    {/* Progress indicator for field selection */}
+    {/* <div className="absolute top-2 right-2">
+      <div className="relative w-8 h-8">
+        <svg className="w-8 h-8 transform -rotate-90" viewBox="0 0 32 32">
+          <circle
+            cx="16" cy="16" r="14"
+            fill="none" stroke="currentColor" strokeWidth="2"
+            className="text-gray-200"
+          />
+          <circle
+            cx="16" cy="16" r="14"
+            fill="none" stroke="currentColor" strokeWidth="2"
+            className={scheme.accent}
+            strokeDasharray={`${(resource.selectedFields?.length || 0) * 2} 88`}
+            strokeLinecap="round"
+          />
+        </svg>
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className="text-xs font-semibold">{resource.selectedFields?.length || 0}</span>
+        </div>
+      </div>
+    </div> */}
                     <div className="flex justify-between items-start mb-4">
                       <div className="flex-1">
                         <h3 className={`font-semibold text-lg ${scheme.accent} mb-1`}>{resource.kind}</h3>
                         <p className="text-sm text-gray-600 font-medium">{resource.apiVersion}</p>
                         {resource.namespace && (
                           <p className="text-xs text-gray-500 mt-1 bg-white/50 px-2 py-1 rounded-full inline-block">
-                            Namespace: {resource.namespace}
-                          </p>
+            📁 {resource.namespace}
+          </p>
                         )}
+
+                                {/* Status indicators */}
+        <div className="flex items-center gap-2 mt-2">
+          {resource.selectedFields && resource.selectedFields.length > 0 ? (
+            <Badge className="bg-green-100 text-green-800 text-xs">
+              ✅ {resource.selectedFields.length} fields configured
+            </Badge>
+          ) : (
+            <Badge className="bg-yellow-100 text-yellow-800 text-xs">
+              ⚠️ Not configured
+            </Badge>
+          )}
+        </div>
                       </div>
 
                       <div className="flex items-center gap-1">
