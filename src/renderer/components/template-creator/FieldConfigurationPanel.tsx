@@ -65,13 +65,13 @@ export const FieldConfigurationPanel: React.FC<FieldConfigurationPanelProps> = (
      */
     const handleArrayFieldToggle = (nestedField: SchemaProperty, checked: boolean) => {
         if (!field || !arrayConfig) return
-        
+
         onNestedFieldToggle(field.path, nestedField, checked)
-        
+
         // Update local array config
         const updatedConfig = {
             ...arrayConfig,
-            selectedFields: checked 
+            selectedFields: checked
                 ? [...arrayConfig.selectedFields, nestedField.path]
                 : arrayConfig.selectedFields.filter(path => path !== nestedField.path)
         }
@@ -206,12 +206,12 @@ export const FieldConfigurationPanel: React.FC<FieldConfigurationPanelProps> = (
                         Configure which fields to include for each {field.arrayItemSchema.type} item
                     </p>
                 </div>
-                
+
                 <div className="space-y-3">
                     <div className="text-sm font-medium">
                         Select fields for each {field.arrayItemSchema.type}:
                     </div>
-                    
+
                     {field.arrayItemSchema.properties?.map((prop: SchemaProperty) => {
                         const isSelected = arrayConfig.selectedFields.includes(prop.path)
                         return (
@@ -237,7 +237,7 @@ export const FieldConfigurationPanel: React.FC<FieldConfigurationPanelProps> = (
                         )
                     })}
                 </div>
-                
+
                 {arrayConfig.selectedFields.length > 0 && (
                     <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 rounded border">
                         <div className="text-sm font-medium text-green-800 dark:text-green-200">
@@ -271,6 +271,36 @@ export const FieldConfigurationPanel: React.FC<FieldConfigurationPanelProps> = (
         )
     }
 
+    /**
+     * Validates field configuration against schema constraints
+     * @param field - The template field to validate
+     * @param value - The value to validate
+     * @returns Validation result with error message if invalid
+     */
+    const validateFieldConfiguration = (field: TemplateField, value: any): ValidationResult => {
+        if (!value && field.required) {
+            return { valid: false, error: 'This field is required' }
+        }
+
+        if (field.type === 'string' && field.constraints?.enum) {
+            return field.constraints.enum.includes(value)
+                ? { valid: true }
+                : { valid: false, error: `Value must be one of: ${field.constraints.enum.join(', ')}` }
+        }
+
+        if (field.type === 'number' && field.constraints) {
+            const num = Number(value)
+            if (field.constraints.minimum !== undefined && num < field.constraints.minimum) {
+                return { valid: false, error: `Value must be at least ${field.constraints.minimum}` }
+            }
+            if (field.constraints.maximum !== undefined && num > field.constraints.maximum) {
+                return { valid: false, error: `Value must be at most ${field.constraints.maximum}` }
+            }
+        }
+
+        return { valid: true }
+    }
+
     return (
         <Card className={`flex flex-col min-h-0 ${className}`}>
             <CardHeader className="flex-shrink-0">
@@ -290,9 +320,9 @@ export const FieldConfigurationPanel: React.FC<FieldConfigurationPanelProps> = (
                         </div>
                     </div>
                 )}
-                
+
                 {renderDefaultValueEditor()}
-                
+
                 {field.uiHints?.helpText && (
                     <div className="text-xs text-gray-500 mt-2">
                         💡 {field.uiHints.helpText}

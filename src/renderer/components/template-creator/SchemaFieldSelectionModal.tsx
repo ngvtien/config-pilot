@@ -13,7 +13,7 @@ import { Checkbox } from '@/renderer/components/ui/checkbox'
 import { ScrollArea } from '@/renderer/components/ui/scroll-area'
 import { Separator } from '@/renderer/components/ui/separator'
 import { Card, CardContent, CardHeader, CardTitle } from '@/renderer/components/ui/card'
-import { ChevronRight, ChevronDown, Copy, Check } from 'lucide-react'
+import { ChevronRight, ChevronDown, Copy, Check, Edit } from 'lucide-react'
 import { DescriptionTooltip } from './DescriptionTooltip'
 import type { KubernetesResourceSchema } from '@/renderer/services/kubernetes-schema-indexer'
 import type { TemplateField, TemplateResource } from '@/shared/types/template'
@@ -22,6 +22,12 @@ import { SchemaTreeView } from './SchemaTreeView';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { KubernetesSchemaService } from '../../services/kubernetes-schema-service'
+import { Input } from '@/renderer/components/ui/input'
+import { Switch } from '@/renderer/components/ui/switch'
+import { Textarea } from '@/renderer/components/ui/textarea'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/renderer/components/ui/select'
+import { EnhancedTemplateField, ArrayItemFieldConfig } from '@/shared/types/enhanced-template-field'
+import { FieldConfigurationPanel } from './FieldConfigurationPanel'
 
 interface SchemaFieldSelectionModalProps {
     isOpen: boolean
@@ -31,7 +37,7 @@ interface SchemaFieldSelectionModalProps {
     onFieldsChange: (fields: TemplateField[]) => void
 }
 
-interface SchemaProperty {
+export interface SchemaProperty {
     name: string
     path: string
     type: string
@@ -201,10 +207,10 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
     const [isLoadingSchema, setIsLoadingSchema] = useState(false);
     const [highlightedFieldPath, setHighlightedFieldPath] = useState<string | null>(null);
     const [showSelectedPreview, setShowSelectedPreview] = useState(false)
-
-    const [useSimpleView, setUseSimpleView] = useState(true)
-    const [isSchemaLarge, setIsSchemaLarge] = useState(false)
-    const [isRenderingSchema, setIsRenderingSchema] = useState(false)
+    const [selectedFieldForConfig, setSelectedFieldForConfig] = useState<EnhancedTemplateField | null>(null)
+    const [fieldConfigurations, setFieldConfigurations] = useState<Record<string, any>>({})
+    const [arrayConfigurations, setArrayConfigurations] = useState<Record<string, ArrayItemFieldConfig>>({})
+    const [showFieldConfigModal, setShowFieldConfigModal] = useState(false)
 
     const [schemaTimestamp, setSchemaTimestamp] = useState(Date.now())
 
@@ -228,73 +234,13 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
         }
     }, [memoizedFullSchema])
 
-// Force schema recreation whenever fields change
-useEffect(() => {
-    setSchemaTimestamp(Date.now())
-}, [localSelectedFields])
 
-
+    // Force schema recreation whenever fields change
     useEffect(() => {
-        setIsSchemaLarge(schemaMetrics.isLarge)
-        // Always use simple view for full schema preview
-        setUseSimpleView(true)
-    }, [schemaMetrics.isLarge])
+        setSchemaTimestamp(Date.now())
+    }, [localSelectedFields])
 
-    // Handle schema rendering with loading state
-    const handleSchemaRender = async (renderFunction: () => void) => {
-        if (schemaMetrics.isLarge) {
-            setIsRenderingSchema(true)
-            // Use setTimeout to allow UI to update with loading state
-            setTimeout(() => {
-                renderFunction()
-                setIsRenderingSchema(false)
-            }, 100)
-        } else {
-            renderFunction()
-        }
-    }
 
-    // Handle view toggle with loading state
-    const handleViewToggle = () => {
-        if (schemaMetrics.isLarge) {
-            setIsRenderingSchema(true)
-            setTimeout(() => {
-                setUseSimpleView(!useSimpleView)
-                setIsRenderingSchema(false)
-            }, 100)
-        } else {
-            setUseSimpleView(!useSimpleView)
-        }
-    }
-
-    const schemaService = new KubernetesSchemaService()
-
-    // Helper function to build proper resource key with null safety
-    const buildResourceKey = (resource: TemplateResource | null): string => {
-        // Add null safety check
-        if (!resource || !resource.apiVersion || !resource.kind) {
-            return ''
-        }
-
-        // Use the same logic as KubernetesSchemaService.buildSchemaKey
-        if (resource.apiVersion === 'v1') {
-            return `io.k8s.api.core.v1.${resource.kind}`
-        } else {
-            const [group, version] = resource.apiVersion.includes('/')
-                ? resource.apiVersion.split('/')
-                : ['core', resource.apiVersion]
-
-            if (group === 'core') {
-                return `io.k8s.api.core.${version}.${resource.kind}`
-            } else {
-                return `io.k8s.api.${group}.${version}.${resource.kind}`
-            }
-        }
-    }
-
-    //const resourceKey = resource?.apiVersion ? `${resource.apiVersion}/${resource.kind}` : resource?.kind || '';
-    //const resourceKey = resource?.key || '';
-    //const resourceKey = buildResourceKey(resource)
     // Use apiVersion/kind format consistently for storage and retrieval
     const resourceKey = resource?.key || (resource?.apiVersion && resource?.kind ? `${resource.apiVersion}/${resource.kind}` : '');
 
@@ -415,6 +361,49 @@ useEffect(() => {
             persistExpandedNodes(resourceKey, expandedObjects)
         }
     }, [expandedObjects, resourceKey])
+
+
+    const handleOpenFieldConfig = (field: EnhancedTemplateField) => {
+        setSelectedFieldForConfig(field);
+        setShowFieldConfigModal(true);
+    };
+
+
+    /**
+     * Handle closing field configuration modal
+     */
+    const handleCloseFieldConfig = () => {
+        setShowFieldConfigModal(false)
+        setSelectedFieldForConfig(null)
+    }
+
+    /**
+     * Handle default value changes for fields
+     */
+    const handleDefaultValueChange = (fieldPath: string, value: any) => {
+        setFieldConfigurations(prev => ({ ...prev, [fieldPath]: value }))
+    }
+
+    /**
+     * Handle nested field toggle for complex types
+     */
+    // const handleNestedFieldToggle = (parentPath: string, nestedField: SchemaProperty, checked: boolean) => {
+    //     // Implementation for nested field handling
+    //     console.log('Nested field toggle:', { parentPath, nestedField, checked })
+    // }
+    const handleNestedFieldToggle = (fieldPath: string, nestedPath: string, enabled: boolean) => {
+        console.log('Nested field toggle:', { fieldPath, nestedPath, enabled })
+    }
+
+    /**
+     * Handle array configuration changes
+     */
+    const handleArrayConfigChange = (parentPath: string, config: ArrayItemFieldConfig) => {
+        setArrayConfigurations(prev => ({
+            ...prev,
+            [parentPath]: config
+        }))
+    }
 
     /**
      * Resolve schema references recursively
@@ -567,428 +556,187 @@ useEffect(() => {
         return { resolved: property, isReference: false }
     }
 
-    /**
-     * Build filtered schema from full schema based on selected fields
-     */
-//     const filteredSchema = useMemo(() => {
-//         if (!resource?.schema || localSelectedFields.length === 0) {
-//             return {}
-//         }
+    useEffect(() => {
+        setSchemaTimestamp(Date.now())
+    }, [localSelectedFields])
 
-//         console.log('🔍 DEBUG: Building filtered schema from selected fields')
-//         console.log('🔍 DEBUG: Selected fields:', localSelectedFields.map(f => f.path))
-//         console.log('🔍 DEBUG: Resource info:', { source: resource.source, key: resource.key, kind: resource.kind })
+    const filteredSchema = useMemo(() => {
+        // Force fresh calculation by clearing any cached data
+        console.log('🔄 FORCING FRESH SCHEMA CREATION - Timestamp:', schemaTimestamp)
 
-//         // DUMP ORIGINAL SCHEMA STRUCTURE
-//         //console.log('🔍 DEBUG: ORIGINAL SCHEMA DUMP:')
-//         //console.log(JSON.stringify(resource.schema, null, 2))
+        if (!resource?.schema || localSelectedFields.length === 0) {
+            return {}
+        }
 
-//         // FIRST: Resolve all $ref in the schema before filtering
-//         const resolveEntireSchema = (schema: any): any => {
-//             if (!schema || typeof schema !== 'object') {
-//                 return schema
-//             }
+        console.log('🔍 DEBUG: Building filtered schema from selected fields')
+        console.log('🔍 DEBUG: Selected fields:', localSelectedFields.map(f => f.path))
+        console.log('🔍 DEBUG: Resource info:', { source: resource.source, key: resource.key, kind: resource.kind })
 
-//             // If this is a $ref, resolve it
-//             if (schema.$ref) {
-//                 const { resolved } = resolveSchemaReference(schema, resource.schema)
-//                 return resolveEntireSchema(resolved) // Recursively resolve in case the resolved schema has more $ref
-//             }
+        // FIRST: Resolve all $ref in the schema before filtering
+        const resolveEntireSchema = (schema: any): any => {
+            if (!schema || typeof schema !== 'object') {
+                return schema
+            }
 
-//             // If this is an object with properties, resolve each property
-//             if (schema.properties) {
-//                 const resolvedProperties: any = {}
-//                 Object.keys(schema.properties).forEach(key => {
-//                     resolvedProperties[key] = resolveEntireSchema(schema.properties[key])
-//                 })
-//                 return { ...schema, properties: resolvedProperties }
-//             }
+            // If this is a $ref, resolve it
+            if (schema.$ref) {
+                const { resolved } = resolveSchemaReference(schema, resource.schema)
+                return resolveEntireSchema(resolved) // Recursively resolve in case the resolved schema has more $ref
+            }
 
-//             // If this is an array with items, resolve the items
-//             if (schema.items) {
-//                 return { ...schema, items: resolveEntireSchema(schema.items) }
-//             }
+            // If this is an object with properties, resolve each property
+            if (schema.properties) {
+                const resolvedProperties: any = {}
+                Object.keys(schema.properties).forEach(key => {
+                    resolvedProperties[key] = resolveEntireSchema(schema.properties[key])
+                })
+                return { ...schema, properties: resolvedProperties }
+            }
 
-//             return schema
-//         }
+            // If this is an array with items, resolve the items
+            if (schema.items) {
+                return { ...schema, items: resolveEntireSchema(schema.items) }
+            }
 
-//         // Start with a fully resolved schema (no $ref)
-//         const resolvedSchema = resolveEntireSchema(resource.schema)
-//         console.log('🔍 DEBUG: Schema fully resolved, root properties:', Object.keys(resolvedSchema.properties || {}))
-
-//         // DUMP RESOLVED SCHEMA STRUCTURE
-//         // console.log('🔍 DEBUG: RESOLVED SCHEMA DUMP:')
-//         // console.log(JSON.stringify(resolvedSchema, null, 2))
-
-//         // Get selected field paths (normalize them)
-//         const selectedPaths = new Set(localSelectedFields.map(f => {
-//             console.log('🔍 DEBUG: Processing original path:', f.path)
-
-//             let normalizedPath = f.path
-
-//             // Handle CRD paths first
-//             if (resource.source === 'cluster-crds' && normalizedPath.startsWith('spec.versions[0].schema.openAPIV3Schema.properties.')) {
-//                 normalizedPath = normalizedPath.replace('spec.versions[0].schema.openAPIV3Schema.properties.', '')
-//                 console.log('🔍 DEBUG: CRD spec normalized path:', normalizedPath)
-//             }
-
-//             // Handle standard paths
-//             if (normalizedPath.startsWith('properties.')) {
-//                 normalizedPath = normalizedPath.replace('properties.', '')
-//                 console.log('🔍 DEBUG: Standard normalized path:', normalizedPath)
-//             }
-
-//             // Handle CRD kind prefix paths (e.g., 'Application.apiVersion' -> 'apiVersion')
-//             if (resource.source === 'cluster-crds' && resource?.kind && normalizedPath.startsWith(resource.kind + '.')) {
-//                 normalizedPath = normalizedPath.replace(resource.kind + '.', '')
-//                 console.log('🔍 DEBUG: CRD kind prefix normalized path:', normalizedPath)
-//             }
-//             // Handle standard resource prefix paths (e.g., 'io.k8s.api.core.v1.ConfigMap.apiVersion' -> 'apiVersion')
-//             else if (resource?.key && normalizedPath.startsWith(resource.key + '.')) {
-//                 normalizedPath = normalizedPath.replace(resource.key + '.', '')
-//                 console.log('🔍 DEBUG: Resource prefix normalized path:', normalizedPath)
-//             }
-
-//             if (normalizedPath === f.path) {
-//                 console.log('🔍 DEBUG: No normalization needed:', normalizedPath)
-//             }
-
-//             console.log('🔍 DEBUG: Final normalized path:', normalizedPath)
-//             return normalizedPath
-//         }))
-
-//         console.log('🔍 DEBUG: Final selected paths set:', Array.from(selectedPaths))
-
-//         // ===== DUMP SELECTED FIELDS SCHEMA =====
-//         console.log('🎯 DEBUG: SELECTED FIELDS SCHEMA DUMP:')
-//         console.log('Selected Fields Array:')
-//         localSelectedFields.forEach((field, index) => {
-//             console.log(`Field ${index + 1}:`, {
-//                 path: field.path,
-//                 title: field.title,
-//                 type: field.type,
-//                 required: field.required,
-//                 description: field.description
-//             })
-//         })
-
-//         // ===== DUMP NORMALIZED PATHS =====
-//         // console.log('🎯 DEBUG: NORMALIZED PATHS:')
-//         // Array.from(selectedPaths).forEach((path, index) => {
-//         //     console.log(`Normalized Path ${index + 1}: "${path}"`)
-//         // })
-
-//         // const filterProperties = (schema: any, currentPath = '', depth = 0) => {
-//         //     const indent = '  '.repeat(depth)
-//         //     console.log(`${indent}🔍 DEBUG: filterProperties called with currentPath: "${currentPath}", depth: ${depth}`)
-//         //     if (!schema?.properties) {
-//         //         console.log(`${indent}🔍 DEBUG: No properties found in schema`)
-//         //         return schema
-//         //     }
-
-//         //     console.log(`${indent}🔍 DEBUG: Schema properties available:`, Object.keys(schema.properties))
-
-//         //     const filteredProps: any = {}
-
-//         //     Object.entries(schema.properties).forEach(([key, property]: [string, any]) => {
-//         //         const fieldPath = currentPath ? `${currentPath}.${key}` : key
-
-//         //         // Include if this field is selected OR if it has selected children
-//         //         const isSelected = selectedPaths.has(fieldPath)
-//         //         const hasSelectedChildren = Array.from(selectedPaths).some(path =>
-//         //             path.startsWith(fieldPath + '.')
-//         //         )
-
-//         //         //console.log(`${indent}🔍 DEBUG: Checking field "${fieldPath}" - selected: ${isSelected}, hasChildren: ${hasSelectedChildren}`)
-//         //         //console.log(`${indent}🔍 DEBUG: Property "${key}" type:`, property.type)
-
-//         //         if (isSelected || hasSelectedChildren) {
-//         //             //console.log(`${indent}🔍 DEBUG: INCLUDING field "${fieldPath}"`)
-//         //             filteredProps[key] = { ...property }
-
-//         //             // Recursively filter nested properties
-//         //             if (property.properties && hasSelectedChildren) {
-//         //                 //console.log(`${indent}🔍 DEBUG: Recursively filtering nested properties for "${fieldPath}"`)
-//         //                 const nestedFiltered = filterProperties(property, fieldPath, depth + 1)
-//         //                 filteredProps[key] = {
-//         //                     ...filteredProps[key],
-//         //                     properties: nestedFiltered.properties
-//         //                 }
-//         //             }
-//         //         } else {
-//         //             console.log(`${indent}🔍 DEBUG: EXCLUDING field "${fieldPath}"`)
-//         //         }
-//         //     })
-
-//         //     console.log(`${indent}🔍 DEBUG: Filtered properties at depth ${depth}:`, Object.keys(filteredProps))
-//         //     return { ...schema, properties: filteredProps }
-//         // }
-
-// const filterProperties = (schema: any, currentPath = '', depth = 0) => {
-//     const indent = '  '.repeat(depth)
-//     console.log(`${indent}🔍 DEBUG: filterProperties called with currentPath: "${currentPath}", depth: ${depth}`)
-    
-//     // Handle schemas without properties (but may have items for arrays)
-//     if (!schema?.properties && !schema?.items) {
-//         console.log(`${indent}🔍 DEBUG: No properties or items found in schema`)
-//         return schema
-//     }
-
-//     let result = { ...schema }
-
-//     // Handle object properties
-//     if (schema.properties) {
-//         console.log(`${indent}🔍 DEBUG: Schema properties available:`, Object.keys(schema.properties))
-//         const filteredProps: any = {}
-
-//         Object.entries(schema.properties).forEach(([key, property]: [string, any]) => {
-//             const fieldPath = currentPath ? `${currentPath}.${key}` : key
-
-//             // Include if this field is selected OR if it has selected children
-//             const isSelected = selectedPaths.has(fieldPath)
-//             const hasSelectedChildren = Array.from(selectedPaths).some(path =>
-//                 path.startsWith(fieldPath + '.')
-//             )
-//             // Check for array item selections (paths with [])
-//             const hasSelectedArrayItems = Array.from(selectedPaths).some(path =>
-//                 path.startsWith(fieldPath + '[]')
-//             )
-
-//             if (isSelected || hasSelectedChildren || hasSelectedArrayItems) {
-//                 filteredProps[key] = { ...property }
-
-//                 // Recursively filter nested properties
-//                 if (property.properties && hasSelectedChildren) {
-//                     const nestedFiltered = filterProperties(property, fieldPath, depth + 1)
-//                     filteredProps[key] = {
-//                         ...filteredProps[key],
-//                         properties: nestedFiltered.properties
-//                     }
-//                 }
-
-//                 // Handle array items when array items are selected
-//                 if (property.type === 'array' && property.items && hasSelectedArrayItems) {
-//                     const arrayItemPath = `${fieldPath}[]`
-//                     const nestedFiltered = filterProperties(property.items, arrayItemPath, depth + 1)
-//                     filteredProps[key] = {
-//                         ...filteredProps[key],
-//                         items: nestedFiltered
-//                     }
-//                 }
-//             } else {
-//                 console.log(`${indent}🔍 DEBUG: EXCLUDING field "${fieldPath}"`)
-//             }
-//         })
-
-//         result.properties = filteredProps
-//         console.log(`${indent}🔍 DEBUG: Filtered properties at depth ${depth}:`, Object.keys(filteredProps))
-//     }
-
-//     // Handle array items (when we're filtering an array's items schema)
-//     if (schema.items && currentPath.endsWith('[]')) {
-//         console.log(`${indent}🔍 DEBUG: Filtering array items schema for path: ${currentPath}`)
-//         const filteredItems = filterProperties(schema.items, currentPath, depth + 1)
-//         result.items = filteredItems
-//     }
-
-//     return result
-// }
-
-//         const filtered = filterProperties(resolvedSchema, '', 0)
-//         //console.log('🎯 DEBUG: Final filtered schema properties:', Object.keys(filtered.properties || {}))
-
-//         // DUMP FINAL FILTERED SCHEMA
-//         //console.log('🔍 DEBUG: FINAL FILTERED SCHEMA DUMP:')
-//         //console.log(JSON.stringify(filtered, null, 2))
-
-//         return filtered
-//     }, [resource?.schema, localSelectedFields, resource?.source, resource?.key, resource?.kind])
-//     const memoizedSelectedSchema = useMemo(() => {
-//         return JSON.stringify(filteredSchema, null, 2);
-//     }, [filteredSchema]);
-
-// Force schema recreation whenever fields change
-useEffect(() => {
-    setSchemaTimestamp(Date.now())
-}, [localSelectedFields])
-
-const filteredSchema = useMemo(() => {
-    // Force fresh calculation by clearing any cached data
-    console.log('🔄 FORCING FRESH SCHEMA CREATION - Timestamp:', schemaTimestamp)
-    
-    if (!resource?.schema || localSelectedFields.length === 0) {
-        return {}
-    }
-
-    console.log('🔍 DEBUG: Building filtered schema from selected fields')
-    console.log('🔍 DEBUG: Selected fields:', localSelectedFields.map(f => f.path))
-    console.log('🔍 DEBUG: Resource info:', { source: resource.source, key: resource.key, kind: resource.kind })
-
-    // FIRST: Resolve all $ref in the schema before filtering
-    const resolveEntireSchema = (schema: any): any => {
-        if (!schema || typeof schema !== 'object') {
             return schema
         }
 
-        // If this is a $ref, resolve it
-        if (schema.$ref) {
-            const { resolved } = resolveSchemaReference(schema, resource.schema)
-            return resolveEntireSchema(resolved) // Recursively resolve in case the resolved schema has more $ref
-        }
+        // Start with a fully resolved schema (no $ref)
+        const resolvedSchema = resolveEntireSchema(resource.schema)
+        console.log('🔍 DEBUG: Schema fully resolved, root properties:', Object.keys(resolvedSchema.properties || {}))
 
-        // If this is an object with properties, resolve each property
-        if (schema.properties) {
-            const resolvedProperties: any = {}
-            Object.keys(schema.properties).forEach(key => {
-                resolvedProperties[key] = resolveEntireSchema(schema.properties[key])
+        // Get selected field paths (normalize them)
+        const selectedPaths = new Set(localSelectedFields.map(f => {
+            console.log('🔍 DEBUG: Processing original path:', f.path)
+
+            let normalizedPath = f.path
+
+            // Handle CRD paths first
+            if (resource.source === 'cluster-crds' && normalizedPath.startsWith('spec.versions[0].schema.openAPIV3Schema.properties.')) {
+                normalizedPath = normalizedPath.replace('spec.versions[0].schema.openAPIV3Schema.properties.', '')
+                console.log('🔍 DEBUG: CRD spec normalized path:', normalizedPath)
+            }
+
+            // Handle standard paths
+            if (normalizedPath.startsWith('properties.')) {
+                normalizedPath = normalizedPath.replace('properties.', '')
+                console.log('🔍 DEBUG: Standard normalized path:', normalizedPath)
+            }
+
+            // Handle CRD kind prefix paths (e.g., 'Application.apiVersion' -> 'apiVersion')
+            if (resource.source === 'cluster-crds' && resource?.kind && normalizedPath.startsWith(resource.kind + '.')) {
+                normalizedPath = normalizedPath.replace(resource.kind + '.', '')
+                console.log('🔍 DEBUG: CRD kind prefix normalized path:', normalizedPath)
+            }
+            // Handle standard resource prefix paths (e.g., 'io.k8s.api.core.v1.ConfigMap.apiVersion' -> 'apiVersion')
+            else if (resource?.key && normalizedPath.startsWith(resource.key + '.')) {
+                normalizedPath = normalizedPath.replace(resource.key + '.', '')
+                console.log('🔍 DEBUG: Resource prefix normalized path:', normalizedPath)
+            }
+
+            if (normalizedPath === f.path) {
+                console.log('🔍 DEBUG: No normalization needed:', normalizedPath)
+            }
+
+            console.log('🔍 DEBUG: Final normalized path:', normalizedPath)
+            return normalizedPath
+        }))
+
+        console.log('🔍 DEBUG: Final selected paths set:', Array.from(selectedPaths))
+
+        // ===== DUMP SELECTED FIELDS SCHEMA =====
+        console.log('🎯 DEBUG: SELECTED FIELDS SCHEMA DUMP:')
+        console.log('Selected Fields Array:')
+        localSelectedFields.forEach((field, index) => {
+            console.log(`Field ${index + 1}:`, {
+                path: field.path,
+                title: field.title,
+                type: field.type,
+                required: field.required,
+                description: field.description
             })
-            return { ...schema, properties: resolvedProperties }
-        }
-
-        // If this is an array with items, resolve the items
-        if (schema.items) {
-            return { ...schema, items: resolveEntireSchema(schema.items) }
-        }
-
-        return schema
-    }
-
-    // Start with a fully resolved schema (no $ref)
-    const resolvedSchema = resolveEntireSchema(resource.schema)
-    console.log('🔍 DEBUG: Schema fully resolved, root properties:', Object.keys(resolvedSchema.properties || {}))
-
-    // Get selected field paths (normalize them)
-    const selectedPaths = new Set(localSelectedFields.map(f => {
-        console.log('🔍 DEBUG: Processing original path:', f.path)
-
-        let normalizedPath = f.path
-
-        // Handle CRD paths first
-        if (resource.source === 'cluster-crds' && normalizedPath.startsWith('spec.versions[0].schema.openAPIV3Schema.properties.')) {
-            normalizedPath = normalizedPath.replace('spec.versions[0].schema.openAPIV3Schema.properties.', '')
-            console.log('🔍 DEBUG: CRD spec normalized path:', normalizedPath)
-        }
-
-        // Handle standard paths
-        if (normalizedPath.startsWith('properties.')) {
-            normalizedPath = normalizedPath.replace('properties.', '')
-            console.log('🔍 DEBUG: Standard normalized path:', normalizedPath)
-        }
-
-        // Handle CRD kind prefix paths (e.g., 'Application.apiVersion' -> 'apiVersion')
-        if (resource.source === 'cluster-crds' && resource?.kind && normalizedPath.startsWith(resource.kind + '.')) {
-            normalizedPath = normalizedPath.replace(resource.kind + '.', '')
-            console.log('🔍 DEBUG: CRD kind prefix normalized path:', normalizedPath)
-        }
-        // Handle standard resource prefix paths (e.g., 'io.k8s.api.core.v1.ConfigMap.apiVersion' -> 'apiVersion')
-        else if (resource?.key && normalizedPath.startsWith(resource.key + '.')) {
-            normalizedPath = normalizedPath.replace(resource.key + '.', '')
-            console.log('🔍 DEBUG: Resource prefix normalized path:', normalizedPath)
-        }
-
-        if (normalizedPath === f.path) {
-            console.log('🔍 DEBUG: No normalization needed:', normalizedPath)
-        }
-
-        console.log('🔍 DEBUG: Final normalized path:', normalizedPath)
-        return normalizedPath
-    }))
-
-    console.log('🔍 DEBUG: Final selected paths set:', Array.from(selectedPaths))
-
-    // ===== DUMP SELECTED FIELDS SCHEMA =====
-    console.log('🎯 DEBUG: SELECTED FIELDS SCHEMA DUMP:')
-    console.log('Selected Fields Array:')
-    localSelectedFields.forEach((field, index) => {
-        console.log(`Field ${index + 1}:`, {
-            path: field.path,
-            title: field.title,
-            type: field.type,
-            required: field.required,
-            description: field.description
         })
-    })
 
-    // Filter the RESOLVED schema properties to only include selected fields
-    const filterProperties = (schema: any, currentPath = '', depth = 0) => {
-        const indent = '  '.repeat(depth)
-        console.log(`${indent}🔍 DEBUG: filterProperties called with currentPath: "${currentPath}", depth: ${depth}`)
-        
-        // Handle schemas without properties (but may have items for arrays)
-        if (!schema?.properties && !schema?.items) {
-            console.log(`${indent}🔍 DEBUG: No properties or items found in schema`)
-            return schema
-        }
+        // Filter the RESOLVED schema properties to only include selected fields
+        const filterProperties = (schema: any, currentPath = '', depth = 0) => {
+            const indent = '  '.repeat(depth)
+            console.log(`${indent}🔍 DEBUG: filterProperties called with currentPath: "${currentPath}", depth: ${depth}`)
 
-        let result = { ...schema }
+            // Handle schemas without properties (but may have items for arrays)
+            if (!schema?.properties && !schema?.items) {
+                console.log(`${indent}🔍 DEBUG: No properties or items found in schema`)
+                return schema
+            }
 
-        // Handle object properties
-        if (schema.properties) {
-            console.log(`${indent}🔍 DEBUG: Schema properties available:`, Object.keys(schema.properties))
-            const filteredProps: any = {}
+            let result = { ...schema }
 
-            Object.entries(schema.properties).forEach(([key, property]: [string, any]) => {
-                const fieldPath = currentPath ? `${currentPath}.${key}` : key
+            // Handle object properties
+            if (schema.properties) {
+                console.log(`${indent}🔍 DEBUG: Schema properties available:`, Object.keys(schema.properties))
+                const filteredProps: any = {}
 
-                // Include if this field is selected OR if it has selected children
-                const isSelected = selectedPaths.has(fieldPath)
-                const hasSelectedChildren = Array.from(selectedPaths).some(path =>
-                    path.startsWith(fieldPath + '.')
-                )
-                // Check for array item selections (paths with [])
-                const hasSelectedArrayItems = Array.from(selectedPaths).some(path =>
-                    path.startsWith(fieldPath + '[]')
-                )
+                Object.entries(schema.properties).forEach(([key, property]: [string, any]) => {
+                    const fieldPath = currentPath ? `${currentPath}.${key}` : key
 
-                if (isSelected || hasSelectedChildren || hasSelectedArrayItems) {
-                    filteredProps[key] = { ...property }
+                    // Include if this field is selected OR if it has selected children
+                    const isSelected = selectedPaths.has(fieldPath)
+                    const hasSelectedChildren = Array.from(selectedPaths).some(path =>
+                        path.startsWith(fieldPath + '.')
+                    )
+                    // Check for array item selections (paths with [])
+                    const hasSelectedArrayItems = Array.from(selectedPaths).some(path =>
+                        path.startsWith(fieldPath + '[]')
+                    )
 
-                    // Recursively filter nested properties
-                    if (property.properties && hasSelectedChildren) {
-                        const nestedFiltered = filterProperties(property, fieldPath, depth + 1)
-                        filteredProps[key] = {
-                            ...filteredProps[key],
-                            properties: nestedFiltered.properties
+                    if (isSelected || hasSelectedChildren || hasSelectedArrayItems) {
+                        filteredProps[key] = { ...property }
+
+                        // Recursively filter nested properties
+                        if (property.properties && hasSelectedChildren) {
+                            const nestedFiltered = filterProperties(property, fieldPath, depth + 1)
+                            filteredProps[key] = {
+                                ...filteredProps[key],
+                                properties: nestedFiltered.properties
+                            }
                         }
-                    }
 
-                    // Handle array items when array items are selected
-                    if (property.type === 'array' && property.items && hasSelectedArrayItems) {
-                        const arrayItemPath = `${fieldPath}[]`
-                        const nestedFiltered = filterProperties(property.items, arrayItemPath, depth + 1)
-                        filteredProps[key] = {
-                            ...filteredProps[key],
-                            items: nestedFiltered
+                        // Handle array items when array items are selected
+                        if (property.type === 'array' && property.items && hasSelectedArrayItems) {
+                            const arrayItemPath = `${fieldPath}[]`
+                            const nestedFiltered = filterProperties(property.items, arrayItemPath, depth + 1)
+                            filteredProps[key] = {
+                                ...filteredProps[key],
+                                items: nestedFiltered
+                            }
                         }
+                    } else {
+                        console.log(`${indent}🔍 DEBUG: EXCLUDING field "${fieldPath}"`)
                     }
-                } else {
-                    console.log(`${indent}🔍 DEBUG: EXCLUDING field "${fieldPath}"`)
-                }
-            })
+                })
 
-            result.properties = filteredProps
-            console.log(`${indent}🔍 DEBUG: Filtered properties at depth ${depth}:`, Object.keys(filteredProps))
+                result.properties = filteredProps
+                console.log(`${indent}🔍 DEBUG: Filtered properties at depth ${depth}:`, Object.keys(filteredProps))
+            }
+
+            // Handle array items (when we're filtering an array's items schema)
+            if (schema.items && currentPath.endsWith('[]')) {
+                console.log(`${indent}🔍 DEBUG: Filtering array items schema for path: ${currentPath}`)
+                const filteredItems = filterProperties(schema.items, currentPath, depth + 1)
+                result.items = filteredItems
+            }
+
+            return result
         }
 
-        // Handle array items (when we're filtering an array's items schema)
-        if (schema.items && currentPath.endsWith('[]')) {
-            console.log(`${indent}🔍 DEBUG: Filtering array items schema for path: ${currentPath}`)
-            const filteredItems = filterProperties(schema.items, currentPath, depth + 1)
-            result.items = filteredItems
-        }
+        const filtered = filterProperties(resolvedSchema, '', 0)
+        console.log('🎯 DEBUG: Final filtered schema properties:', Object.keys(filtered.properties || {}))
 
-        return result
-    }
+        // DUMP FINAL FILTERED SCHEMA
+        console.log('🔍 DEBUG: FINAL FILTERED SCHEMA DUMP:')
+        console.log(JSON.stringify(filtered, null, 2))
 
-    const filtered = filterProperties(resolvedSchema, '', 0)
-    console.log('🎯 DEBUG: Final filtered schema properties:', Object.keys(filtered.properties || {}))
-
-    // DUMP FINAL FILTERED SCHEMA
-    console.log('🔍 DEBUG: FINAL FILTERED SCHEMA DUMP:')
-    console.log(JSON.stringify(filtered, null, 2))
-
-    return filtered
-}, [resource?.schema, localSelectedFields, resource?.source, resource?.key, resource?.kind, schemaTimestamp]) // Add timestamp to dependencies
+        return filtered
+    }, [resource?.schema, localSelectedFields, resource?.source, resource?.key, resource?.kind, schemaTimestamp]) // Add timestamp to dependencies
 
     const memoizedSelectedSchema = useMemo(() => {
         return JSON.stringify(filteredSchema, null, 2);
@@ -1170,6 +918,28 @@ const filteredSchema = useMemo(() => {
         setLocalSelectedFields(prev => prev.filter(f => f.path !== fieldPath));
     };
 
+    // const handleSelectedFieldClick = (fieldPath: string) => {
+    //     // Find the field in the schema tree and expand its parent path
+    //     const pathParts = fieldPath.split('.');
+    //     const newExpanded = new Set(expandedObjects);
+
+    //     // Expand all parent paths
+    //     for (let i = 1; i <= pathParts.length; i++) {
+    //         const parentPath = pathParts.slice(0, i).join('.');
+    //         newExpanded.add(parentPath);
+    //     }
+
+    //     setExpandedObjects(newExpanded);
+
+    //     // Set the highlighted field
+    //     setHighlightedFieldPath(fieldPath);
+
+    //     // Optional: Clear highlight after a few seconds
+    //     setTimeout(() => {
+    //         setHighlightedFieldPath(null);
+    //     }, 3000);
+    // };
+
     const handleSelectedFieldClick = (fieldPath: string) => {
         // Find the field in the schema tree and expand its parent path
         const pathParts = fieldPath.split('.');
@@ -1185,6 +955,32 @@ const filteredSchema = useMemo(() => {
 
         // Set the highlighted field
         setHighlightedFieldPath(fieldPath);
+
+        // Find the selected field and convert it to EnhancedTemplateField for configuration
+        // const selectedField = localSelectedFields.find(f => f.path === fieldPath);
+        // if (selectedField) {
+        //     const enhancedField: EnhancedTemplateField = {
+        //         path: selectedField.path,
+        //         title: selectedField.title,
+        //         type: selectedField.type,
+        //         required: selectedField.required,
+        //         description: selectedField.description,
+        //         defaultValue: fieldConfigurations[fieldPath] || undefined,
+        //         hasDefaultValue: fieldConfigurations[fieldPath] !== undefined,
+        //         isConfigured: fieldConfigurations[fieldPath] !== undefined
+        //     };
+        //     setSelectedFieldForConfig(enhancedField);
+        // }
+
+        const selectedField = localSelectedFields.find(f => f.path === fieldPath)
+        if (selectedField) {
+            const enhancedField: EnhancedTemplateField = {
+                ...selectedField,
+                defaultValue: fieldConfigurations[selectedField.path],
+                arrayConfig: arrayConfigurations[selectedField.path] || []
+            }
+            setSelectedFieldForConfig(enhancedField)
+        }
 
         // Optional: Clear highlight after a few seconds
         setTimeout(() => {
@@ -1452,11 +1248,10 @@ const filteredSchema = useMemo(() => {
                                         {localSelectedFields.map((field, index) => (
                                             <div
                                                 key={field.path}
-                                                className={`p-3 border rounded-lg cursor-pointer transition-all duration-300 ${highlightedFieldPath === field.path
+                                                className={`p-3 border rounded-lg transition-all duration-300 ${highlightedFieldPath === field.path
                                                     ? 'hover:bg-gray-50 dark:hover:bg-gray-800 transform scale-105 shadow-lg'
                                                     : 'hover:bg-gray-50 dark:hover:bg-gray-800'
                                                     }`}
-                                                onClick={() => handleSelectedFieldClick(field.path)}
                                             >
                                                 <div className="flex items-center justify-between">
                                                     <div className="flex items-center space-x-2">
@@ -1469,6 +1264,15 @@ const filteredSchema = useMemo(() => {
                                                         <Badge variant="secondary" className="text-xs">
                                                             {field.type}
                                                         </Badge>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            onClick={() => handleOpenFieldConfig(field)}
+                                                            className="h-8 w-8 p-0 text-blue-500 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+                                                            title="Configure field"
+                                                        >
+                                                            <Edit className="h-4 w-4" />
+                                                        </Button>
                                                         <Button
                                                             variant="ghost"
                                                             size="sm"
@@ -1514,11 +1318,24 @@ const filteredSchema = useMemo(() => {
                         >
                             Preview Selected ({localSelectedFields.length})
                         </Button>
+
                     </div>
                     <div className="flex space-x-2 ml-auto">
                         <Button variant="outline" onClick={handleCancel}>
                             Cancel
                         </Button>
+
+                        {/* <Button
+                            variant="secondary"
+                            onClick={() => {
+                                onFieldsChange(localSelectedFields)
+                                onOpenConfiguration?.(localSelectedFields)
+                            }}
+                            disabled={localSelectedFields.length === 0}
+                        >
+                            Configure Fields ({localSelectedFields.length})
+                        </Button> */}
+
                         <Button onClick={handleSave}>
                             Save Selection ({localSelectedFields.length} fields)
                         </Button>
@@ -1607,11 +1424,11 @@ const filteredSchema = useMemo(() => {
                                                 Too Large to Display
                                             </Badge>
                                         )}
-                                        {isSchemaLarge && !schemaMetrics.isTooLarge && (
+                                        {/* {isSchemaLarge && !schemaMetrics.isTooLarge && (
                                             <Badge variant="warning" className="text-xs">
                                                 Large Schema
                                             </Badge>
-                                        )}
+                                        )} */}
                                     </div>
                                     <div className="flex items-center space-x-2">
                                         <Button
@@ -1680,6 +1497,41 @@ const filteredSchema = useMemo(() => {
                         </DialogContent>
                     </Dialog>
                 )}
+
+                {/* Field Configuration Modal */}
+                <Dialog open={showFieldConfigModal} onOpenChange={handleCloseFieldConfig}>
+                    <DialogContent className="max-w-2xl h-[70vh] flex flex-col">
+                        <DialogHeader>
+                            <DialogTitle className="flex items-center space-x-2">
+                                <span>Configure Field: {selectedFieldForConfig?.title}</span>
+                                <Badge variant="outline">{selectedFieldForConfig?.type}</Badge>
+                            </DialogTitle>
+                            <DialogDescription>
+                                Configure default values and behavior for this field.
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        <div className="flex-1 min-h-0">
+                            {selectedFieldForConfig && (
+                                <FieldConfigurationPanel
+                                    field={selectedFieldForConfig}
+                                    onDefaultValueChange={handleDefaultValueChange}
+                                    onNestedFieldToggle={handleNestedFieldToggle}
+                                    onArrayConfigChange={handleArrayConfigChange}
+                                />
+                            )}
+                        </div>
+
+                        <DialogFooter>
+                            <Button variant="outline" onClick={handleCloseFieldConfig}>
+                                Cancel
+                            </Button>
+                            <Button onClick={handleCloseFieldConfig}>
+                                Save Configuration
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
             </DialogContent>
         </Dialog>
     )

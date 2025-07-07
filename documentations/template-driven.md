@@ -1643,3 +1643,14 @@ export function MyForm() {
 * `$ref`s are **replaced recursively** with their actual target content.
 * All references — internal (`#/definitions/...`) or external (like from a separate file) — are **inlined**.
 * The output is ideal for UI libraries like `@rjsf/core` that don’t handle `$ref` very well on their own.
+
+---
+
+```mermaid
+flowchart TD
+    A[TemplateDesigner] --> B[SchemaFieldSelectionModal]
+    B --> C[Field Selection]
+    C --> D[handleFieldSelectionChange]
+    D --> E[FieldConfigurationPanel]
+    E --> F[Template State Update]
+```
