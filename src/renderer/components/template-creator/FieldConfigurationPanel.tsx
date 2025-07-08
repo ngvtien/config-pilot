@@ -9,15 +9,24 @@ import { Textarea } from '@/renderer/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/renderer/components/ui/select'
 import { EnhancedTemplateField, ArrayItemFieldConfig } from '@/shared/types/enhanced-template-field'
 import { SchemaProperty } from './SchemaFieldSelectionModal'
-import { Plus, Trash2 } from 'lucide-react'
+import { EnhancedPropertyEditor } from '../enhanced-property-editor'
+import { Plus, Trash2, Settings } from 'lucide-react'
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+} from '@/renderer/components/ui/dialog'
 
 interface FieldConfigurationPanelProps {
     field: EnhancedTemplateField | null
     onDefaultValueChange: (fieldPath: string, value: any) => void
     onNestedFieldToggle: (parentPath: string, nestedField: SchemaProperty, checked: boolean) => void
     onArrayConfigChange: (parentPath: string, config: ArrayItemFieldConfig) => void
+    onFieldUpdate?: (fieldPath: string, updatedField: SchemaProperty) => void
     className?: string
 }
+
 
 /**
  * Field configuration panel for setting default values and configuring complex types
@@ -28,12 +37,14 @@ export const FieldConfigurationPanel: React.FC<FieldConfigurationPanelProps> = (
     onDefaultValueChange,
     onNestedFieldToggle,
     onArrayConfigChange,
+    onFieldUpdate,
     className = ""
 }) => {
     const [localDefaultValue, setLocalDefaultValue] = useState<any>(null)
     const [arrayConfig, setArrayConfig] = useState<ArrayItemFieldConfig | null>(null)
     const [arrayDefaultItems, setArrayDefaultItems] = useState<any[]>([])
     const [enumOptions, setEnumOptions] = useState<string[]>([])
+    const [showEnhancedEditor, setShowEnhancedEditor] = useState(false)
 
     // Update local state when field changes
     useEffect(() => {
@@ -54,6 +65,51 @@ export const FieldConfigurationPanel: React.FC<FieldConfigurationPanelProps> = (
     }, [field])
 
     /**
+     * Convert EnhancedTemplateField to SchemaProperty for Enhanced Property Editor
+     */
+    const convertToSchemaProperty = (field: EnhancedTemplateField): SchemaProperty => {
+        return {
+            path: field.path,
+            name: field.name,
+            type: field.type,
+            title: field.title || field.name,
+            description: field.description,
+            required: field.required,
+            default: field.defaultValue,
+            format: field.format,
+            constraints: field.constraints,
+            enum: field.constraints?.enum,
+            items: field.arrayItemSchema ? {
+                type: field.arrayItemSchema.type,
+                properties: field.arrayItemSchema.properties
+            } : undefined
+        }
+    }
+
+    /**
+     * Handle Enhanced Property Editor save
+     */
+    const handleEnhancedEditorSave = (updatedProperty: SchemaProperty) => {
+        if (field && onFieldUpdate) {
+            onFieldUpdate(field.path, updatedProperty)
+        }
+
+        // Update local default value
+        if (updatedProperty.default !== undefined) {
+            handleDefaultValueChange(updatedProperty.default)
+        }
+
+        setShowEnhancedEditor(false)
+    }
+
+    /**
+     * Handle Enhanced Property Editor cancel
+     */
+    const handleEnhancedEditorCancel = () => {
+        setShowEnhancedEditor(false)
+    }
+
+    /**
      * Handle default value changes with immediate callback
      */
     const handleDefaultValueChange = (value: any) => {
@@ -64,7 +120,7 @@ export const FieldConfigurationPanel: React.FC<FieldConfigurationPanelProps> = (
         // Immediately save the default value
         if (onDefaultValueChange) {
             onDefaultValueChange(field?.path || '', value)
-        }        
+        }
     }
 
     /**
@@ -83,7 +139,7 @@ export const FieldConfigurationPanel: React.FC<FieldConfigurationPanelProps> = (
     }
 
     const updateArrayItem = (index: number, fieldPath: string, value: any) => {
-        const updatedItems = arrayDefaultItems.map((item, i) => 
+        const updatedItems = arrayDefaultItems.map((item, i) =>
             i === index ? { ...item, [fieldPath]: value } : item
         )
         setArrayDefaultItems(updatedItems)
@@ -92,7 +148,7 @@ export const FieldConfigurationPanel: React.FC<FieldConfigurationPanelProps> = (
 
     const createDefaultArrayItem = () => {
         if (!field?.arrayItemSchema?.properties) return {}
-        
+
         const defaultItem: any = {}
         field.arrayItemSchema.properties.forEach((prop: SchemaProperty) => {
             if (arrayConfig?.selectedFields.includes(prop.path)) {
@@ -213,7 +269,7 @@ export const FieldConfigurationPanel: React.FC<FieldConfigurationPanelProps> = (
                                 />
                             )}
                         </div>
-                        
+
                         {/* Enhanced Enum Management */}
                         {field.constraints?.enum && (
                             <div className="space-y-2">
@@ -324,38 +380,16 @@ export const FieldConfigurationPanel: React.FC<FieldConfigurationPanelProps> = (
                     </div>
                     <div className="space-y-2">
                         <label className="text-sm font-medium">Default Array Items</label>
-                        <div className="space-y-2">
-                            {arrayDefaultItems.map((item, index) => (
-                                <div key={index} className="flex items-center space-x-2 p-2 border rounded">
-                                    <Input
-                                        value={typeof item === 'object' ? JSON.stringify(item) : item}
-                                        onChange={(e: { target: { value: string } }) => {
-                                            try {
-                                                const value = field.arrayItemSchema?.type === 'object' 
-                                                    ? JSON.parse(e.target.value)
-                                                    : e.target.value
-                                                updateArrayItem(index, 'value', value)
-                                            } catch {
-                                                updateArrayItem(index, 'value', e.target.value)
-                                            }
-                                        }}
-                                        placeholder={`Item ${index + 1}`}
-                                        className="flex-1"
-                                    />
-                                    <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => removeArrayItem(index)}
-                                    >
-                                        <Trash2 className="h-3 w-3" />
-                                    </Button>
-                                </div>
-                            ))}
-                            <Button size="sm" variant="outline" onClick={addArrayItem}>
-                                <Plus className="h-3 w-3 mr-1" />
-                                Add Item
-                            </Button>
-                        </div>
+                        <Textarea
+                            data-testid="textarea"
+                            value={Array.isArray(localDefaultValue) ? localDefaultValue.join('\n') : ''}
+                            onChange={(e) => {
+                                const items = e.target.value.split('\n').filter(item => item.trim())
+                                handleDefaultValueChange(items)
+                            }}
+                            placeholder="Enter default items (one per line)"
+                            rows={4}
+                        />
                     </div>
                 </div>
             )
@@ -364,149 +398,222 @@ export const FieldConfigurationPanel: React.FC<FieldConfigurationPanelProps> = (
         return (
             <div className="space-y-4">
                 <div className="border-b pb-2">
-                    <h4 className="font-medium text-sm">Array Item Configuration</h4>
+                    <h4 className="font-medium text-sm">Array Configuration</h4>
                     <p className="text-xs text-gray-500">
-                        Configure fields and default values for each {field.arrayItemSchema.type} item
+                        Configure template for {field.arrayItemSchema.type} items
                     </p>
                 </div>
 
-                {/* Field Selection */}
+                {/* Simplified Field Selection */}
                 <div className="space-y-3">
                     <div className="text-sm font-medium">
-                        Select fields for each {field.arrayItemSchema.type}:
+                        Available fields for {field.arrayItemSchema.type}:
                     </div>
 
-                    {field.arrayItemSchema.properties?.map((prop: SchemaProperty) => {
-                        const isSelected = arrayConfig.selectedFields.includes(prop.path)
-                        return (
-                            <div key={prop.path} className="flex items-center space-x-3 p-2 rounded border">
-                                <Checkbox
-                                    data-testid="checkbox"
-                                    checked={isSelected}
-                                    onCheckedChange={(checked: boolean) => handleArrayFieldToggle(prop, checked as boolean)}
-                                />
-                                <div className="flex-1">
-                                    <div className="flex items-center space-x-2">
-                                        <span className="text-sm font-medium">{prop.name}</span>
-                                        <Badge variant="secondary" className="text-xs">{prop.type}</Badge>
-                                        {prop.required && (
-                                            <Badge variant="destructive" className="text-xs">Required</Badge>
+                    <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto">
+                        {field.arrayItemSchema.properties?.map((prop: SchemaProperty) => {
+                            const isSelected = arrayConfig.selectedFields.includes(prop.path)
+                            return (
+                                <div key={prop.path} className="flex items-center space-x-2 p-2 rounded border hover:bg-gray-50 dark:hover:bg-gray-800">
+                                    <Checkbox
+                                        data-testid="checkbox"
+                                        checked={isSelected}
+                                        onCheckedChange={(checked: boolean) => handleArrayFieldToggle(prop, checked)}
+                                    />
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center space-x-2">
+                                            <span className="text-sm font-medium truncate">{prop.name}</span>
+                                            <Badge variant="secondary" className="text-xs shrink-0">{prop.type}</Badge>
+                                            {prop.required && (
+                                                <Badge variant="destructive" className="text-xs shrink-0">Required</Badge>
+                                            )}
+                                        </div>
+                                        {prop.description && (
+                                            <p className="text-xs text-gray-500 truncate" title={prop.description}>
+                                                {prop.description}
+                                            </p>
                                         )}
                                     </div>
-                                    {prop.description && (
-                                        <p className="text-xs text-gray-500 mt-1">{prop.description}</p>
-                                    )}
                                 </div>
-                            </div>
-                        )
-                    })}
+                            )
+                        })}
+                    </div>
                 </div>
 
-                {/* Default Items Management */}
+                {/* Single Template Item Configuration */}
                 {arrayConfig.selectedFields.length > 0 && (
                     <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                            <label className="text-sm font-medium">Default Array Items</label>
-                            <Button size="sm" variant="outline" onClick={addArrayItem}>
-                                <Plus className="h-3 w-3 mr-1" />
-                                Add Item
-                            </Button>
-                        </div>
-                        
-                        <div className="space-y-3 max-h-64 overflow-y-auto">
-                            {arrayDefaultItems.map((item, itemIndex) => (
-                                <div key={itemIndex} className="p-3 border rounded space-y-2">
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-sm font-medium">Item {itemIndex + 1}</span>
-                                        <Button
-                                            size="sm"
-                                            variant="outline"
-                                            onClick={() => removeArrayItem(itemIndex)}
-                                        >
-                                            <Trash2 className="h-3 w-3" />
-                                        </Button>
-                                    </div>
-                                    
-                                    {arrayConfig.selectedFields.map((fieldPath: React.Key | null | undefined) => {
-                                        const prop = field.arrayItemSchema?.properties?.find(
-                                            (p: SchemaProperty) => p.path === fieldPath
-                                        )
-                                        if (!prop) return null
-                                        
-                                        return (
-                                            <div key={fieldPath} className="space-y-1">
-                                                <label className="text-xs font-medium">{prop.name}</label>
-                                                {renderFieldInput(prop, item[fieldPath], (value) => 
-                                                    updateArrayItem(itemIndex, fieldPath, value)
-                                                )}
-                                            </div>
-                                        )
-                                    })}
-                                </div>
-                            ))}
+                        <div className="text-sm font-medium">Template Item Configuration</div>
+                        <div className="p-3 border rounded bg-gray-50 dark:bg-gray-800">
+                            <div className="text-xs text-gray-600 dark:text-gray-400 mb-3">
+                                Configure the template that will be used for new array items
+                            </div>
+
+                            <div className="space-y-3">
+                                {arrayConfig.selectedFields.map((fieldPath) => {
+                                    const prop = field.arrayItemSchema?.properties?.find(
+                                        (p: SchemaProperty) => p.path === fieldPath
+                                    )
+                                    if (!prop) return null
+
+                                    const templateValue = arrayConfig.defaultItemValues?.[fieldPath]
+
+                                    return (
+                                        <div key={fieldPath} className="space-y-1">
+                                            <label className="text-xs font-medium flex items-center space-x-2">
+                                                <span>{prop.name}</span>
+                                                <Badge variant="outline" className="text-xs">{prop.type}</Badge>
+                                            </label>
+                                            {renderFieldInput(prop, templateValue, (value) => {
+                                                const newDefaults = { ...arrayConfig.defaultItemValues, [fieldPath]: value }
+                                                onArrayConfigChange(field.path, {
+                                                    ...arrayConfig,
+                                                    defaultItemValues: newDefaults
+                                                })
+                                            })}
+                                        </div>
+                                    )
+                                })}
+                            </div>
                         </div>
                     </div>
                 )}
 
+                {/* Summary */}
                 {arrayConfig.selectedFields.length > 0 && (
-                    <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 rounded border">
-                        <div className="text-sm font-medium text-green-800 dark:text-green-200">
-                            Selected Fields ({arrayConfig.selectedFields.length})
+                    <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded border">
+                        <div className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                            Array Template Summary
                         </div>
-                        <div className="text-xs text-green-600 dark:text-green-300 mt-1">
-                            {arrayConfig.selectedFields.join(', ')}
+                        <div className="text-xs text-blue-600 dark:text-blue-300 mt-1">
+                            Selected fields: {arrayConfig.selectedFields.length}
                         </div>
-                        {arrayDefaultItems.length > 0 && (
-                            <div className="text-xs text-green-600 dark:text-green-300 mt-1">
-                                Default items: {arrayDefaultItems.length}
-                            </div>
-                        )}
+                        <div className="text-xs text-blue-600 dark:text-blue-300">
+                            Fields: {arrayConfig.selectedFields.join(', ')}
+                        </div>
                     </div>
                 )}
             </div>
         )
     }
-    
     /**
-     * Render appropriate input for different field types
+     * Enhanced field input renderer that properly handles array item types
      */
     const renderFieldInput = (prop: SchemaProperty, value: any, onChange: (value: any) => void) => {
+        // Handle enum constraints first
+        if (prop.constraints?.enum) {
+            return (
+                <Select value={value || ''} onValueChange={onChange}>
+                    <SelectTrigger data-testid="select" className="text-xs">
+                        <SelectValue placeholder={`Select ${prop.name}`} />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {prop.constraints.enum.map((option: any) => (
+                            <SelectItem key={option} value={option}>{option}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            )
+        }
+
+        // Handle different field types
         switch (prop.type) {
             case 'string':
+                // Check for format hints
+                if (prop.format === 'textarea' || (prop.constraints?.maxLength && prop.constraints.maxLength > 100)) {
+                    return (
+                        <Textarea
+                            data-testid="textarea"
+                            value={value || ''}
+                            onChange={(e) => onChange(e.target.value)}
+                            placeholder={`Enter ${prop.name}`}
+                            className="text-xs min-h-[60px]"
+                            rows={3}
+                        />
+                    )
+                }
                 return (
                     <Input
+                        data-testid="input"
                         value={value || ''}
-                        onChange={(e: { target: { value: any } }) => onChange(e.target.value)}
+                        onChange={(e) => onChange(e.target.value)}
                         placeholder={`Enter ${prop.name}`}
                         className="text-xs"
                     />
                 )
+
             case 'number':
             case 'integer':
                 return (
                     <Input
+                        data-testid="input"
                         type="number"
                         value={value || ''}
-                        onChange={(e: { target: { value: any } }) => onChange(Number(e.target.value))}
+                        onChange={(e) => {
+                            const numValue = prop.type === 'integer' ? parseInt(e.target.value) : parseFloat(e.target.value)
+                            onChange(isNaN(numValue) ? '' : numValue)
+                        }}
                         placeholder={`Enter ${prop.name}`}
                         className="text-xs"
+                        min={prop.constraints?.minimum}
+                        max={prop.constraints?.maximum}
                     />
                 )
+
             case 'boolean':
                 return (
                     <div className="flex items-center space-x-2">
                         <Switch
+                            data-testid="switch"
                             checked={value || false}
                             onCheckedChange={onChange}
                         />
                         <span className="text-xs">{value ? 'true' : 'false'}</span>
                     </div>
                 )
+
+            case 'array':
+                // For nested arrays, show a simplified input
+                return (
+                    <Textarea
+                        data-testid="textarea"
+                        value={Array.isArray(value) ? value.join('\n') : (value || '')}
+                        onChange={(e) => {
+                            const lines = e.target.value.split('\n').filter(line => line.trim())
+                            onChange(lines)
+                        }}
+                        placeholder={`Enter ${prop.name} (one per line)`}
+                        className="text-xs min-h-[60px]"
+                        rows={3}
+                    />
+                )
+
+            case 'object':
+                // For objects, show JSON input
+                return (
+                    <Textarea
+                        data-testid="textarea"
+                        value={typeof value === 'object' ? JSON.stringify(value, null, 2) : (value || '')}
+                        onChange={(e) => {
+                            try {
+                                const parsed = JSON.parse(e.target.value)
+                                onChange(parsed)
+                            } catch {
+                                onChange(e.target.value)
+                            }
+                        }}
+                        placeholder={`Enter ${prop.name} as JSON`}
+                        className="text-xs min-h-[80px] font-mono"
+                        rows={4}
+                    />
+                )
+
             default:
                 return (
                     <Input
+                        data-testid="input"
                         value={value || ''}
-                        onChange={(e: { target: { value: any } }) => onChange(e.target.value)}
+                        onChange={(e) => onChange(e.target.value)}
                         placeholder={`Enter ${prop.name}`}
                         className="text-xs"
                     />
@@ -514,7 +621,6 @@ export const FieldConfigurationPanel: React.FC<FieldConfigurationPanelProps> = (
         }
     }
 
-    // Add the missing main return statement
     if (!field) {
         return (
             <Card className={className}>
@@ -530,10 +636,75 @@ export const FieldConfigurationPanel: React.FC<FieldConfigurationPanelProps> = (
         )
     }
 
+    // Show Enhanced Property Editor if enabled
+    if (showEnhancedEditor) {
+        return (
+            <>
+                <Card className={className}>
+                    <CardHeader>
+                        <CardTitle className="flex items-center justify-between">
+                            <span>Configure Field: {field.name}</span>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setShowEnhancedEditor(true)}
+                                className="flex items-center gap-2"
+                            >
+                                <Settings className="h-4 w-4" />
+                                Advanced Editor
+                            </Button>
+                        </CardTitle>
+                        <div className="flex items-center space-x-2 mt-2">
+                            <Badge variant="secondary">{field.type}</Badge>
+                            {field.required && (
+                                <Badge variant="destructive">Required</Badge>
+                            )}
+                        </div>
+                        {field.description && (
+                            <p className="text-sm text-gray-600 mt-2">{field.description}</p>
+                        )}
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                        {/* Default Value Configuration */}
+                        {renderDefaultValueEditor()}
+
+                        {/* Array Configuration */}
+                        {field.type === 'array' && renderEnhancedArrayConfiguration()}
+                    </CardContent>
+                </Card>
+
+                <Dialog open={showEnhancedEditor} onOpenChange={setShowEnhancedEditor}>
+                    <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                        <DialogHeader>
+                            <DialogTitle>Enhanced Property Editor</DialogTitle>
+                        </DialogHeader>
+                        <EnhancedPropertyEditor
+                            property={convertToSchemaProperty(field)}
+                            onSave={handleEnhancedEditorSave}
+                            onCancel={handleEnhancedEditorCancel}
+                        />
+                    </DialogContent>
+                </Dialog>
+            </>
+        )
+    }
+
+
     return (
         <Card className={className}>
             <CardHeader>
-                <CardTitle>Configure Field: {field.name}</CardTitle>
+                <CardTitle className="flex items-center justify-between">
+                    <span>Configure Field: {field.name}</span>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowEnhancedEditor(true)}
+                        className="flex items-center gap-2"
+                    >
+                        <Settings className="h-4 w-4" />
+                        Advanced Editor
+                    </Button>
+                </CardTitle>
                 <div className="flex items-center space-x-2 mt-2">
                     <Badge variant="secondary">{field.type}</Badge>
                     {field.required && (
@@ -547,10 +718,11 @@ export const FieldConfigurationPanel: React.FC<FieldConfigurationPanelProps> = (
             <CardContent className="space-y-6">
                 {/* Default Value Configuration */}
                 {renderDefaultValueEditor()}
-                
+
                 {/* Array Configuration */}
                 {field.type === 'array' && renderEnhancedArrayConfiguration()}
             </CardContent>
         </Card>
-    )  
+    )
+
 }
