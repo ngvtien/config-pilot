@@ -314,9 +314,12 @@ class SchemaService {
 
     // Handle primitive types
     const currentPath = path ? `${path}.${name}` : name;
+    const fieldType = schema.enum && schema.enum.length > 0 ? 'enum' : 
+                 Array.isArray(schema.type) ? schema.type[0] : (schema.type || "unknown");
+
     return [{
       name,
-      type: Array.isArray(schema.type) ? schema.type[0] : (schema.type || "unknown"),
+      type: fieldType,
       path: currentPath,
       description: schema.description,
       required: requiredFields.includes(name)

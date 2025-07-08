@@ -10,13 +10,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { EnhancedTemplateField, ArrayItemFieldConfig } from '@/shared/types/enhanced-template-field'
 import { SchemaProperty } from './SchemaFieldSelectionModal'
 import { EnhancedPropertyEditor } from '../enhanced-property-editor'
-import { Plus, Trash2, Settings } from 'lucide-react'
+import { Plus, Trash2, Settings, X } from 'lucide-react'
 import {
     Dialog,
     DialogContent,
     DialogHeader,
     DialogTitle,
 } from '@/renderer/components/ui/dialog'
+import { Label } from '@/renderer/components/ui/label'
+import { DialogDescription } from '@/renderer/components/ui/dialog'
 
 interface FieldConfigurationPanelProps {
     field: EnhancedTemplateField | null
@@ -50,6 +52,8 @@ export const FieldConfigurationPanel: React.FC<FieldConfigurationPanelProps> = (
     useEffect(() => {
         if (field) {
             setLocalDefaultValue(field.defaultValue)
+            // Fix: Initialize enumOptions from field constraints
+            setEnumOptions(field.constraints?.enum || [])
             if (field.type === 'array' && field.arrayItemSchema) {
                 setArrayConfig({
                     parentPath: field.path,
@@ -61,6 +65,8 @@ export const FieldConfigurationPanel: React.FC<FieldConfigurationPanelProps> = (
         } else {
             setLocalDefaultValue(null)
             setArrayConfig(null)
+            // Fix: Reset enumOptions when no field
+            setEnumOptions([])
         }
     }, [field])
 
@@ -503,16 +509,24 @@ export const FieldConfigurationPanel: React.FC<FieldConfigurationPanelProps> = (
         // Handle enum constraints first
         if (prop.constraints?.enum) {
             return (
-                <Select value={value || ''} onValueChange={onChange}>
-                    <SelectTrigger data-testid="select" className="text-xs">
-                        <SelectValue placeholder={`Select ${prop.name}`} />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {prop.constraints.enum.map((option: any) => (
-                            <SelectItem key={option} value={option}>{option}</SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
+                <div className="space-y-2">
+                    <Select value={value || ''} onValueChange={onChange}>
+                        <SelectTrigger data-testid="select" className="text-xs">
+                            <SelectValue placeholder={`Select ${prop.name}`} />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="">-- None --</SelectItem>
+                            {prop.constraints.enum.map((option: any) => (
+                                <SelectItem key={option} value={option}>
+                                    {option}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <div className="text-xs text-gray-500">
+                        Available options: {prop.constraints.enum.length}
+                    </div>
+                </div>
             )
         }
 
@@ -573,41 +587,156 @@ export const FieldConfigurationPanel: React.FC<FieldConfigurationPanelProps> = (
                 )
 
             case 'array':
-                // For nested arrays, show a simplified input
+                // Enhanced array handling with proper item management
+                const arrayValue = Array.isArray(value) ? value : [];
                 return (
-                    <Textarea
-                        data-testid="textarea"
-                        value={Array.isArray(value) ? value.join('\n') : (value || '')}
-                        onChange={(e) => {
-                            const lines = e.target.value.split('\n').filter(line => line.trim())
-                            onChange(lines)
-                        }}
-                        placeholder={`Enter ${prop.name} (one per line)`}
-                        className="text-xs min-h-[60px]"
-                        rows={3}
-                    />
+                    <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                            <Label className="text-xs font-medium">Array Items</Label>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                    const newArray = [...arrayValue, ''];
+                                    onChange(newArray);
+                                }}
+                                className="h-6 px-2 text-xs"
+                            >
+                                <Plus className="h-3 w-3 mr-1" />
+                                Add Item
+                            </Button>
+                        </div>
+                        <div className="space-y-1 max-h-32 overflow-y-auto">
+                            {arrayValue.length === 0 ? (
+                                <div className="text-xs text-gray-500 p-2 border border-dashed rounded">
+                                    No items. Click "Add Item" to start.
+                                </div>
+                            ) : (
+                                arrayValue.map((item: any, index: number) => (
+                                    <div key={index} className="flex items-center space-x-1">
+                                        <Input
+                                            value={item || ''}
+                                            onChange={(e) => {
+                                                const newArray = [...arrayValue];
+                                                newArray[index] = e.target.value;
+                                                onChange(newArray);
+                                            }}
+                                            placeholder={`Item ${index + 1}`}
+                                            className="text-xs flex-1"
+                                        />
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => {
+                                                const newArray = arrayValue.filter((_, i) => i !== index);
+                                                onChange(newArray);
+                                            }}
+                                            className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
+                                        >
+                                            <X className="h-3 w-3" />
+                                        </Button>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
                 )
 
             case 'object':
-                // For objects, show JSON input
+                // Enhanced object handling for key-value pairs
+                let objectValue;
+                try {
+                    objectValue = typeof value === 'string' ? JSON.parse(value) : (value || {});
+                } catch {
+                    objectValue = {};
+                }
+                
+                const objectEntries = Object.entries(objectValue);
+                
                 return (
-                    <Textarea
-                        data-testid="textarea"
-                        value={typeof value === 'object' ? JSON.stringify(value, null, 2) : (value || '')}
-                        onChange={(e) => {
-                            try {
-                                const parsed = JSON.parse(e.target.value)
-                                onChange(parsed)
-                            } catch {
-                                onChange(e.target.value)
-                            }
-                        }}
-                        placeholder={`Enter ${prop.name} as JSON`}
-                        className="text-xs min-h-[80px] font-mono"
-                        rows={4}
-                    />
+                    <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                            <Label className="text-xs font-medium">Key-Value Pairs</Label>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                    const newObj = { ...objectValue, [`key${Object.keys(objectValue).length + 1}`]: '' };
+                                    onChange(newObj);
+                                }}
+                                className="h-6 px-2 text-xs"
+                            >
+                                <Plus className="h-3 w-3 mr-1" />
+                                Add Pair
+                            </Button>
+                        </div>
+                        <div className="space-y-1 max-h-40 overflow-y-auto">
+                            {objectEntries.length === 0 ? (
+                                <div className="text-xs text-gray-500 p-2 border border-dashed rounded">
+                                    No key-value pairs. Click "Add Pair" to start.
+                                </div>
+                            ) : (
+                                objectEntries.map(([key, val], index) => (
+                                    <div key={index} className="flex items-center space-x-1">
+                                        <Input
+                                            value={key}
+                                            onChange={(e) => {
+                                                const newObj = { ...objectValue };
+                                                delete newObj[key];
+                                                newObj[e.target.value] = val;
+                                                onChange(newObj);
+                                            }}
+                                            placeholder="Key"
+                                            className="text-xs flex-1"
+                                        />
+                                        <Input
+                                            value={val as string}
+                                            onChange={(e) => {
+                                                const newObj = { ...objectValue, [key]: e.target.value };
+                                                onChange(newObj);
+                                            }}
+                                            placeholder="Value"
+                                            className="text-xs flex-1"
+                                        />
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => {
+                                                const newObj = { ...objectValue };
+                                                delete newObj[key];
+                                                onChange(newObj);
+                                            }}
+                                            className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
+                                        >
+                                            <X className="h-3 w-3" />
+                                        </Button>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                        <details className="text-xs">
+                            <summary className="cursor-pointer text-gray-500 hover:text-gray-700">JSON View</summary>
+                            <Textarea
+                                value={JSON.stringify(objectValue, null, 2)}
+                                onChange={(e) => {
+                                    try {
+                                        const parsed = JSON.parse(e.target.value);
+                                        onChange(parsed);
+                                    } catch {
+                                        // Invalid JSON, don't update
+                                    }
+                                }}
+                                className="text-xs font-mono mt-1 min-h-[60px]"
+                                rows={3}
+                            />
+                        </details>
+                    </div>
                 )
-
+                
             default:
                 return (
                     <Input
@@ -636,93 +765,60 @@ export const FieldConfigurationPanel: React.FC<FieldConfigurationPanelProps> = (
         )
     }
 
-    // Show Enhanced Property Editor if enabled
-    if (showEnhancedEditor) {
-        return (
-            <>
-                <Card className={className}>
-                    <CardHeader>
-                        <CardTitle className="flex items-center justify-between">
-                            <span>Configure Field: {field.name}</span>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setShowEnhancedEditor(true)}
-                                className="flex items-center gap-2"
-                            >
-                                <Settings className="h-4 w-4" />
-                                Advanced Editor
-                            </Button>
-                        </CardTitle>
-                        <div className="flex items-center space-x-2 mt-2">
-                            <Badge variant="secondary">{field.type}</Badge>
-                            {field.required && (
-                                <Badge variant="destructive">Required</Badge>
-                            )}
-                        </div>
-                        {field.description && (
-                            <p className="text-sm text-gray-600 mt-2">{field.description}</p>
-                        )}
-                    </CardHeader>
-                    <CardContent className="space-y-6">
-                        {/* Default Value Configuration */}
-                        {renderDefaultValueEditor()}
-
-                        {/* Array Configuration */}
-                        {field.type === 'array' && renderEnhancedArrayConfiguration()}
-                    </CardContent>
-                </Card>
-
-                <Dialog open={showEnhancedEditor} onOpenChange={setShowEnhancedEditor}>
-                    <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-                        <DialogHeader>
-                            <DialogTitle>Enhanced Property Editor</DialogTitle>
-                        </DialogHeader>
-                        <EnhancedPropertyEditor
-                            property={convertToSchemaProperty(field)}
-                            onSave={handleEnhancedEditorSave}
-                            onCancel={handleEnhancedEditorCancel}
-                        />
-                    </DialogContent>
-                </Dialog>
-            </>
-        )
-    }
-
-
     return (
-        <Card className={className}>
-            <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                    <span>Configure Field: {field.name}</span>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setShowEnhancedEditor(true)}
-                        className="flex items-center gap-2"
-                    >
-                        <Settings className="h-4 w-4" />
-                        Advanced Editor
-                    </Button>
-                </CardTitle>
-                <div className="flex items-center space-x-2 mt-2">
-                    <Badge variant="secondary">{field.type}</Badge>
-                    {field.required && (
-                        <Badge variant="destructive">Required</Badge>
+        <>
+            <Card className={className}>
+                <CardHeader>
+                    <CardTitle className="flex items-center justify-between">
+                        <span>Configure Field: {field.name}</span>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setShowEnhancedEditor(true)}
+                            className="flex items-center gap-2"
+                        >
+                            <Settings className="h-4 w-4" />
+                            Advanced Editor
+                        </Button>
+                    </CardTitle>
+                    <div className="flex items-center space-x-2 mt-2">
+                        <Badge variant="secondary">{field.type}</Badge>
+                        {field.required && (
+                            <Badge variant="destructive">Required</Badge>
+                        )}
+                        {field.constraints?.enum && (
+                            <Badge variant="outline">enum</Badge>
+                        )}
+                    </div>
+                    {field.description && (
+                        <p className="text-sm text-gray-600 mt-2">{field.description}</p>
                     )}
-                </div>
-                {field.description && (
-                    <p className="text-sm text-gray-600 mt-2">{field.description}</p>
-                )}
-            </CardHeader>
-            <CardContent className="space-y-6">
-                {/* Default Value Configuration */}
-                {renderDefaultValueEditor()}
+                </CardHeader>
+                <CardContent className="space-y-6">
+                    {/* Default Value Configuration */}
+                    {renderDefaultValueEditor()}
 
-                {/* Array Configuration */}
-                {field.type === 'array' && renderEnhancedArrayConfiguration()}
-            </CardContent>
-        </Card>
+                    {/* Array Configuration */}
+                    {field.type === 'array' && renderEnhancedArrayConfiguration()}
+                </CardContent>
+            </Card>
+
+            <Dialog open={showEnhancedEditor} onOpenChange={setShowEnhancedEditor}>
+                <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle>Enhanced Property Editor</DialogTitle>
+                        <DialogDescription>
+                            Configure advanced properties, constraints, and default values for this field.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <EnhancedPropertyEditor
+                        property={convertToSchemaProperty(field)}
+                        onSave={handleEnhancedEditorSave}
+                        onCancel={handleEnhancedEditorCancel}
+                    />
+                </DialogContent>
+            </Dialog>
+
+        </>
     )
-
 }

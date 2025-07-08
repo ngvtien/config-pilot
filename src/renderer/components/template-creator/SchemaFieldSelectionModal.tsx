@@ -50,6 +50,7 @@ export interface SchemaProperty {
     templateType?: 'kubernetes' | 'terraform' | 'ansible' | 'kustomize'
     isReference: boolean
     level?: number
+    enum?: string[]
 }
 
 // Persistence keys for localStorage
@@ -345,6 +346,93 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
         }
     }, [resource, isOpen, resourceKey]);
 
+    // useEffect(() => {
+    //     if (resource && isOpen) {
+    //         setIsLoadingSchema(true);
+
+    //         // Check if resource already has a filtered schema
+    //         if (resource.schema) {
+    //             console.log('Using filtered schema from resource prop:', resource.schema);
+    //             const treeNodes = convertSchemaToTreeNodes(resource.schema);
+    //             setSchemaTree(treeNodes);
+    //             setIsLoadingSchema(false);
+    //             return;
+    //         }
+
+    //         // Fallback to IPC calls if no schema in resource
+    //         const resourceKey = resource.key || `${resource.apiVersion}/${resource.kind}`;
+    //         const isCRD = resource.source === 'cluster-crds';
+
+    //         console.log('🔄 Loading schema via IPC for resource:', {
+    //             resource: resource.key,
+    //             isCRD,
+    //             source: resource.source
+    //         });
+
+    //         let schemaPromise: Promise<SchemaTreeNode[]>;
+
+    //         if (isCRD) {
+    //             // Use CRD-specific IPC channel
+    //             schemaPromise = window.electronAPI.invoke(
+    //                 'schema:getCRDSchemaTree',
+    //                 resource.group,
+    //                 resource.version,
+    //                 resource.kind
+    //             );
+    //         } else {
+    //             // Use standard kubernetes schema IPC channel
+    //             const sourceId = 'kubernetes';
+    //             schemaPromise = window.electronAPI.invoke(
+    //                 'schema:getResourceSchemaTree',
+    //                 sourceId,
+    //                 resourceKey
+    //             );
+    //         }
+
+    //         schemaPromise
+    //             .then((tree: SchemaTreeNode[]) => {
+    //                 console.log('Schema tree received:', tree);
+
+    //                 if (!tree || !Array.isArray(tree)) {
+    //                     console.error('Invalid schema tree received:', tree);
+    //                     setSchemaTree([]);
+    //                     setIsLoadingSchema(false);
+    //                     return;
+    //                 }
+
+    //                 setSchemaTree(tree);
+
+    //                 // Check if we have any persisted data for this resource
+    //                 const hasPersistedData = sessionStorage.getItem(`expandedNodes_${resourceKey}`) !== null;
+
+    //                 if (!hasPersistedData) {
+    //                     // This is a fresh resource - auto-expand first level
+    //                     const firstLevelPaths = new Set<string>();
+    //                     tree.forEach(node => {
+    //                         if (node.children && node.children.length > 0) {
+    //                             firstLevelPaths.add(node.path);
+    //                         }
+    //                     });
+
+    //                     console.log('🌳 Auto-expanding first level nodes for fresh resource:', Array.from(firstLevelPaths));
+    //                     setExpandedObjects(firstLevelPaths);
+    //                 } else {
+    //                     // Load persisted expanded state
+    //                     const persistedExpanded = getPersistedExpandedNodes(resourceKey);
+    //                     console.log('📥 Loading persisted expanded nodes:', persistedExpanded.size);
+    //                     setExpandedObjects(persistedExpanded);
+    //                 }
+
+    //                 setIsLoadingSchema(false);
+    //             })
+    //             .catch((error: any) => {
+    //                 console.error('Failed to fetch schema tree:', error);
+    //                 setSchemaTree([]);
+    //                 setIsLoadingSchema(false);
+    //             });
+    //     }
+    // }, [resource, isOpen, resourceKey]);
+
     useEffect(() => {
         if (resource && resourceKey) {
             console.log('🔄 Resource changed, loading persisted state:', resourceKey)
@@ -599,13 +687,36 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
         return { resolved: property, isReference: false }
     }
 
+    const convertSchemaToTreeNodes = (schema: any, parentPath = ''): SchemaTreeNode[] => {
+        if (!schema?.properties) return [];
+
+        return Object.entries(schema.properties).map(([key, property]: [string, any]) => {
+            const path = parentPath ? `${parentPath}.${key}` : key;
+            const node: SchemaTreeNode = {
+                name: key,
+                path,
+                type: property.type || 'unknown',
+                description: property.description,
+                required: schema.required?.includes(key) || false,
+                enum: property.enum, // Include enum property
+                children: property.properties ? convertSchemaToTreeNodes(property, path) : []
+            };
+            return node;
+        });
+    };
+
     useEffect(() => {
         setSchemaTimestamp(Date.now())
     }, [localSelectedFields])
 
+    /**
+     * Memoized filtered schema that applies field configurations and filters based on selected fields
+     */
     const filteredSchema = useMemo(() => {
         // Force fresh calculation by clearing any cached data
         console.log('🔄 FORCING FRESH SCHEMA CREATION - Timestamp:', schemaTimestamp)
+        console.log('🔧 DEBUG: Current fieldConfigurations:', fieldConfigurations)
+        console.log('🔧 DEBUG: Current localSelectedFields:', localSelectedFields.map(f => ({ path: f.path, title: f.title, defaultValue: f.defaultValue })))
 
         if (!resource?.schema || localSelectedFields.length === 0) {
             return {}
@@ -700,7 +811,13 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
             })
         })
 
-        // Filter the RESOLVED schema properties to only include selected fields
+        /**
+         * Filter schema properties to include only selected fields and apply field configurations
+         * @param schema - The schema object to filter
+         * @param currentPath - Current path in the schema hierarchy
+         * @param depth - Current depth for debugging indentation
+         * @returns Filtered schema with applied configurations
+         */
         const filterProperties = (schema: any, currentPath = '', depth = 0) => {
             const indent = '  '.repeat(depth)
             console.log(`${indent}🔍 DEBUG: filterProperties called with currentPath: "${currentPath}", depth: ${depth}`)
@@ -733,6 +850,35 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
 
                     if (isSelected || hasSelectedChildren || hasSelectedArrayItems) {
                         filteredProps[key] = { ...property }
+
+                        // FIXED: Construct the full field configuration key with resource prefix
+                        const fullFieldConfigKey = resource?.key ? `${resource.key}.${fieldPath}` : fieldPath
+
+                        // Apply field configurations (custom title and default value)
+                        const fieldConfig = fieldConfigurations[fullFieldConfigKey]
+                        console.log(`🔧 DEBUG: Checking field config for "${key}" with full key "${fullFieldConfigKey}": ${fieldConfig}`)
+                        console.log(`🔧 DEBUG: All fieldConfigurations:`, fieldConfigurations)
+
+                        if (fieldConfig !== undefined) {
+                            // Apply custom default value if configured
+                            filteredProps[key].default = fieldConfig
+                            console.log(`✅ DEBUG: Applied default value "${fieldConfig}" to field "${key}"`)
+                        }
+
+                        // FIXED: Apply custom title from selected fields using full path
+                        const selectedField = localSelectedFields.find(f => f.path === fullFieldConfigKey)
+                        if (selectedField && selectedField.title && selectedField.title !== key) {
+                            filteredProps[key].title = selectedField.title
+                            console.log(`✅ DEBUG: Applied custom title "${selectedField.title}" to field "${key}"`)
+                        }
+
+                        // Also check if the selected field has a defaultValue property
+                        if (selectedField && selectedField.defaultValue !== undefined) {
+                            filteredProps[key].default = selectedField.defaultValue
+                            console.log(`✅ DEBUG: Applied defaultValue "${selectedField.defaultValue}" from selectedField to "${key}"`)
+                        }
+
+                        console.log(`🔧 DEBUG: Final property for "${key}":`, filteredProps[key])
 
                         // Recursively filter nested properties
                         if (property.properties && hasSelectedChildren) {
@@ -779,7 +925,7 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
         console.log(JSON.stringify(filtered, null, 2))
 
         return filtered
-    }, [resource?.schema, localSelectedFields, resource?.source, resource?.key, resource?.kind, schemaTimestamp]) // Add timestamp to dependencies
+    }, [resource?.schema, localSelectedFields, resource?.source, resource?.key, resource?.kind, schemaTimestamp, fieldConfigurations])
 
     const memoizedSelectedSchema = useMemo(() => {
         return JSON.stringify(filteredSchema, null, 2);
@@ -832,7 +978,8 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
                 required: schema.required?.includes(key) || false,
                 hasChildren,
                 isReference, // Set the reference flag
-                level
+                level,
+                enum: resolvedProperty.enum
             })
 
             // Recursively process nested objects
@@ -908,7 +1055,8 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
             required: property.required || false,
             description: property.description,
             format: property.format,
-            templateType: property.templateType || 'kubernetes'
+            templateType: property.templateType || 'kubernetes',
+            constraints: property.enum ? { enum: property.enum } : undefined
         }
 
         if (checked) {
@@ -1154,6 +1302,11 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
                         {property.isReference && (
                             <Badge variant="outline" className="ml-2 text-xs">
                                 ref
+                            </Badge>
+                        )}
+                        {property.enum && property.enum.length > 0 && (
+                            <Badge variant="outline" className="text-xs px-1 py-0">
+                                enum
                             </Badge>
                         )}
                         <DescriptionTooltip description={property.description} />
