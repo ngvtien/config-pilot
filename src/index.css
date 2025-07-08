@@ -44,7 +44,8 @@
     --sidebar-border: 20 5.9% 90%;
     --sidebar-ring: 37.7 92.1% 50.2%;
     /* Custom sidebar width for collapsed state */
-    --sidebar-width-icon: 4rem; /* 64px instead of default 3rem (48px) */
+    --sidebar-width-icon: 4rem;
+    /* 64px instead of default 3rem (48px) */
   }
 
   .dark {
@@ -92,7 +93,8 @@
     /* Reduced radius for sharper look */
     --radius: 0.25rem;
     /* Custom sidebar width for collapsed state */
-    --sidebar-width-icon: 4rem; /* 64px instead of default 3rem (48px) */
+    --sidebar-width-icon: 4rem;
+    /* 64px instead of default 3rem (48px) */
   }
 }
 
@@ -113,12 +115,26 @@
 
   /* Custom selection colors */
   .dark ::selection {
-    background: hsl(var(--selection-bg) / 0.3);
+    background: hsl(var(--selection-bg) / 0.8);
     color: hsl(var(--selection-fg));
   }
 
   .dark ::-moz-selection {
-    background: hsl(var(--selection-bg) / 0.3);
+    background: hsl(var(--selection-bg) / 0.8);
+    color: hsl(var(--selection-fg));
+  }
+
+  /* Enhanced input field selection for better readability */
+  .dark input::selection,
+  .dark textarea::selection {
+    background: hsl(var(--selection-bg) / 0.9);
+    /* Even higher contrast for input fields */
+    color: hsl(var(--selection-fg));
+  }
+
+  .dark input::-moz-selection,
+  .dark textarea::-moz-selection {
+    background: hsl(var(--selection-bg) / 0.9);
     color: hsl(var(--selection-fg));
   }
 
@@ -351,7 +367,8 @@
 }
 
 .bg-primary:hover {
-  background-color: hsl(37.7 92.1% 45.2%); /* Darker on hover */
+  background-color: hsl(37.7 92.1% 45.2%);
+  /* Darker on hover */
 }
 
 .bg-secondary {
@@ -460,14 +477,14 @@
 }
 
 /* Prevent header overlap with collapsed sidebar */
-.group[data-collapsible="icon"] [data-sidebar="inset"] > header {
+.group[data-collapsible="icon"] [data-sidebar="inset"]>header {
   margin-left: 4rem;
   width: calc(100% - 4rem);
   transition: margin-left 0.2s ease-in-out, width 0.2s ease-in-out;
 }
 
 /* Reset for expanded state */
-.group[data-state="expanded"] [data-sidebar="inset"] > header {
+.group[data-state="expanded"] [data-sidebar="inset"]>header {
   margin-left: 0;
   width: 100%;
 }

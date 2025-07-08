@@ -56,7 +56,8 @@ export interface SchemaProperty {
 const STORAGE_KEYS = {
     SELECTED_FIELDS: 'schema-field-selection-selected-fields',
     EXPANDED_NODES: 'schema-field-selection-expanded-nodes',
-    SELECTED_FIELDS_SCHEMA: 'schema-field-selection-selected-fields-schema'
+    SELECTED_FIELDS_SCHEMA: 'schema-field-selection-selected-fields-schema',
+    FIELD_CONFIGURATIONS: 'schema-field-selection-field-configurations'
 }
 
 const convertToTreeNodes = (properties: SchemaProperty[]): SchemaTreeNode[] => {
@@ -97,6 +98,30 @@ const convertToTreeNodes = (properties: SchemaProperty[]): SchemaTreeNode[] => {
 
     return rootNodes;
 };
+
+function getPersistedFieldConfigurations(resourceKey: string): Record<string, any> {
+    try {
+        const stored = localStorage.getItem(STORAGE_KEYS.FIELD_CONFIGURATIONS)
+        if (stored) {
+            const allConfigurations = JSON.parse(stored)
+            return allConfigurations[resourceKey] || {}
+        }
+    } catch (error) {
+        console.warn('Failed to load persisted field configurations:', error)
+    }
+    return {}
+}
+
+function persistFieldConfigurations(resourceKey: string, configurations: Record<string, any>) {
+    try {
+        const stored = localStorage.getItem(STORAGE_KEYS.FIELD_CONFIGURATIONS)
+        const allConfigurations = stored ? JSON.parse(stored) : {}
+        allConfigurations[resourceKey] = configurations
+        localStorage.setItem(STORAGE_KEYS.FIELD_CONFIGURATIONS, JSON.stringify(allConfigurations))
+    } catch (error) {
+        console.warn('Failed to persist field configurations:', error)
+    }
+}
 
 /**
  * Get persisted selected fields from localStorage
@@ -234,7 +259,6 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
         }
     }, [memoizedFullSchema])
 
-
     // Force schema recreation whenever fields change
     useEffect(() => {
         setSchemaTimestamp(Date.now())
@@ -362,12 +386,24 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
         }
     }, [expandedObjects, resourceKey])
 
+    useEffect(() => {
+        if (resourceKey) {
+            const persistedConfigurations = getPersistedFieldConfigurations(resourceKey)
+            setFieldConfigurations(persistedConfigurations)
+        }
+    }, [resourceKey])
 
     const handleOpenFieldConfig = (field: EnhancedTemplateField) => {
-        setSelectedFieldForConfig(field);
+        // Merge the field with saved configurations
+        const fieldWithSavedConfig = {
+            ...field,
+            defaultValue: fieldConfigurations[field.path] !== undefined
+                ? fieldConfigurations[field.path]
+                : field.defaultValue
+        };
+        setSelectedFieldForConfig(fieldWithSavedConfig);
         setShowFieldConfigModal(true);
     };
-
 
     /**
      * Handle closing field configuration modal
@@ -380,10 +416,17 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
     /**
      * Handle default value changes for fields
      */
+    // Update handleDefaultValueChange to persist immediately
     const handleDefaultValueChange = (fieldPath: string, value: any) => {
-        setFieldConfigurations(prev => ({ ...prev, [fieldPath]: value }))
+        setFieldConfigurations(prev => {
+            const updated = { ...prev, [fieldPath]: value }
+            // Persist immediately
+            if (resourceKey) {
+                persistFieldConfigurations(resourceKey, updated)
+            }
+            return updated
+        })
     }
-
     /**
      * Handle nested field toggle for complex types
      */
