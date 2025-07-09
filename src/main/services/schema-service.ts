@@ -1233,12 +1233,12 @@ class SchemaService {
   // }
 
   /**
- * Get CRD schema tree with vanilla definitions merged for $ref resolution
- * @param group CRD group
- * @param version CRD version  
- * @param kind CRD kind
- * @returns Promise resolving to schema tree nodes or null if not found
- */
+   * Get CRD schema tree with vanilla definitions merged for $ref resolution
+   * @param group CRD group
+   * @param version CRD version  
+   * @param kind CRD kind
+   * @returns Promise resolving to schema tree nodes or null if not found
+   */
   async getCRDSchemaTree(group: string, version: string, kind: string): Promise<SchemaTreeNode[] | null> {
     const cacheKey = `crd-${group}-${version}-${kind}`;
 
@@ -1282,9 +1282,79 @@ class SchemaService {
       }
     });
 
-    // Now buildSchemaTree can resolve $ref to ObjectMeta and other vanilla types
-    return this.buildSchemaTree(resourceSchema, mergedDefinitions, kind, '', []);
+    // CRD-specific fix: Extract spec properties directly to prevent nested spec
+    if (resourceSchema.properties && resourceSchema.properties.spec) {
+      const specSchema = resourceSchema.properties.spec as JSONSchema7;
+      
+      if (specSchema.type === "object" && specSchema.properties) {
+        console.log('🔧 CRD: Extracting spec properties directly - no spec wrapper');
+        
+        const children: SchemaTreeNode[] = [];
+        const objectRequired = specSchema.required || [];
+
+        // Process each property in spec directly as root-level nodes
+        for (const [key, propSchema] of Object.entries(specSchema.properties)) {
+          // Skip unwanted properties
+          if (key === 'selfLink' || key === 'kind') {
+            continue;
+          }
+
+          // Rename any nested 'spec' property to prevent confusion
+          const displayName = key === 'spec' ? 'specConfig' : key;
+          if (key === 'spec') {
+            console.log(`🔄 CRD: Renaming nested 'spec' property to 'specConfig' to prevent nesting`);
+          }
+
+          const subTree = this.buildSchemaTree(
+            propSchema as JSONSchema7,
+            mergedDefinitions,
+            displayName,
+            displayName, // Path is just the key since we're treating as root
+            objectRequired
+          );
+          children.push(...subTree);
+        }
+
+        // Validate and fix any remaining nested spec structures
+        this.validateAndFixNestedSpec(children);
+
+        return children; // Return spec children directly, no wrapper
+      }
+    }
+
+    // Fallback: use standard buildSchemaTree for CRDs without spec
+    const tree = this.buildSchemaTree(resourceSchema, mergedDefinitions, kind, '', []);
+    this.validateAndFixNestedSpec(tree);
+    return tree;
   }
+
+  /**
+   * Validates and fixes any nested spec structures in the schema tree
+   * @param nodes Array of schema tree nodes to validate
+   */
+  private validateAndFixNestedSpec(nodes: SchemaTreeNode[]): void {
+    for (const node of nodes) {
+      // Check if this is a spec node with spec children
+      if (node.name === 'spec' && node.children) {
+        const nestedSpecChild = node.children.find(child => child.name === 'spec');
+        if (nestedSpecChild) {
+          console.log('🔧 CRD: Detected nested spec structure - flattening');
+          
+          // Rename the nested spec to specConfig
+          nestedSpecChild.name = 'specConfig';
+          nestedSpecChild.path = nestedSpecChild.path.replace(/\/spec$/, '/specConfig');
+          
+          console.log('✅ CRD: Renamed nested spec to specConfig');
+        }
+      }
+      
+      // Recursively check children
+      if (node.children) {
+        this.validateAndFixNestedSpec(node.children);
+      }
+    }
+  }
+  
   /**
    * Get raw CRD JSONSchema7 directly from cache using cache key
    */

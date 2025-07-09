@@ -18,7 +18,7 @@ Object.defineProperty(window, 'electronAPI', {
             name: 'apiVersion',
             type: 'string',
             required: true,
-            enum: ['argoproj.io/v1alpha1'],
+            enum: ['v1'],
             description: 'APIVersion defines the versioned schema',
             children: []
           },
@@ -63,12 +63,14 @@ describe('SchemaFieldSelectionModal - Enum Detection Debug', () => {
    * Test that verifies enum properties are correctly parsed and displayed in tree view
    */
   it('should detect and display enum badge for apiVersion field', async () => {
+    // Use a standard Kubernetes resource instead of CRD
     const mockResource: KubernetesResource = {
-      kind: 'Application',
-      apiVersion: 'argoproj.io/v1alpha1',
-      key: 'argoproj.io/v1alpha1/Application',
+      kind: 'Pod',
+      apiVersion: 'v1',
+      key: 'v1/Pod',
+      source: 'kubernetes', // Changed from 'cluster-crds' to 'kubernetes'
       metadata: {
-        name: 'test-app',
+        name: 'test-pod',
         namespace: 'default'
       }
     }

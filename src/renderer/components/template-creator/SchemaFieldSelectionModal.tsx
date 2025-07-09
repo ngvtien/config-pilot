@@ -760,42 +760,46 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
         console.log('🔍 DEBUG: Schema fully resolved, root properties:', Object.keys(resolvedSchema.properties || {}))
 
         // Get selected field paths (normalize them)
-        const selectedPaths = new Set(localSelectedFields.map(f => {
-            console.log('🔍 DEBUG: Processing original path:', f.path)
+const selectedPaths = new Set(localSelectedFields.map(f => {
+        console.log('🔍 DEBUG: Processing original path:', f.path)
 
-            let normalizedPath = f.path
+        let normalizedPath = f.path
 
-            // Handle CRD paths first
-            if (resource.source === 'cluster-crds' && normalizedPath.startsWith('spec.versions[0].schema.openAPIV3Schema.properties.')) {
-                normalizedPath = normalizedPath.replace('spec.versions[0].schema.openAPIV3Schema.properties.', '')
-                console.log('🔍 DEBUG: CRD spec normalized path:', normalizedPath)
+        // Handle CRD paths - more comprehensive normalization
+        if (resource.source === 'cluster-crds') {
+            // Remove CRD-specific prefixes in order of specificity
+            const prefixesToRemove = [
+                'spec.versions[0].schema.openAPIV3Schema.properties.',
+                `${resource.kind}.spec.`,
+                `${resource.kind}.`,
+                'spec.',
+                'properties.'
+            ]
+            
+            for (const prefix of prefixesToRemove) {
+                if (normalizedPath.startsWith(prefix)) {
+                    normalizedPath = normalizedPath.replace(prefix, '')
+                    console.log(`🔍 DEBUG: Removed prefix "${prefix}", result: ${normalizedPath}`)
+                    break // Only remove the first matching prefix
+                }
             }
-
+        } else {
             // Handle standard paths
             if (normalizedPath.startsWith('properties.')) {
                 normalizedPath = normalizedPath.replace('properties.', '')
                 console.log('🔍 DEBUG: Standard normalized path:', normalizedPath)
             }
 
-            // Handle CRD kind prefix paths (e.g., 'Application.apiVersion' -> 'apiVersion')
-            if (resource.source === 'cluster-crds' && resource?.kind && normalizedPath.startsWith(resource.kind + '.')) {
-                normalizedPath = normalizedPath.replace(resource.kind + '.', '')
-                console.log('🔍 DEBUG: CRD kind prefix normalized path:', normalizedPath)
-            }
             // Handle standard resource prefix paths (e.g., 'io.k8s.api.core.v1.ConfigMap.apiVersion' -> 'apiVersion')
-            else if (resource?.key && normalizedPath.startsWith(resource.key + '.')) {
+            if (resource?.key && normalizedPath.startsWith(resource.key + '.')) {
                 normalizedPath = normalizedPath.replace(resource.key + '.', '')
                 console.log('🔍 DEBUG: Resource prefix normalized path:', normalizedPath)
             }
+        }
 
-            if (normalizedPath === f.path) {
-                console.log('🔍 DEBUG: No normalization needed:', normalizedPath)
-            }
-
-            console.log('🔍 DEBUG: Final normalized path:', normalizedPath)
-            return normalizedPath
-        }))
-
+        console.log('🔍 DEBUG: Final normalized path:', normalizedPath)
+        return normalizedPath
+    }))
         console.log('🔍 DEBUG: Final selected paths set:', Array.from(selectedPaths))
 
         // ===== DUMP SELECTED FIELDS SCHEMA =====
