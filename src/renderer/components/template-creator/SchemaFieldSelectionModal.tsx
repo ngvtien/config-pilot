@@ -21,13 +21,9 @@ import { SchemaTreeNode } from '../../../shared/types/schema';
 import { SchemaTreeView } from './SchemaTreeView';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import { KubernetesSchemaService } from '../../services/kubernetes-schema-service'
-import { Input } from '@/renderer/components/ui/input'
-import { Switch } from '@/renderer/components/ui/switch'
-import { Textarea } from '@/renderer/components/ui/textarea'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/renderer/components/ui/select'
 import { EnhancedTemplateField, ArrayItemFieldConfig } from '@/shared/types/enhanced-template-field'
 import { FieldConfigurationPanel } from './FieldConfigurationPanel'
+import { normalizeFieldPath } from '../../utils/pathNormalization'
 
 interface SchemaFieldSelectionModalProps {
     isOpen: boolean
@@ -99,6 +95,26 @@ const convertToTreeNodes = (properties: SchemaProperty[]): SchemaTreeNode[] => {
 
     return rootNodes;
 };
+
+export function isPathSelected(path: string, selectedPaths: Set<string>, resourceKind?: string): boolean {
+    // Check exact match
+    if (selectedPaths.has(path)) return true;
+
+    // Check CRD variations if resourceKind is provided
+    if (resourceKind) {
+        // Check with resource kind prefix (e.g. 'Application.spec.info')
+        const prefixedPath = `${resourceKind}.${path}`;
+        if (selectedPaths.has(prefixedPath)) return true;
+
+        // Check without 'spec.' prefix if path starts with it
+        if (path.startsWith('spec.')) {
+            const noSpecPath = path.substring(5);
+            if (selectedPaths.has(noSpecPath)) return true;
+        }
+    }
+
+    return false;
+}
 
 function getPersistedFieldConfigurations(resourceKey: string): Record<string, any> {
     try {
@@ -215,6 +231,40 @@ function persistSelectedFieldsSchema(resourceKey: string, schema: any) {
 }
 
 /**
+ * Generate path variations for a given path based on resource type
+ * This helps handle different ways a path might be represented in the schema
+ */
+export const normalizePath = (path: string, resource?: any): string[] => {
+    // Always keep the original path as first variation
+    const variations = [path];
+
+    // For CRDs, we need to handle paths with and without spec. prefix
+    if (resource?.source === 'cluster-crds') {
+        if (path.startsWith('spec.')) {
+            // Add variation without spec. prefix
+            variations.push(path.replace('spec.', ''));
+        } else if (!path.includes('.') && path !== 'spec') {
+            // For top-level fields that don't have a dot and are not 'spec' itself, add spec. prefix variation
+            variations.push(`spec.${path}`);
+        }
+
+        // Also add resource kind prefixed variations if kind is available
+        if (resource?.kind) {
+            variations.push(`${resource.kind}.${path}`);
+            if (path.startsWith('spec.')) {
+                variations.push(`${resource.kind}.${path.replace('spec.', '')}`);
+            } else if (!path.includes('.') && path !== 'spec') {
+                variations.push(`${resource.kind}.spec.${path}`);
+            }
+        }
+    }
+
+    // For debugging
+    console.log('🔍 DEBUG: Path variations:', variations);
+    return variations;
+};
+
+/**
  * Modal component for selecting schema fields with tooltips and hierarchical display
  * Supports multiple template formats and state persistence
  */
@@ -313,29 +363,42 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
                         return;
                     }
 
+                    // Filter the tree to only include spec and allowed metadata fields
+                    const filteredTree = tree.filter(node => {
+                        // Always include spec
+                        if (node.path === 'spec') return true;
+                        // Only include metadata.labels and metadata.annotations
+                        if (node.path === 'metadata') {
+                            // Keep metadata but filter its children later
+                            return true;
+                        }
+                        // Exclude other top-level fields (status, operation, etc.)
+                        return false;
+                    });
+
+                    // If we have metadata, filter its children
+                    const metadataNode = filteredTree.find(node => node.path === 'metadata');
+                    if (metadataNode && metadataNode.children) {
+                        metadataNode.children = metadataNode.children.filter(child =>
+                            child.name === 'labels' || child.name === 'annotations'
+                        );
+                    }
+
                     setSchemaTree(tree);
 
                     // Check if we have any persisted data for this resource
                     const hasPersistedData = sessionStorage.getItem(`expandedNodes_${resourceKey}`) !== null;
 
                     if (!hasPersistedData) {
-                        // This is a fresh resource - auto-expand first level
-                        const firstLevelPaths = new Set<string>();
-                        tree.forEach(node => {
-                            if (node.children && node.children.length > 0) {
-                                firstLevelPaths.add(node.path);
-                            }
-                        });
-
-                        console.log('🌳 Auto-expanding first level nodes for fresh resource:', Array.from(firstLevelPaths));
-                        setExpandedObjects(firstLevelPaths);
+                        // This is a fresh resource - start with all nodes collapsed
+                        console.log('🌳 Starting with collapsed tree for fresh resource');
+                        setExpandedObjects(new Set<string>());
                     } else {
                         // Load persisted expanded state
                         const persistedExpanded = getPersistedExpandedNodes(resourceKey);
                         console.log('📥 Loading persisted expanded nodes:', persistedExpanded.size);
                         setExpandedObjects(persistedExpanded);
                     }
-
                     setIsLoadingSchema(false);
                 })
                 .catch((error: any) => {
@@ -405,24 +468,16 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
     //                 // Check if we have any persisted data for this resource
     //                 const hasPersistedData = sessionStorage.getItem(`expandedNodes_${resourceKey}`) !== null;
 
-    //                 if (!hasPersistedData) {
-    //                     // This is a fresh resource - auto-expand first level
-    //                     const firstLevelPaths = new Set<string>();
-    //                     tree.forEach(node => {
-    //                         if (node.children && node.children.length > 0) {
-    //                             firstLevelPaths.add(node.path);
-    //                         }
-    //                     });
-
-    //                     console.log('🌳 Auto-expanding first level nodes for fresh resource:', Array.from(firstLevelPaths));
-    //                     setExpandedObjects(firstLevelPaths);
-    //                 } else {
-    //                     // Load persisted expanded state
-    //                     const persistedExpanded = getPersistedExpandedNodes(resourceKey);
-    //                     console.log('📥 Loading persisted expanded nodes:', persistedExpanded.size);
-    //                     setExpandedObjects(persistedExpanded);
-    //                 }
-
+    // if (!hasPersistedData) {
+    //     // This is a fresh resource - start with all nodes collapsed
+    //     console.log('🌳 Starting with collapsed tree for fresh resource');
+    //     setExpandedObjects(new Set<string>());
+    // } else {
+    //     // Load persisted expanded state
+    //     const persistedExpanded = getPersistedExpandedNodes(resourceKey);
+    //     console.log('📥 Loading persisted expanded nodes:', persistedExpanded.size);
+    //     setExpandedObjects(persistedExpanded);
+    // }
     //                 setIsLoadingSchema(false);
     //             })
     //             .catch((error: any) => {
@@ -710,226 +765,1077 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
     }, [localSelectedFields])
 
     /**
+     * Build filtered schema directly from selected tree nodes
+     * This eliminates the need for complex path normalization and matching
+     */
+    // const buildSchemaFromSelectedNodes = (
+    //     originalSchema: any,
+    //     selectedPaths: Set<string>,
+    //     treeNodes: SchemaTreeNode[]
+    // ): any => {
+    //     console.log('🌳 Building schema from selected tree nodes:', Array.from(selectedPaths));
+
+    //     /**
+    //      * Check if a path or any of its children are selected
+    //      */
+    //     const isPathOrChildSelected = (node: SchemaTreeNode, selectedPaths: Set<string>): boolean => {
+    //         if (selectedPaths.has(node.path)) {
+    //             return true;
+    //         }
+    //         if (node.children) {
+    //             return node.children.some(child => isPathOrChildSelected(child, selectedPaths));
+    //         }
+    //         return false;
+    //     };
+
+    //     /**
+    //      * Find property definition in schema by path
+    //      */
+    //     const findPropertyByPath = (schema: any, path: string): any => {
+    //         const parts = path.split('.');
+    //         let current = schema;
+
+    //         for (const part of parts) {
+    //             if (current?.properties?.[part]) {
+    //                 current = current.properties[part];
+    //             } else {
+    //                 return null;
+    //             }
+    //         }
+    //         return current;
+    //     };
+
+    //     /**
+    //      * Recursively build schema structure from tree nodes
+    //      */
+    //     const buildSchemaFromNodes = (nodes: SchemaTreeNode[], currentSchema: any): any => {
+    //         const result: any = {
+    //             type: 'object',
+    //             properties: {}
+    //         };
+
+    //         nodes.forEach(node => {
+    //             // Check if this node or any of its children are selected
+    //             const isNodeSelected = selectedPaths.has(node.path);
+    //             const hasSelectedChildren = node.children?.some(child => 
+    //                 isPathOrChildSelected(child, selectedPaths)
+    //             );
+
+    //             if (isNodeSelected || hasSelectedChildren) {
+    //                 // Find the original property definition
+    //                 const originalProperty = findPropertyByPath(originalSchema, node.path);
+
+    //                 if (originalProperty) {
+    //                     result.properties[node.name] = { ...originalProperty };
+
+    //                     // Apply custom configurations from selected fields
+    //                     const resourceKey = resource?.key || `${resource?.apiVersion}/${resource?.kind}`;
+    //                     const fullFieldPath = `${resourceKey}.${node.path}`;
+    //                     const selectedField = localSelectedFields.find(f => f.path === fullFieldPath);
+
+    //                     if (selectedField) {
+    //                         if (selectedField.title && selectedField.title !== node.name) {
+    //                             result.properties[node.name].title = selectedField.title;
+    //                         }
+    //                         if (selectedField.defaultValue !== undefined) {
+    //                             result.properties[node.name].default = selectedField.defaultValue;
+    //                         }
+    //                     }
+
+    //                     // Recursively build children if they exist and have selections
+    //                     if (node.children && node.children.length > 0 && hasSelectedChildren) {
+    //                         if (originalProperty.type === 'object' && originalProperty.properties) {
+    //                             const childSchema = buildSchemaFromNodes(node.children, originalSchema);
+    //                             if (Object.keys(childSchema.properties).length > 0) {
+    //                                 result.properties[node.name].properties = childSchema.properties;
+    //                             }
+    //                         } else if (originalProperty.type === 'array' && originalProperty.items) {
+    //                             // Handle array items
+    //                             const childSchema = buildSchemaFromNodes(node.children, originalSchema);
+    //                             if (Object.keys(childSchema.properties).length > 0) {
+    //                                 result.properties[node.name].items = {
+    //                                     ...originalProperty.items,
+    //                                     properties: childSchema.properties
+    //                                 };
+    //                             }
+    //                         }
+    //                     }
+    //                 }
+    //             }
+    //         });
+
+    //         return result;
+    //     };
+
+    //     // Build the filtered schema from tree nodes
+    //     const filteredSchema = buildSchemaFromNodes(treeNodes, originalSchema);
+
+    //     // Always include required Kubernetes fields
+    //     if (originalSchema.properties) {
+    //         // Preserve apiVersion and kind if they exist
+    //         if (originalSchema.properties.apiVersion) {
+    //             filteredSchema.properties.apiVersion = originalSchema.properties.apiVersion;
+    //         }
+    //         if (originalSchema.properties.kind) {
+    //             filteredSchema.properties.kind = originalSchema.properties.kind;
+    //         }
+
+    //         // Include minimal metadata with labels and annotations
+    //         if (originalSchema.properties.metadata) {
+    //             filteredSchema.properties.metadata = {
+    //                 type: 'object',
+    //                 properties: {}
+    //             };
+
+    //             // Add labels and annotations if they exist
+    //             if (originalSchema.properties.metadata.properties?.labels) {
+    //                 filteredSchema.properties.metadata.properties.labels =
+    //                     originalSchema.properties.metadata.properties.labels;
+    //             }
+    //             if (originalSchema.properties.metadata.properties?.annotations) {
+    //                 filteredSchema.properties.metadata.properties.annotations =
+    //                     originalSchema.properties.metadata.properties.annotations;
+    //             }
+    //         }
+    //     }
+
+    //     console.log('🌳 Built filtered schema:', filteredSchema);
+    //     return filteredSchema;
+    // };
+
+
+    // /**
+    //  * Build filtered schema directly from selected tree nodes
+    //  * This eliminates the need for complex path normalization and matching
+    //  */
+    // const buildSchemaFromSelectedNodes = (
+    //     originalSchema: any,
+    //     selectedPaths: Set<string>,
+    //     treeNodes: SchemaTreeNode[]
+    // ): any => {
+    //     const findPropertyByPath = (schema: any, path: string): any => {
+    //         const parts = path.split('.');
+    //         let current = schema;
+
+    //         for (const part of parts) {
+    //             if (current?.properties?.[part]) {
+    //                 current = current.properties[part];
+    //             } else {
+    //                 return null;
+    //             }
+    //         }
+    //         return current;
+    //     };
+
+    //     const isPathOrChildSelected = (node: SchemaTreeNode, selectedPaths: Set<string>): boolean => {
+    //         if (selectedPaths.has(node.path)) {
+    //             return true;
+    //         }
+
+    //         return node.children?.some(child => isPathOrChildSelected(child, selectedPaths)) || false;
+    //     };
+
+    //     const buildSchemaFromNodes = (nodes: SchemaTreeNode[], currentSchema: any): any => {
+    //         const result: any = {
+    //             type: 'object',
+    //             properties: {}
+    //         };
+
+    //         nodes.forEach(node => {
+    //             const isNodeSelected = selectedPaths.has(node.path);
+    //             const hasSelectedChildren = node.children?.some((child: SchemaTreeNode) => 
+    //                 isPathOrChildSelected(child, selectedPaths)
+    //             );
+
+    //             if (isNodeSelected || hasSelectedChildren) {
+    //                 const originalProperty = findPropertyByPath(originalSchema, node.path);
+
+    //                 if (originalProperty) {
+    //                     result.properties[node.name] = { ...originalProperty };
+
+    //                     if (node.children && node.children.length > 0 && hasSelectedChildren) {
+    //                         const childSchema = buildSchemaFromNodes(node.children, originalProperty);
+    //                         if (Object.keys(childSchema.properties).length > 0) {
+    //                             result.properties[node.name].properties = childSchema.properties;
+    //                         }
+    //                     }
+    //                 }
+    //             }
+    //         });
+
+    //         return result;
+    //     };
+
+    //     // Always include required Kubernetes fields
+    //     const baseSchema = {
+    //         type: 'object',
+    //         properties: {
+    //             apiVersion: originalSchema.properties?.apiVersion || { type: 'string' },
+    //             kind: originalSchema.properties?.kind || { type: 'string' },
+    //             metadata: {
+    //                 type: 'object',
+    //                 properties: {
+    //                     name: { type: 'string' },
+    //                     labels: { type: 'object' },
+    //                     annotations: { type: 'object' }
+    //                 }
+    //             }
+    //         }
+    //     };
+
+    //     // Build filtered schema from tree nodes
+    //     const filteredResult = buildSchemaFromNodes(treeNodes, originalSchema);
+
+    //     // Merge with base schema
+    //     return {
+    //         ...baseSchema,
+    //         properties: {
+    //             ...baseSchema.properties,
+    //             ...filteredResult.properties
+    //         }
+    //     };
+    // };
+
+
+    const buildSchemaFromSelectedNodes = (
+        originalSchema: any,
+        selectedPaths: Set<string>,
+        treeNodes: SchemaTreeNode[]
+    ): any => {
+        console.log('🔧 DEBUG buildSchemaFromSelectedNodes: Starting with', {
+            selectedPathsCount: selectedPaths.size,
+            selectedPaths: Array.from(selectedPaths),
+            treeNodesCount: treeNodes.length,
+            treeNodeNames: treeNodes.map(n => ({ name: n.name, path: n.path, hasChildren: !!n.children?.length }))
+        });
+
+        /**
+         * Check if a node has any selected children by examining selected paths
+         * @param nodePath - The path of the current node
+         * @param selectedPaths - Set of all selected paths
+         * @returns true if any selected path starts with nodePath + '.'
+         */
+        const hasSelectedChildrenByPath = (nodePath: string, selectedPaths: Set<string>): boolean => {
+            const childPrefix = nodePath + '.';
+            return Array.from(selectedPaths).some(path => path.startsWith(childPrefix));
+        };
+
+        /**
+         * Recursively build schema from tree nodes
+         * @param nodes - Array of tree nodes to process
+         * @param depth - Current depth for logging indentation
+         * @returns Schema object with properties from selected nodes
+         */
+        const buildFromNodes = (nodes: SchemaTreeNode[], depth = 0): any => {
+            const indent = '  '.repeat(depth);
+            const properties: any = {};
+
+            console.log(`${indent}🔧 DEBUG buildFromNodes: Processing ${nodes.length} nodes at depth ${depth}`);
+
+            nodes.forEach((node, index) => {
+                const isSelected = selectedPaths.has(node.path);
+
+                // FIXED: Check for selected children by examining selected paths directly
+                const hasSelectedChildren = hasSelectedChildrenByPath(node.path, selectedPaths);
+
+                console.log(`${indent}🔧 DEBUG Node ${index + 1}:`, {
+                    name: node.name,
+                    path: node.path,
+                    isSelected,
+                    hasSelectedChildren,
+                    willInclude: isSelected || hasSelectedChildren
+                });
+
+                // If this node is selected OR has selected children, include it
+                if (isSelected || hasSelectedChildren) {
+                    console.log(`${indent}✅ Including node: ${node.name}`);
+
+                    // Start with the node's schema if available
+                    properties[node.name] = {
+                        type: node.type || 'object',
+                        ...(node.description && { description: node.description }),
+                        ...(node.required && { required: true })
+                    };
+
+                    // If node has selected children, we need to build child properties
+                    if (hasSelectedChildren) {
+                        console.log(`${indent}🔧 Processing children for: ${node.name} (has selected children)`);
+
+                        // Find all child paths for this node
+                        const childPrefix = node.path + '.';
+                        const childPaths = Array.from(selectedPaths)
+                            .filter(path => path.startsWith(childPrefix))
+                            .map(path => {
+                                // Get the immediate child name (first segment after the prefix)
+                                const relativePath = path.substring(childPrefix.length);
+                                const firstSegment = relativePath.split('.')[0];
+                                return {
+                                    name: firstSegment,
+                                    path: childPrefix + firstSegment,
+                                    fullPath: path
+                                };
+                            });
+
+                        // Create unique child nodes
+                        const uniqueChildNodes = new Map<string, SchemaTreeNode>();
+                        childPaths.forEach(child => {
+                            if (!uniqueChildNodes.has(child.name)) {
+                                uniqueChildNodes.set(child.name, {
+                                    name: child.name,
+                                    path: child.path,
+                                    type: 'object', // Default type, will be refined
+                                    children: []
+                                });
+                            }
+                        });
+
+                        // Recursively build child properties
+                        const childNodes = Array.from(uniqueChildNodes.values());
+                        if (childNodes.length > 0) {
+                            const childProperties = buildFromNodes(childNodes, depth + 1);
+                            if (Object.keys(childProperties).length > 0) {
+                                properties[node.name].properties = childProperties;
+                                if (!properties[node.name].type) {
+                                    properties[node.name].type = 'object';
+                                }
+                                console.log(`${indent}✅ Added ${Object.keys(childProperties).length} child properties to: ${node.name}`);
+                            }
+                        }
+                    }
+                } else {
+                    console.log(`${indent}❌ Skipping node: ${node.name}`);
+                }
+            });
+
+            console.log(`${indent}🔧 DEBUG buildFromNodes result: ${Object.keys(properties).length} properties`, Object.keys(properties));
+            return properties;
+        };
+
+        // Always include required Kubernetes base fields
+        const baseSchema = {
+            type: 'object',
+            properties: {
+                apiVersion: originalSchema.properties?.apiVersion || { type: 'string' },
+                kind: originalSchema.properties?.kind || { type: 'string' },
+                metadata: {
+                    type: 'object',
+                    properties: {
+                        name: { type: 'string' },
+                        labels: { type: 'object' },
+                        annotations: { type: 'object' }
+                    }
+                }
+            }
+        };
+
+        // Build properties from selected tree nodes
+        console.log('🔧 DEBUG: Building properties from tree nodes...');
+        const selectedProperties = buildFromNodes(treeNodes);
+
+        console.log('🔧 DEBUG: Final results:', {
+            baseSchemaProperties: Object.keys(baseSchema.properties),
+            selectedProperties: Object.keys(selectedProperties),
+            totalProperties: Object.keys({ ...baseSchema.properties, ...selectedProperties }).length
+        });
+
+        // Merge base schema with selected properties
+        const result = {
+            ...baseSchema,
+            properties: {
+                ...baseSchema.properties,
+                ...selectedProperties
+            }
+        };
+
+        console.log('🔧 DEBUG: Final schema result:', result);
+        return result;
+    };
+
+    /**
      * Memoized filtered schema that applies field configurations and filters based on selected fields
      */
+    // const filteredSchema = useMemo(() => {
+    //     // Force fresh calculation by clearing any cached data
+    //     console.log('🔄 FORCING FRESH SCHEMA CREATION - Timestamp:', schemaTimestamp)
+    //     console.log('🔧 DEBUG: Current fieldConfigurations:', fieldConfigurations)
+    //     console.log('🔧 DEBUG: Current localSelectedFields:', localSelectedFields.map(f => ({ path: f.path, title: f.title, defaultValue: f.defaultValue })))
+
+    //     if (!resource?.schema || localSelectedFields.length === 0) {
+    //         return {}
+    //     }
+
+    //     console.log('🔍 DEBUG: Building filtered schema from selected fields')
+    //     console.log('🔍 DEBUG: Selected fields:', localSelectedFields.map(f => f.path))
+    //     console.log('🔍 DEBUG: Resource info:', { source: resource.source, key: resource.key, kind: resource.kind })
+
+    //     // FIRST: Resolve all $ref in the schema before filtering
+    //     const resolveEntireSchema = (schema: any): any => {
+    //         if (!schema || typeof schema !== 'object') {
+    //             return schema
+    //         }
+
+    //         // If this is a $ref, resolve it
+    //         if (schema.$ref) {
+    //             const { resolved } = resolveSchemaReference(schema, resource.schema)
+    //             return resolveEntireSchema(resolved) // Recursively resolve in case the resolved schema has more $ref
+    //         }
+
+    //         // If this is an object with properties, resolve each property
+    //         if (schema.properties) {
+    //             const resolvedProperties: any = {}
+    //             Object.keys(schema.properties).forEach(key => {
+    //                 resolvedProperties[key] = resolveEntireSchema(schema.properties[key])
+    //             })
+    //             return { ...schema, properties: resolvedProperties }
+    //         }
+
+    //         // If this is an array with items, resolve the items
+    //         if (schema.items) {
+    //             return { ...schema, items: resolveEntireSchema(schema.items) }
+    //         }
+
+    //         return schema
+    //     }
+
+    //     // Start with a fully resolved schema (no $ref)
+    //     const resolvedSchema = resolveEntireSchema(resource.schema)
+    //     console.log('🔍 DEBUG: Schema fully resolved, root properties:', Object.keys(resolvedSchema.properties || {}))
+
+    //     // Get selected field paths (normalize them)
+    //     const selectedPaths = new Set(localSelectedFields.map(f => {
+    //         console.log('🔍 DEBUG: Processing original path:', f.path)
+
+    //         let normalizedPath = f.path
+
+    //         // Handle CRD paths - more comprehensive normalization
+    //         if (resource.source === 'cluster-crds') {
+    //             // Remove CRD-specific prefixes in order of specificity
+    //             const prefixesToRemove = [
+    //                 'spec.versions[0].schema.openAPIV3Schema.properties.',
+    //                 `${resource.kind}.spec.`,
+    //                 `${resource.kind}.`,
+    //                 'spec.',
+    //                 'properties.'
+    //             ]
+
+    //             for (const prefix of prefixesToRemove) {
+    //                 if (normalizedPath.startsWith(prefix)) {
+    //                     normalizedPath = normalizedPath.replace(prefix, '')
+    //                     console.log(`🔍 DEBUG: Removed prefix "${prefix}", result: ${normalizedPath}`)
+    //                     break // Only remove the first matching prefix
+    //                 }
+    //             }
+    //         } else {
+    //             // Handle standard paths
+    //             if (normalizedPath.startsWith('properties.')) {
+    //                 normalizedPath = normalizedPath.replace('properties.', '')
+    //                 console.log('🔍 DEBUG: Standard normalized path:', normalizedPath)
+    //             }
+
+    //             // Handle standard resource prefix paths (e.g., 'io.k8s.api.core.v1.ConfigMap.apiVersion' -> 'apiVersion')
+    //             if (resource?.key && normalizedPath.startsWith(resource.key + '.')) {
+    //                 normalizedPath = normalizedPath.replace(resource.key + '.', '')
+    //                 console.log('🔍 DEBUG: Resource prefix normalized path:', normalizedPath)
+    //             }
+    //         }
+
+    //         console.log('🔍 DEBUG: Final normalized path:', normalizedPath)
+    //         return normalizedPath
+    //     }))
+    //     console.log('🔍 DEBUG: Final selected paths set:', Array.from(selectedPaths))
+
+    //     // ===== DUMP SELECTED FIELDS SCHEMA =====
+    //     console.log('🎯 DEBUG: SELECTED FIELDS SCHEMA DUMP:')
+    //     console.log('Selected Fields Array:')
+    //     localSelectedFields.forEach((field, index) => {
+    //         console.log(`Field ${index + 1}:`, {
+    //             path: field.path,
+    //             title: field.title,
+    //             type: field.type,
+    //             required: field.required,
+    //             description: field.description
+    //         })
+    //     })
+
+    //     /**
+    //      * Filter schema properties to include only selected fields and apply field configurations
+    //      * @param schema - The schema object to filter
+    //      * @param currentPath - Current path in the schema hierarchy
+    //      * @param depth - Current depth for debugging indentation
+    //      * @returns Filtered schema with applied configurations
+    //      */
+    //     // const filterProperties = (schema: any, currentPath = '', depth = 0) => {
+    //     //     const indent = '  '.repeat(depth)
+    //     //     console.log(`${indent}🔍 DEBUG: filterProperties called with currentPath: "${currentPath}", depth: ${depth}`)
+    //     //     console.log(`${indent}🔍 DEBUG: Resource info:`, { source: resource?.source, key: resource?.key, kind: resource?.kind })
+    //     //     console.log(`${indent}🔍 DEBUG: Selected paths:`, Array.from(selectedPaths))
+
+    //     //     // Handle schemas without properties (but may have items for arrays)
+    //     //     if (!schema?.properties && !schema?.items) {
+    //     //         console.log(`${indent}🔍 DEBUG: No properties or items found in schema`)
+    //     //         return schema
+    //     //     }
+
+    //     //     let result = { ...schema }
+
+    //     //     // Handle object properties
+    //     //     if (schema.properties) {
+    //     //         console.log(`${indent}🔍 DEBUG: Schema properties available:`, Object.keys(schema.properties))
+    //     //         const filteredProps: any = {}
+
+    //     //         Object.entries(schema.properties).forEach(([key, property]: [string, any]) => {
+    //     //             const fieldPath = currentPath ? `${currentPath}.${key}` : key
+
+    //     //             console.log(`${indent}🔍 DEBUG: Checking field "${key}" with path "${fieldPath}"`)
+
+    //     //             const isCRD = resource?.source === 'cluster-crds';
+    //     //             const crdPrefix = isCRD ? 'spec.versions[0].schema.openAPIV3Schema.properties.' : '';
+    //     //             const fullPath = `${crdPrefix}${fieldPath}`
+
+    //     //             // Generate all possible path variations for this field
+    //     //             //const pathVariations = getCRDPathVariations(fieldPath, resource);
+    //     //             const pathVariations = normalizePath(fieldPath, resource);
+    //     //             // Include if this field is selected OR if it has selected children
+    //     //             //const isSelected = selectedPaths.has(fieldPath)
+
+    //     //             // Check both with and without CRD prefix
+    //     //             const isSelected = pathVariations.some(variation =>
+    //     //                 selectedPaths.has(variation)
+    //     //             );
+
+    //     //             // const isSelected = selectedPaths.has(fieldPath) ||
+    //     //             //     selectedPaths.has(fullPath) ||
+    //     //             //     selectedPaths.has(fieldPath.replace('spec.', ''))
+
+    //     //             // console.log(`${indent}🔍 DEBUG: isSelected result: ${isSelected}`)
+    //     //             // console.log(`${indent}🔍 DEBUG: Checking for ${resource.kind}.${fieldPath}: ${selectedPaths.has(`${resource.kind}.${fieldPath}`)}`)
+
+    //     //             // const hasSelectedChildren = Array.from(selectedPaths).some(path =>
+    //     //             //     path.startsWith(fieldPath + '.')
+    //     //             // )
+
+    //     //             // const hasSelectedChildren = Array.from(selectedPaths).some(path => {
+    //     //             //     return path.startsWith(`${fieldPath}.`) ||
+    //     //             //         path.startsWith(`${fullPath}.`) ||
+    //     //             //         path.startsWith(`${fieldPath.replace('spec.', '')}.`)
+    //     //             // })
+
+    //     //             // const hasSelectedChildren = Array.from(selectedPaths).some(selectedPath =>
+    //     //             //     pathVariations.some(variation =>
+    //     //             //         selectedPath.startsWith(`${variation}.`) ||
+    //     //             //         selectedPath.startsWith(`${variation}[]`)
+    //     //             //     )
+    //     //             // );
+
+    //     //             const hasSelectedChildren = Array.from(selectedPaths).some(selectedPath =>
+    //     //                 pathVariations.some(variation =>
+    //     //                     selectedPath.startsWith(`${variation}.`) ||
+    //     //                     selectedPath.startsWith(`${variation}[]`)
+    //     //                 )
+    //     //             );
+
+    //     //             const isParentOfSelectedPath = Array.from(selectedPaths).some(selectedPath => {
+    //     //                 // Check if any selected path starts with this field's path
+    //     //                 return pathVariations.some(variation =>
+    //     //                     selectedPath.startsWith(variation + '.') ||
+    //     //                     selectedPath === variation
+    //     //                 );
+    //     //             });
+
+    //     //             console.log(`${indent}🔍 DEBUG: hasSelectedChildren result: ${hasSelectedChildren}`)
+
+    //     //             // Check for array item selections (paths with [])
+    //     //             // const hasSelectedArrayItems = Array.from(selectedPaths).some(path =>
+    //     //             //     path.startsWith(fieldPath + '[]')
+    //     //             // )
+
+    //     //             const hasSelectedArrayItems = Array.from(selectedPaths).some(path =>
+    //     //                 path.startsWith(fieldPath + '[]') ||
+    //     //                 (resource.source === 'cluster-crds' && path.startsWith(`${resource.kind}.${fieldPath}[]`))
+    //     //             )
+
+    //     //             if (isSelected || hasSelectedChildren || hasSelectedArrayItems) {
+    //     //                 filteredProps[key] = { ...property }
+
+    //     //                 // FIXED: Construct the full field configuration key with resource prefix
+    //     //                 const fullFieldConfigKey = resource?.key ? `${resource.key}.${fieldPath}` : fieldPath
+
+    //     //                 // Apply field configurations (custom title and default value)
+    //     //                 const fieldConfig = fieldConfigurations[fullFieldConfigKey]
+    //     //                 console.log(`🔧 DEBUG: Checking field config for "${key}" with full key "${fullFieldConfigKey}": ${fieldConfig}`)
+    //     //                 console.log(`🔧 DEBUG: All fieldConfigurations:`, fieldConfigurations)
+
+    //     //                 if (fieldConfig !== undefined) {
+    //     //                     // Apply custom default value if configured
+    //     //                     filteredProps[key].default = fieldConfig
+    //     //                     console.log(`✅ DEBUG: Applied default value "${fieldConfig}" to field "${key}"`)
+    //     //                 }
+
+    //     //                 // FIXED: Apply custom title from selected fields using full path
+    //     //                 const selectedField = localSelectedFields.find(f => f.path === fullFieldConfigKey)
+    //     //                 if (selectedField && selectedField.title && selectedField.title !== key) {
+    //     //                     filteredProps[key].title = selectedField.title
+    //     //                     console.log(`✅ DEBUG: Applied custom title "${selectedField.title}" to field "${key}"`)
+    //     //                 }
+
+    //     //                 // Also check if the selected field has a defaultValue property
+    //     //                 if (selectedField && selectedField.defaultValue !== undefined) {
+    //     //                     filteredProps[key].default = selectedField.defaultValue
+    //     //                     console.log(`✅ DEBUG: Applied defaultValue "${selectedField.defaultValue}" from selectedField to "${key}"`)
+    //     //                 }
+
+    //     //                 console.log(`🔧 DEBUG: Final property for "${key}":`, filteredProps[key])
+
+    //     //                 // Recursively filter nested properties
+    //     //                 if (property.properties && hasSelectedChildren) {
+    //     //                     const nestedFiltered = filterProperties(property, fieldPath, depth + 1)
+    //     //                     filteredProps[key] = {
+    //     //                         ...filteredProps[key],
+    //     //                         properties: nestedFiltered.properties
+    //     //                     }
+    //     //                 }
+
+    //     //                 // Handle array items when array items are selected
+    //     //                 if (property.type === 'array' && property.items && hasSelectedArrayItems) {
+    //     //                     const arrayItemPath = `${fieldPath}[]`
+    //     //                     const nestedFiltered = filterProperties(property.items, arrayItemPath, depth + 1)
+    //     //                     filteredProps[key] = {
+    //     //                         ...filteredProps[key],
+    //     //                         items: nestedFiltered
+    //     //                     }
+    //     //                 }
+    //     //             } else {
+    //     //                 console.log(`${indent}🔍 DEBUG: EXCLUDING field "${fieldPath}"`)
+    //     //             }
+    //     //         })
+
+    //     //         result.properties = filteredProps
+    //     //         console.log(`${indent}🔍 DEBUG: Filtered properties at depth ${depth}:`, Object.keys(filteredProps))
+    //     //     }
+
+    //     //     // Handle array items (when we're filtering an array's items schema)
+    //     //     if (schema.items && currentPath.endsWith('[]')) {
+    //     //         console.log(`${indent}🔍 DEBUG: Filtering array items schema for path: ${currentPath}`)
+    //     //         const filteredItems = filterProperties(schema.items, currentPath, depth + 1)
+    //     //         result.items = filteredItems
+    //     //     }
+
+    //     //     return result
+    //     // }
+
+
+    //     // ... existing code ...
+
+    //     const filterProperties = (schema: any, currentPath = '', depth = 0) => {
+    //         const indent = '  '.repeat(depth)
+    //         console.log(`${indent}🔍 DEBUG: filterProperties called with currentPath: "${currentPath}", depth: ${depth}`)
+    //         console.log(`${indent}🔍 DEBUG: Resource info:`, { source: resource?.source, key: resource?.key, kind: resource?.kind })
+    //         console.log(`${indent}🔍 DEBUG: Selected paths:`, Array.from(selectedPaths))
+
+    //         // Handle schemas without properties (but may have items for arrays)
+    //         if (!schema?.properties && !schema?.items) {
+    //             console.log(`${indent}🔍 DEBUG: No properties or items found in schema`)
+    //             return schema
+    //         }
+
+    //         let result = { ...schema }
+
+    //         // Handle object properties
+    //         if (schema.properties) {
+    //             console.log(`${indent}🔍 DEBUG: Schema properties available:`, Object.keys(schema.properties))
+    //             const filteredProps: any = {}
+
+    //             Object.entries(schema.properties).forEach(([key, property]: [string, any]) => {
+    //                 const fieldPath = currentPath ? `${currentPath}.${key}` : key
+
+    //                 console.log(`${indent}🔍 DEBUG: Checking field "${key}" with path "${fieldPath}"`)
+
+    //                 const isCRD = resource?.source === 'cluster-crds';
+    //                 const crdPrefix = isCRD ? 'spec.versions[0].schema.openAPIV3Schema.properties.' : '';
+    //                 const fullPath = `${crdPrefix}${fieldPath}`
+
+    //                 // Generate all possible path variations for this field
+    //                 const pathVariations = normalizePath(fieldPath, resource);
+
+    //                 // Check if this field is selected
+    //                 const isSelected = pathVariations.some(variation =>
+    //                     selectedPaths.has(variation)
+    //                 );
+
+    //                 // FIXED: Improved hasSelectedChildren logic with special handling for spec field
+    //                 let hasSelectedChildren = false;
+
+    //                 if (key === 'spec' && property.properties) {
+    //                     // Special handling for spec field - use hasSpecSelectedChildren
+    //                     hasSelectedChildren = hasSpecSelectedChildren(selectedPaths, property.properties);
+    //                     console.log(`${indent}🔍 DEBUG: Using hasSpecSelectedChildren for spec field: ${hasSelectedChildren}`)
+    //                 } else {
+    //                     // Regular hasSelectedChildren logic for other fields
+    //                     hasSelectedChildren = Array.from(selectedPaths).some(selectedPath =>
+    //                         pathVariations.some(variation =>
+    //                             selectedPath.startsWith(`${variation}.`) ||
+    //                             selectedPath.startsWith(`${variation}[]`)
+    //                         )
+    //                     );
+    //                 }
+
+    //                 const isParentOfSelectedPath = Array.from(selectedPaths).some(selectedPath => {
+    //                     // Check if any selected path starts with this field's path
+    //                     return pathVariations.some(variation =>
+    //                         selectedPath.startsWith(variation + '.') ||
+    //                         selectedPath === variation
+    //                     );
+    //                 });
+
+    //                 console.log(`${indent}🔍 DEBUG: hasSelectedChildren result: ${hasSelectedChildren}`)
+
+    //                 // Check for array item selections (paths with [])
+    //                 const hasSelectedArrayItems = Array.from(selectedPaths).some(path =>
+    //                     path.startsWith(fieldPath + '[]') ||
+    //                     (resource.source === 'cluster-crds' && path.startsWith(`${resource.kind}.${fieldPath}[]`))
+    //                 )
+
+    //                 if (isSelected || hasSelectedChildren || hasSelectedArrayItems) {
+    //                     filteredProps[key] = { ...property }
+
+    //                     // FIXED: Construct the full field configuration key with resource prefix
+    //                     const fullFieldConfigKey = resource?.key ? `${resource.key}.${fieldPath}` : fieldPath
+
+    //                     // Apply field configurations (custom title and default value)
+    //                     const fieldConfig = fieldConfigurations[fullFieldConfigKey]
+    //                     console.log(`🔧 DEBUG: Checking field config for "${key}" with full key "${fullFieldConfigKey}": ${fieldConfig}`)
+    //                     console.log(`🔧 DEBUG: All fieldConfigurations:`, fieldConfigurations)
+
+    //                     if (fieldConfig !== undefined) {
+    //                         // Apply custom default value if configured
+    //                         filteredProps[key].default = fieldConfig
+    //                         console.log(`✅ DEBUG: Applied default value "${fieldConfig}" to field "${key}"`)
+    //                     }
+
+    //                     // FIXED: Apply custom title from selected fields using full path
+    //                     const selectedField = localSelectedFields.find(f => f.path === fullFieldConfigKey)
+    //                     if (selectedField && selectedField.title && selectedField.title !== key) {
+    //                         filteredProps[key].title = selectedField.title
+    //                         console.log(`✅ DEBUG: Applied custom title "${selectedField.title}" to field "${key}"`)
+    //                     }
+
+    //                     // Also check if the selected field has a defaultValue property
+    //                     if (selectedField && selectedField.defaultValue !== undefined) {
+    //                         filteredProps[key].default = selectedField.defaultValue
+    //                         console.log(`✅ DEBUG: Applied defaultValue "${selectedField.defaultValue}" from selectedField to "${key}"`)
+    //                     }
+
+    //                     console.log(`🔧 DEBUG: Final property for "${key}":`, filteredProps[key])
+
+    //                     // Recursively filter nested properties
+    //                     if (property.properties && hasSelectedChildren) {
+    //                         const nestedFiltered = filterProperties(property, fieldPath, depth + 1)
+    //                         filteredProps[key] = {
+    //                             ...filteredProps[key],
+    //                             properties: nestedFiltered.properties
+    //                         }
+    //                     }
+
+    //                     // Handle array items when array items are selected
+    //                     if (property.type === 'array' && property.items && hasSelectedArrayItems) {
+    //                         const arrayItemPath = `${fieldPath}[]`
+    //                         const nestedFiltered = filterProperties(property.items, arrayItemPath, depth + 1)
+    //                         filteredProps[key] = {
+    //                             ...filteredProps[key],
+    //                             items: nestedFiltered
+    //                         }
+    //                     }
+    //                 } else {
+    //                     console.log(`${indent}🔍 DEBUG: EXCLUDING field "${fieldPath}"`)
+    //                 }
+    //             })
+
+    //             result.properties = filteredProps
+    //             console.log(`${indent}🔍 DEBUG: Filtered properties at depth ${depth}:`, Object.keys(filteredProps))
+    //         }
+
+    //         // Handle array items (when we're filtering an array's items schema)
+    //         if (schema.items && currentPath.endsWith('[]')) {
+    //             console.log(`${indent}🔍 DEBUG: Filtering array items schema for path: ${currentPath}`)
+    //             const filteredItems = filterProperties(schema.items, currentPath, depth + 1)
+    //             result.items = filteredItems
+    //         }
+
+    //         return result
+    //     }
+
+    //     const filtered = filterProperties(resolvedSchema, '', 0)
+
+    //     // Ensure we always include apiVersion, kind, and metadata (with limited fields)
+    //     if (filtered.properties) {
+    //         // Preserve apiVersion and kind if they exist in the original schema
+    //         if (resolvedSchema.properties?.apiVersion) {
+    //             filtered.properties.apiVersion = resolvedSchema.properties.apiVersion;
+    //         }
+    //         if (resolvedSchema.properties?.kind) {
+    //             filtered.properties.kind = resolvedSchema.properties.kind;
+    //         }
+
+    //         // Include metadata with only labels and annotations if they exist
+    //         if (resolvedSchema.properties?.metadata) {
+    //             filtered.properties.metadata = {
+    //                 type: 'object',
+    //                 properties: {}
+    //             };
+
+    //             // Add labels if it exists in the original schema
+    //             if (resolvedSchema.properties.metadata.properties?.labels) {
+    //                 filtered.properties.metadata.properties.labels =
+    //                     resolvedSchema.properties.metadata.properties.labels;
+    //             }
+
+    //             // Add annotations if it exists in the original schema
+    //             if (resolvedSchema.properties.metadata.properties?.annotations) {
+    //                 filtered.properties.metadata.properties.annotations =
+    //                     resolvedSchema.properties.metadata.properties.annotations;
+    //             }
+    //         }
+
+    //         // Check if any selected fields are related to spec (either with or without the prefix)
+    //         const hasSpecRelatedFields = localSelectedFields.some(f => {
+    //             const path = f.path;
+    //             return path.includes('spec.') ||
+    //                 (resource?.source === 'cluster-crds' &&
+    //                     Array.from(selectedPaths).some(sp =>
+    //                         sp.startsWith('spec.') ||
+    //                         (!sp.includes('.') && resolvedSchema.properties?.spec?.properties?.[sp])
+    //                     ));
+    //         });
+
+    //         if (resolvedSchema.properties?.spec && hasSpecRelatedFields) {
+    //             // Instead of filtering the spec object, preserve its structure and properties
+    //             filtered.properties.spec = {
+    //                 ...resolvedSchema.properties.spec,
+    //                 properties: {}
+    //             };
+
+    //             // Add only the selected properties to the spec object
+    //             if (resolvedSchema.properties.spec.properties) {
+    //                 Object.entries(resolvedSchema.properties.spec.properties).forEach(([key, property]) => {
+    //                     const specPath = `spec.${key}`;
+    //                     const normalizedPaths = normalizePath(specPath, resource);
+
+    //                     // Check if this property or any of its children are selected
+    //                     const isSelected = normalizedPaths.some(path => selectedPaths.has(path));
+    //                     const hasSelectedChildren = Array.from(selectedPaths).some(selectedPath =>
+    //                         normalizedPaths.some(variation =>
+    //                             selectedPath.startsWith(`${variation}.`) ||
+    //                             selectedPath.startsWith(`${variation}[]`)
+    //                         )
+    //                     );
+
+    //                     if (isSelected || hasSelectedChildren) {
+    //                         // If selected, add this property to the filtered spec
+    //                         filtered.properties.spec.properties[key] = property;
+
+    //                         // If it has selected children, recursively filter its properties
+    //                         if (hasSelectedChildren && property.properties) {
+    //                             const nestedFiltered = filterProperties(property, specPath, 1);
+    //                             filtered.properties.spec.properties[key] = nestedFiltered;
+    //                         }
+    //                     }
+    //                 });
+    //             }
+    //         }
+
+    //         // Add spec field if it exists in the original schema and we have selected fields that start with spec.
+    //         if (resolvedSchema.properties?.spec && localSelectedFields.some(f => f.path.includes('spec.'))) {
+    //             // Create a filtered spec object with only the selected fields
+    //             const specFiltered = filterProperties(resolvedSchema.properties.spec, 'spec', 0);
+    //             filtered.properties.spec = specFiltered;
+    //         } else if (resolvedSchema.properties?.spec) {
+    //             // Check if any normalized paths match spec's children
+    //             const hasSpecChildren = hasSpecSelectedChildren(
+    //                 selectedPaths,
+    //                 resolvedSchema.properties.spec.properties
+    //             );
+
+    //             if (hasSpecChildren) {
+    //                 // Create a filtered spec object with only the selected fields
+    //                 const specFiltered = filterProperties(resolvedSchema.properties.spec, 'spec', 0);
+    //                 filtered.properties.spec = specFiltered;
+    //             }
+    //         }            // Add status field if it exists in the original schema and we have selected fields that start with status.
+    //         if (resolvedSchema.properties?.status && localSelectedFields.some(f => f.path.includes('status.'))) {
+    //             // Create a filtered status object with only the selected fields
+    //             const statusFiltered = filterProperties(resolvedSchema.properties.status, 'status', 0);
+    //             filtered.properties.status = statusFiltered;
+    //         }
+
+    //         // Add operation field if it exists in the original schema and we have selected fields that start with operation.
+    //         if (resolvedSchema.properties?.operation && localSelectedFields.some(f => f.path.includes('operation.'))) {
+    //             // Create a filtered operation object with only the selected fields
+    //             const operationFiltered = filterProperties(resolvedSchema.properties.operation, 'operation', 0);
+    //             filtered.properties.operation = operationFiltered;
+    //         }
+    //     }
+
+    //     console.log('🎯 DEBUG: Final filtered schema properties:', Object.keys(filtered.properties || {}));
+
+    //     // DUMP FINAL FILTERED SCHEMA
+    //     console.log('🔍 DEBUG: FINAL FILTERED SCHEMA DUMP:')
+    //     console.log(JSON.stringify(filtered, null, 2))
+
+    //     return filtered
+    // }, [resource?.schema, localSelectedFields, resource?.source, resource?.key, resource?.kind, schemaTimestamp, fieldConfigurations])
+
+
+    /**
+     * Universal path normalization function that strips any resource prefix
+     * to get relative paths that match tree node paths
+     */
+    const findMatchingTreeNodes = (
+        selectedFields: TemplateField[],
+        treeNodes: SchemaTreeNode[],
+        resourceKey: string
+    ): Set<string> => {
+        const matchedPaths = new Set<string>();
+
+        console.log('🔍 Starting universal field matching with:', {
+            selectedFieldsCount: selectedFields.length,
+            treeNodesCount: treeNodes.length,
+            resourceKey
+        });
+
+        /**
+         * Build a map of all tree nodes by their path for quick lookup
+         */
+        const nodeMap = new Map<string, SchemaTreeNode>();
+        const buildNodeMap = (nodes: SchemaTreeNode[]) => {
+            nodes.forEach(node => {
+                nodeMap.set(node.path, node);
+                if (node.children && node.children.length > 0) {
+                    buildNodeMap(node.children);
+                }
+            });
+        };
+        buildNodeMap(treeNodes);
+
+        console.log('🔍 Available tree node paths:', Array.from(nodeMap.keys()));
+
+        /**
+         * Universal path normalization: strip any resource prefix to get relative paths
+         * This handles cases where selectedFields have full resource paths but tree uses relative paths
+         */
+        const normalizedSelectedPaths = selectedFields.map(field => {
+            let normalizedPath = field.path;
+
+            // Strategy 1: Remove current resourceKey prefix if present
+            if (normalizedPath.startsWith(`${resourceKey}.`)) {
+                normalizedPath = normalizedPath.substring(`${resourceKey}.`.length);
+                console.log('🔍 Removed current resourceKey prefix:', { original: field.path, normalized: normalizedPath });
+                return normalizedPath;
+            }
+
+            // Strategy 2: Remove any resource-like prefix (contains dots and ends with a dot)
+            // Pattern: "some.resource.key.field.path" -> "field.path"
+            const parts = normalizedPath.split('.');
+            if (parts.length > 2) {
+                // Look for common K8s field patterns to determine where the resource prefix ends
+                const commonK8sFields = ['metadata', 'spec', 'data', 'status', 'kind', 'apiVersion'];
+
+                for (let i = 0; i < parts.length; i++) {
+                    if (commonK8sFields.includes(parts[i])) {
+                        normalizedPath = parts.slice(i).join('.');
+                        console.log('🔍 Found K8s field boundary, normalized:', {
+                            original: field.path,
+                            normalized: normalizedPath,
+                            boundary: parts[i]
+                        });
+                        break;
+                    }
+                }
+            }
+
+            console.log('🔍 Path normalization result:', { original: field.path, normalized: normalizedPath });
+            return normalizedPath;
+        });
+
+        /**
+         * Match normalized paths against tree nodes
+         */
+        normalizedSelectedPaths.forEach((selectedPath, index) => {
+            console.log('🔍 Processing selected path:', selectedPath);
+
+            if (nodeMap.has(selectedPath)) {
+                matchedPaths.add(selectedPath);
+                console.log('✅ Matched path found:', selectedPath);
+            } else {
+                console.log('⚠️ Selected path not found in tree:', selectedPath);
+                console.log('🔍 Original field path was:', selectedFields[index].path);
+            }
+        });
+
+        console.log('🔍 Universal field matching complete:', {
+            totalMatches: matchedPaths.size,
+            matchedPaths: Array.from(matchedPaths),
+            normalizedSelectedPaths
+        });
+
+        return matchedPaths;
+    };
+    /**
+         * Memoized filtered schema that applies field configurations and filters based on selected fields
+         */
+    /**
+     * FIXED: Use the working filteredSchema implementation with proper path normalization
+     */
     const filteredSchema = useMemo(() => {
-        // Force fresh calculation by clearing any cached data
-        console.log('🔄 FORCING FRESH SCHEMA CREATION - Timestamp:', schemaTimestamp)
-        console.log('🔧 DEBUG: Current fieldConfigurations:', fieldConfigurations)
-        console.log('🔧 DEBUG: Current localSelectedFields:', localSelectedFields.map(f => ({ path: f.path, title: f.title, defaultValue: f.defaultValue })))
+        console.log('🔄 Building schema from selected tree nodes - Timestamp:', schemaTimestamp)
+        console.log('🔧 DEBUG: Current localSelectedFields:', localSelectedFields.map(f => ({ path: f.path, title: f.title })))
 
         if (!resource?.schema || localSelectedFields.length === 0) {
             return {}
         }
 
-        console.log('🔍 DEBUG: Building filtered schema from selected fields')
-        console.log('🔍 DEBUG: Selected fields:', localSelectedFields.map(f => f.path))
-        console.log('🔍 DEBUG: Resource info:', { source: resource.source, key: resource.key, kind: resource.kind })
+        // FIXED: Use our working path normalization utilities for all resources
+        console.log('🔍 DEBUG: Available tree node paths:', schemaTree.map(n => n.path))
+        console.log('🔍 DEBUG: Schema tree nodes:', schemaTree.length)
 
-        // FIRST: Resolve all $ref in the schema before filtering
-        const resolveEntireSchema = (schema: any): any => {
-            if (!schema || typeof schema !== 'object') {
-                return schema
-            }
+        // Convert selected fields to normalized paths
+        const resourceKey = resource.key || `${resource.apiVersion}/${resource.kind}`;
+        const selectedPaths = new Set(
+            localSelectedFields.map(field => normalizeFieldPath(field.path, resourceKey))
+        );
 
-            // If this is a $ref, resolve it
-            if (schema.$ref) {
-                const { resolved } = resolveSchemaReference(schema, resource.schema)
-                return resolveEntireSchema(resolved) // Recursively resolve in case the resolved schema has more $ref
-            }
+        console.log('🔍 FIXED: Selected paths after normalization:', Array.from(selectedPaths))
 
-            // If this is an object with properties, resolve each property
-            if (schema.properties) {
-                const resolvedProperties: any = {}
-                Object.keys(schema.properties).forEach(key => {
-                    resolvedProperties[key] = resolveEntireSchema(schema.properties[key])
-                })
-                return { ...schema, properties: resolvedProperties }
-            }
+        // Use our working tree-based schema building approach
+        const result = buildSchemaFromSelectedNodes(resource.schema, selectedPaths, schemaTree)
 
-            // If this is an array with items, resolve the items
-            if (schema.items) {
-                return { ...schema, items: resolveEntireSchema(schema.items) }
-            }
+        console.log('✅ Built filtered schema with fixed utilities:', result)
+        return result
 
-            return schema
-        }
+    }, [resource?.schema, localSelectedFields, schemaTimestamp, schemaTree, resource?.source, resource?.kind, resource?.key])
 
-        // Start with a fully resolved schema (no $ref)
-        const resolvedSchema = resolveEntireSchema(resource.schema)
-        console.log('🔍 DEBUG: Schema fully resolved, root properties:', Object.keys(resolvedSchema.properties || {}))
+    // const filteredSchema = useMemo(() => {
+    //     if (!resource?.schema || localSelectedFields.length === 0) {
+    //         return {}
+    //     }
 
-        // Get selected field paths (normalize them)
-const selectedPaths = new Set(localSelectedFields.map(f => {
-        console.log('🔍 DEBUG: Processing original path:', f.path)
+    //     const resolvedSchema = resource.schema
+    //     const selectedPaths = new Set(localSelectedFields.map(f => {
+    //         // Extract the actual field path by removing the resource prefix
+    //         const resourceKey = resource?.key || `${resource?.apiVersion}/${resource?.kind}`;
+    //         return f.path.startsWith(`${resourceKey}.`) ? f.path.substring(`${resourceKey}.`.length) : f.path;
+    //     }));
 
-        let normalizedPath = f.path
+    //     console.log('🔍 DEBUG: Selected paths for filtering:', Array.from(selectedPaths));
+    //     console.log('🔍 DEBUG: Available tree nodes:', schemaTree);
 
-        // Handle CRD paths - more comprehensive normalization
-        if (resource.source === 'cluster-crds') {
-            // Remove CRD-specific prefixes in order of specificity
-            const prefixesToRemove = [
-                'spec.versions[0].schema.openAPIV3Schema.properties.',
-                `${resource.kind}.spec.`,
-                `${resource.kind}.`,
-                'spec.',
-                'properties.'
-            ]
-            
-            for (const prefix of prefixesToRemove) {
-                if (normalizedPath.startsWith(prefix)) {
-                    normalizedPath = normalizedPath.replace(prefix, '')
-                    console.log(`🔍 DEBUG: Removed prefix "${prefix}", result: ${normalizedPath}`)
-                    break // Only remove the first matching prefix
-                }
-            }
-        } else {
-            // Handle standard paths
-            if (normalizedPath.startsWith('properties.')) {
-                normalizedPath = normalizedPath.replace('properties.', '')
-                console.log('🔍 DEBUG: Standard normalized path:', normalizedPath)
-            }
+    //     // Use the new tree-based approach instead of complex path normalization
+    //     if (schemaTree && schemaTree.length > 0) {
+    //         return buildSchemaFromSelectedNodes(resolvedSchema, selectedPaths, schemaTree);
+    //     }
 
-            // Handle standard resource prefix paths (e.g., 'io.k8s.api.core.v1.ConfigMap.apiVersion' -> 'apiVersion')
-            if (resource?.key && normalizedPath.startsWith(resource.key + '.')) {
-                normalizedPath = normalizedPath.replace(resource.key + '.', '')
-                console.log('🔍 DEBUG: Resource prefix normalized path:', normalizedPath)
-            }
-        }
-
-        console.log('🔍 DEBUG: Final normalized path:', normalizedPath)
-        return normalizedPath
-    }))
-        console.log('🔍 DEBUG: Final selected paths set:', Array.from(selectedPaths))
-
-        // ===== DUMP SELECTED FIELDS SCHEMA =====
-        console.log('🎯 DEBUG: SELECTED FIELDS SCHEMA DUMP:')
-        console.log('Selected Fields Array:')
-        localSelectedFields.forEach((field, index) => {
-            console.log(`Field ${index + 1}:`, {
-                path: field.path,
-                title: field.title,
-                type: field.type,
-                required: field.required,
-                description: field.description
-            })
-        })
-
-        /**
-         * Filter schema properties to include only selected fields and apply field configurations
-         * @param schema - The schema object to filter
-         * @param currentPath - Current path in the schema hierarchy
-         * @param depth - Current depth for debugging indentation
-         * @returns Filtered schema with applied configurations
-         */
-        const filterProperties = (schema: any, currentPath = '', depth = 0) => {
-            const indent = '  '.repeat(depth)
-            console.log(`${indent}🔍 DEBUG: filterProperties called with currentPath: "${currentPath}", depth: ${depth}`)
-
-            // Handle schemas without properties (but may have items for arrays)
-            if (!schema?.properties && !schema?.items) {
-                console.log(`${indent}🔍 DEBUG: No properties or items found in schema`)
-                return schema
-            }
-
-            let result = { ...schema }
-
-            // Handle object properties
-            if (schema.properties) {
-                console.log(`${indent}🔍 DEBUG: Schema properties available:`, Object.keys(schema.properties))
-                const filteredProps: any = {}
-
-                Object.entries(schema.properties).forEach(([key, property]: [string, any]) => {
-                    const fieldPath = currentPath ? `${currentPath}.${key}` : key
-
-                    // Include if this field is selected OR if it has selected children
-                    const isSelected = selectedPaths.has(fieldPath)
-                    const hasSelectedChildren = Array.from(selectedPaths).some(path =>
-                        path.startsWith(fieldPath + '.')
-                    )
-                    // Check for array item selections (paths with [])
-                    const hasSelectedArrayItems = Array.from(selectedPaths).some(path =>
-                        path.startsWith(fieldPath + '[]')
-                    )
-
-                    if (isSelected || hasSelectedChildren || hasSelectedArrayItems) {
-                        filteredProps[key] = { ...property }
-
-                        // FIXED: Construct the full field configuration key with resource prefix
-                        const fullFieldConfigKey = resource?.key ? `${resource.key}.${fieldPath}` : fieldPath
-
-                        // Apply field configurations (custom title and default value)
-                        const fieldConfig = fieldConfigurations[fullFieldConfigKey]
-                        console.log(`🔧 DEBUG: Checking field config for "${key}" with full key "${fullFieldConfigKey}": ${fieldConfig}`)
-                        console.log(`🔧 DEBUG: All fieldConfigurations:`, fieldConfigurations)
-
-                        if (fieldConfig !== undefined) {
-                            // Apply custom default value if configured
-                            filteredProps[key].default = fieldConfig
-                            console.log(`✅ DEBUG: Applied default value "${fieldConfig}" to field "${key}"`)
-                        }
-
-                        // FIXED: Apply custom title from selected fields using full path
-                        const selectedField = localSelectedFields.find(f => f.path === fullFieldConfigKey)
-                        if (selectedField && selectedField.title && selectedField.title !== key) {
-                            filteredProps[key].title = selectedField.title
-                            console.log(`✅ DEBUG: Applied custom title "${selectedField.title}" to field "${key}"`)
-                        }
-
-                        // Also check if the selected field has a defaultValue property
-                        if (selectedField && selectedField.defaultValue !== undefined) {
-                            filteredProps[key].default = selectedField.defaultValue
-                            console.log(`✅ DEBUG: Applied defaultValue "${selectedField.defaultValue}" from selectedField to "${key}"`)
-                        }
-
-                        console.log(`🔧 DEBUG: Final property for "${key}":`, filteredProps[key])
-
-                        // Recursively filter nested properties
-                        if (property.properties && hasSelectedChildren) {
-                            const nestedFiltered = filterProperties(property, fieldPath, depth + 1)
-                            filteredProps[key] = {
-                                ...filteredProps[key],
-                                properties: nestedFiltered.properties
-                            }
-                        }
-
-                        // Handle array items when array items are selected
-                        if (property.type === 'array' && property.items && hasSelectedArrayItems) {
-                            const arrayItemPath = `${fieldPath}[]`
-                            const nestedFiltered = filterProperties(property.items, arrayItemPath, depth + 1)
-                            filteredProps[key] = {
-                                ...filteredProps[key],
-                                items: nestedFiltered
-                            }
-                        }
-                    } else {
-                        console.log(`${indent}🔍 DEBUG: EXCLUDING field "${fieldPath}"`)
-                    }
-                })
-
-                result.properties = filteredProps
-                console.log(`${indent}🔍 DEBUG: Filtered properties at depth ${depth}:`, Object.keys(filteredProps))
-            }
-
-            // Handle array items (when we're filtering an array's items schema)
-            if (schema.items && currentPath.endsWith('[]')) {
-                console.log(`${indent}🔍 DEBUG: Filtering array items schema for path: ${currentPath}`)
-                const filteredItems = filterProperties(schema.items, currentPath, depth + 1)
-                result.items = filteredItems
-            }
-
-            return result
-        }
-
-        const filtered = filterProperties(resolvedSchema, '', 0)
-        console.log('🎯 DEBUG: Final filtered schema properties:', Object.keys(filtered.properties || {}))
-
-        // DUMP FINAL FILTERED SCHEMA
-        console.log('🔍 DEBUG: FINAL FILTERED SCHEMA DUMP:')
-        console.log(JSON.stringify(filtered, null, 2))
-
-        return filtered
-    }, [resource?.schema, localSelectedFields, resource?.source, resource?.key, resource?.kind, schemaTimestamp, fieldConfigurations])
+    //     // Fallback to empty schema if no tree is available
+    //     return {};
+    // }, [resource?.schema, localSelectedFields, resource?.source, resource?.key, resource?.kind, schemaTimestamp, fieldConfigurations, schemaTree])
 
     const memoizedSelectedSchema = useMemo(() => {
         return JSON.stringify(filteredSchema, null, 2);
@@ -1736,3 +2642,32 @@ const selectedPaths = new Set(localSelectedFields.map(f => {
         </Dialog>
     )
 }
+
+/**
+ * FIXED: Improved hasSpecSelectedChildren function using our path normalization logic
+ * @param selectedPaths - Set of selected field paths
+ * @param specProperties - The spec object properties from schema
+ * @returns boolean indicating if any spec children are selected
+ */
+export const hasSpecSelectedChildren = (selectedPaths: Set<string>, specProperties: any): boolean => {
+    if (!specProperties) return false;
+
+    // Get all top-level property names in the spec object
+    const specChildrenNames = Object.keys(specProperties);
+
+    // FIXED: Use proper path normalization to check for spec children
+    return specChildrenNames.some(childName =>
+        Array.from(selectedPaths).some(selectedPath => {
+            // Normalize the selected path to remove any resource prefixes
+            const normalizedPath = normalizeFieldPath(selectedPath, '');
+
+            // Check if the normalized path matches spec children patterns
+            return normalizedPath === childName ||
+                normalizedPath.startsWith(`${childName}.`) ||
+                normalizedPath.startsWith(`${childName}[]`) ||
+                normalizedPath === `spec.${childName}` ||
+                normalizedPath.startsWith(`spec.${childName}.`) ||
+                normalizedPath.startsWith(`spec.${childName}[]`);
+        })
+    );
+};

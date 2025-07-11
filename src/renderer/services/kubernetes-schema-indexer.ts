@@ -545,6 +545,36 @@ searchResources(query: string): KubernetesResourceMetadata[] {
   /**
    * Get flattened properties for complex nested schemas (with lazy loading)
    */
+  // async getFlattenedProperties(group: string, version: string, kind: string, maxDepth: number = 3): Promise<any> {
+  //   const schemaProperties = await this.getSchemaProperties(group, version, kind)
+  //   if (!schemaProperties) return null
+
+  //   const flattenProperties = (props: any, path: string = '', depth: number = 0): any => {
+  //     if (depth >= maxDepth) return {}
+
+  //     const flattened: any = {}
+
+  //     Object.entries(props).forEach(([key, value]: [string, any]) => {
+  //       const currentPath = path ? `${path}.${key}` : key
+
+  //       if (value.type === 'object' && value.properties) {
+  //         // Recursively flatten nested objects
+  //         Object.assign(flattened, flattenProperties(value.properties, currentPath, depth + 1))
+  //       } else {
+  //         flattened[currentPath] = value
+  //       }
+  //     })
+
+  //     return flattened
+  //   }
+
+  //   return {
+  //     properties: flattenProperties(schemaProperties.properties),
+  //     required: schemaProperties.required,
+  //     originalSchema: schemaProperties
+  //   }
+  // }
+
   async getFlattenedProperties(group: string, version: string, kind: string, maxDepth: number = 3): Promise<any> {
     const schemaProperties = await this.getSchemaProperties(group, version, kind)
     if (!schemaProperties) return null

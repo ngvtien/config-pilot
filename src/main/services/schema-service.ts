@@ -231,7 +231,7 @@ class SchemaService {
     // Handle object types with properties
     if (schema.type === "object" && schema.properties) {
       const children: SchemaTreeNode[] = [];
-      const currentPath = path ? `${path}.${name}` : name;
+      const currentPath = path || name;
       const objectRequired = schema.required || [];
 
       for (const [key, propSchema] of Object.entries(schema.properties)) {
@@ -241,7 +241,7 @@ class SchemaService {
         }
 
         // Filter out only 'kind' at root level - it's auto-generated and shouldn't be user-configurable
-        if (!path && key === 'kind') {
+        if (!path && !name && key === 'kind') {
           continue;
         }
 
@@ -250,16 +250,21 @@ class SchemaService {
           propSchema as JSONSchema7,
           definitions,
           key,
-          childPath,
+          currentPath, //childPath,
           objectRequired
         );
         children.push(...subTree);
       }
 
+      // For root level (empty path and name), return children directly
+      if (!path && !name) {
+        return children;
+      }
+
       return [{
         name,
         type: "object",
-        path: currentPath || name,
+        path: currentPath,
         description: schema.description,
         required: requiredFields.includes(name),
         children
@@ -268,7 +273,7 @@ class SchemaService {
 
     // Only create children for arrays of objects, not primitive types
     if (schema.type === "array" && schema.items) {
-      const currentPath = path ? `${path}.${name}` : name;
+      const currentPath = path || name;
       const itemsSchema = schema.items as JSONSchema7;
 
       let children: SchemaTreeNode[] = [];
@@ -294,7 +299,7 @@ class SchemaService {
 
     // Handle additionalProperties for dynamic object keys
     if (schema.type === "object" && schema.additionalProperties && typeof schema.additionalProperties === "object") {
-      const currentPath = path ? `${path}.${name}` : name;
+      const currentPath = path || name;
       const additionalTree = this.buildSchemaTree(
         schema.additionalProperties as JSONSchema7,
         definitions,
@@ -313,7 +318,7 @@ class SchemaService {
     }
 
     // Handle primitive types
-    const currentPath = path ? `${path}.${name}` : name;
+    const currentPath = path || name;
     const fieldType = schema.enum && schema.enum.length > 0 ? 'enum' : 
                  Array.isArray(schema.type) ? schema.type[0] : (schema.type || "unknown");
 
@@ -382,7 +387,8 @@ class SchemaService {
         }
       }
 
-      const tree = this.buildSchemaTree(resourceSchema as JSONSchema7, filteredDefinitions, resourceKey);
+      //const tree = this.buildSchemaTree(resourceSchema as JSONSchema7, filteredDefinitions, resourceKey);
+      const tree = this.buildSchemaTree(resourceSchema as JSONSchema7, filteredDefinitions, "", "");
 
       // Update cache access time
       rawCache.lastAccessed = Date.now();
@@ -1299,11 +1305,11 @@ class SchemaService {
             continue;
           }
 
-          // Rename any nested 'spec' property to prevent confusion
-          const displayName = key === 'spec' ? 'specConfig' : key;
-          if (key === 'spec') {
-            console.log(`🔄 CRD: Renaming nested 'spec' property to 'specConfig' to prevent nesting`);
-          }
+          // // Rename any nested 'spec' property to prevent confusion
+          const displayName = key === 'spec' ? 'spec' : key;
+          // if (key === 'spec') {
+          //   console.log(`🔄 CRD: Renaming nested 'spec' property to 'specConfig' to prevent nesting`);
+          // }
 
           const subTree = this.buildSchemaTree(
             propSchema as JSONSchema7,
@@ -1316,7 +1322,7 @@ class SchemaService {
         }
 
         // Validate and fix any remaining nested spec structures
-        this.validateAndFixNestedSpec(children);
+        //this.validateAndFixNestedSpec(children);
 
         return children; // Return spec children directly, no wrapper
       }
@@ -1324,37 +1330,10 @@ class SchemaService {
 
     // Fallback: use standard buildSchemaTree for CRDs without spec
     const tree = this.buildSchemaTree(resourceSchema, mergedDefinitions, kind, '', []);
-    this.validateAndFixNestedSpec(tree);
+    //this.validateAndFixNestedSpec(tree);
     return tree;
   }
 
-  /**
-   * Validates and fixes any nested spec structures in the schema tree
-   * @param nodes Array of schema tree nodes to validate
-   */
-  private validateAndFixNestedSpec(nodes: SchemaTreeNode[]): void {
-    for (const node of nodes) {
-      // Check if this is a spec node with spec children
-      if (node.name === 'spec' && node.children) {
-        const nestedSpecChild = node.children.find(child => child.name === 'spec');
-        if (nestedSpecChild) {
-          console.log('🔧 CRD: Detected nested spec structure - flattening');
-          
-          // Rename the nested spec to specConfig
-          nestedSpecChild.name = 'specConfig';
-          nestedSpecChild.path = nestedSpecChild.path.replace(/\/spec$/, '/specConfig');
-          
-          console.log('✅ CRD: Renamed nested spec to specConfig');
-        }
-      }
-      
-      // Recursively check children
-      if (node.children) {
-        this.validateAndFixNestedSpec(node.children);
-      }
-    }
-  }
-  
   /**
    * Get raw CRD JSONSchema7 directly from cache using cache key
    */

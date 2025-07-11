@@ -58,9 +58,13 @@ export const SchemaTreeView: React.FC<SchemaTreeViewProps> = ({
         const isSelected = selectedPaths.has(currentPath);
         const isHighlighted = currentPath === highlightedPath;
         const indent = level * 16;
+                
+        // Create a truly unique key using the full hierarchy path
+        const hierarchyPath = path ? `${path}.${node.name}` : node.name;
+        const uniqueKey = `${hierarchyPath}-${level}`;
 
         return (
-            <div key={currentPath} className="space-y-1">
+            <div key={uniqueKey} className="space-y-1">
                 <div
                     className={`flex items-center space-x-2 p-2 rounded-lg transition-all duration-300 cursor-pointer relative ${isHighlighted
                         ? 'bg-gradient-to-r from-yellow-100 via-yellow-50 to-transparent dark:from-yellow-900/50 dark:via-yellow-800/30 dark:to-transparent shadow-lg transform scale-[1.02]'
