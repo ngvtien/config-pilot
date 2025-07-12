@@ -376,13 +376,13 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
                         return false;
                     });
 
-                    // If we have metadata, filter its children
-                    const metadataNode = filteredTree.find(node => node.path === 'metadata');
-                    if (metadataNode && metadataNode.children) {
-                        metadataNode.children = metadataNode.children.filter(child =>
-                            child.name === 'labels' || child.name === 'annotations'
-                        );
-                    }
+                    // // If we have metadata, filter its children
+                    // const metadataNode = filteredTree.find(node => node.path === 'metadata');
+                    // if (metadataNode && metadataNode.children) {
+                    //     metadataNode.children = metadataNode.children.filter(child =>
+                    //         child.name === 'labels' || child.name === 'annotations'
+                    //     );
+                    // }
 
                     setSchemaTree(tree);
 
@@ -624,7 +624,7 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
 
             visited.add(property.$ref)
 
-            // Try multiple locations for definitions
+            // Enhanced resolution strategy - try multiple locations
             let resolved = null
 
             // 1. Try the standard path from the ref
@@ -651,53 +651,27 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
 
             // 3. Try looking in components/schemas (OpenAPI 3.0 style)
             if (!resolved && fullSchema.components?.schemas) {
-                const defName = refPath[refPath.length - 1] // Get the last part of the path
+                const defName = refPath[refPath.length - 1]
                 resolved = fullSchema.components.schemas[defName]
                 if (resolved) {
                     console.log('🔍 DEBUG: Found reference in components.schemas:', resolved)
                 }
             }
 
-            // 4. Try looking for ObjectMeta specifically in common locations
-            if (!resolved && property.$ref.includes('ObjectMeta')) {
-                // Look for ObjectMeta in various possible locations
-                const objectMetaLocations = [
-                    fullSchema.definitions?.['io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta'],
-                    fullSchema.spec?.versions?.[0]?.schema?.openAPIV3Schema?.definitions?.['io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta'],
-                    fullSchema.components?.schemas?.ObjectMeta,
-                    fullSchema.components?.schemas?.['io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta']
-                ]
-
-                for (const location of objectMetaLocations) {
-                    if (location) {
-                        resolved = location
-                        console.log('🔍 DEBUG: Found ObjectMeta at specific location:', resolved)
-                        break
-                    }
-                }
-            }
-
-            // 5. If still not found, create a basic ObjectMeta structure
-            if (!resolved && property.$ref.includes('ObjectMeta')) {
+            // 4. Enhanced: Try to load from external definitions file for vanilla Kubernetes resources
+            if (!resolved && property.$ref.startsWith('#/definitions/io.k8s.')) {
+                // This is a Kubernetes definition that should be in the definitions file
+                console.log('🔍 DEBUG: Attempting to resolve Kubernetes definition from external source:', property.$ref)
+                
+                // For now, we'll mark it as resolvable but return a placeholder
+                // In a real implementation, you might want to load this from the definitions file
                 resolved = {
                     type: 'object',
-                    properties: {
-                        name: { type: 'string', description: 'Name must be unique within a namespace.' },
-                        namespace: { type: 'string', description: 'Namespace defines the space within which each name must be unique.' },
-                        uid: { type: 'string', description: 'UID is the unique in time and space value for this object.' },
-                        resourceVersion: { type: 'string', description: 'An opaque value that represents the internal version of this object.' },
-                        generation: { type: 'integer', description: 'A sequence number representing a specific generation of the desired state.' },
-                        creationTimestamp: { type: 'string', format: 'date-time', description: 'CreationTimestamp is a timestamp representing the server time when this object was created.' },
-                        deletionTimestamp: { type: 'string', format: 'date-time', description: 'DeletionTimestamp is RFC 3339 date and time at which this resource will be deleted.' },
-                        deletionGracePeriodSeconds: { type: 'integer', description: 'Number of seconds allowed for this object to gracefully terminate.' },
-                        labels: { type: 'object', additionalProperties: { type: 'string' }, description: 'Map of string keys and values that can be used to organize and categorize objects.' },
-                        annotations: { type: 'object', additionalProperties: { type: 'string' }, description: 'Annotations is an unstructured key value map stored with a resource.' },
-                        ownerReferences: { type: 'array', items: { type: 'object' }, description: 'List of objects depended by this object.' },
-                        finalizers: { type: 'array', items: { type: 'string' }, description: 'Must be empty before the object is deleted from the registry.' },
-                        managedFields: { type: 'array', items: { type: 'object' }, description: 'ManagedFields maps workflow-id and version to the set of fields that are managed by that workflow.' }
-                    }
+                    description: `Kubernetes definition: ${property.$ref}`,
+                    'x-kubernetes-ref': property.$ref, // Mark for later resolution
+                    additionalProperties: true
                 }
-                console.log('🔍 DEBUG: Created fallback ObjectMeta structure')
+                console.log('🔍 DEBUG: Created placeholder for Kubernetes definition')
             }
 
             if (resolved) {
@@ -708,7 +682,11 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
 
             console.log('🔍 DEBUG: Could not resolve reference:', property.$ref)
             return {
-                resolved: { type: 'unknown', description: `Unresolved reference: ${property.$ref}` },
+                resolved: { 
+                    type: 'object', 
+                    description: `Unresolved reference: ${property.$ref}`,
+                    'x-unresolved-ref': property.$ref
+                },
                 isReference: true
             }
         }
@@ -730,12 +708,29 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
             }
         }
 
-        // Handle array items
+        // Enhanced: Handle array items with better $ref resolution
         if (property.type === 'array' && property.items) {
-            const result = resolveSchemaReference(property.items, fullSchema, new Set(visited))
-            return {
-                resolved: { ...property, items: result.resolved },
-                isReference: result.isReference
+            console.log('🔍 DEBUG: Processing array items:', property.items)
+            
+            // If items has $ref, resolve it
+            if (property.items.$ref) {
+                console.log('🔍 DEBUG: Array items has $ref:', property.items.$ref)
+                const result = resolveSchemaReference(property.items, fullSchema, new Set(visited))
+                return {
+                    resolved: { 
+                        ...property, 
+                        items: result.resolved,
+                        'x-items-was-ref': property.items.$ref // Track original ref for debugging
+                    },
+                    isReference: result.isReference
+                }
+            } else {
+                // Recursively resolve items even if not a direct $ref
+                const result = resolveSchemaReference(property.items, fullSchema, new Set(visited))
+                return {
+                    resolved: { ...property, items: result.resolved },
+                    isReference: result.isReference
+                }
             }
         }
 
@@ -1010,6 +1005,51 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
         });
 
         /**
+         * Resolve a property and its $ref dependencies on-demand
+         */
+        const resolvePropertyOnDemand = (property: any): any => {
+            if (!property) return property;
+
+            // If this property has unresolved references, try to resolve them
+            if (property['x-unresolved-ref'] || property['x-kubernetes-ref']) {
+                console.log('🔧 DEBUG: Attempting on-demand resolution for:', property['x-unresolved-ref'] || property['x-kubernetes-ref']);
+                
+                // Try to resolve using the full schema context
+                const resolved = resolveSchemaReference(
+                    { $ref: property['x-unresolved-ref'] || property['x-kubernetes-ref'] },
+                    originalSchema
+                );
+                
+                if (resolved.resolved && !resolved.resolved['x-unresolved-ref']) {
+                    console.log('🔧 DEBUG: Successfully resolved on-demand:', resolved.resolved);
+                    return resolved.resolved;
+                }
+            }
+
+            // For array types, ensure items are properly resolved
+            if (property.type === 'array' && property.items) {
+                return {
+                    ...property,
+                    items: resolvePropertyOnDemand(property.items)
+                };
+            }
+
+            // For object types, recursively resolve properties
+            if (property.type === 'object' && property.properties) {
+                const resolvedProperties: any = {};
+                Object.keys(property.properties).forEach(key => {
+                    resolvedProperties[key] = resolvePropertyOnDemand(property.properties[key]);
+                });
+                return {
+                    ...property,
+                    properties: resolvedProperties
+                };
+            }
+
+            return property;
+        };
+
+        /**
          * Check if a node has any selected children by examining selected paths
          * @param nodePath - The path of the current node
          * @param selectedPaths - Set of all selected paths
@@ -1030,67 +1070,43 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
             const indent = '  '.repeat(depth);
             const properties: any = {};
 
-            console.log(`${indent}🔧 DEBUG buildFromNodes: Processing ${nodes.length} nodes at depth ${depth}`);
-
             nodes.forEach((node, index) => {
                 const isSelected = selectedPaths.has(node.path);
-
-                // FIXED: Check for selected children by examining selected paths directly
                 const hasSelectedChildren = hasSelectedChildrenByPath(node.path, selectedPaths);
 
-                console.log(`${indent}🔧 DEBUG Node ${index + 1}:`, {
-                    name: node.name,
-                    path: node.path,
-                    isSelected,
-                    hasSelectedChildren,
-                    willInclude: isSelected || hasSelectedChildren
-                });
-
-                // If this node is selected OR has selected children, include it
                 if (isSelected || hasSelectedChildren) {
                     console.log(`${indent}✅ Including node: ${node.name}`);
 
-                    // Find the selected field for this node to get its description
+                    // Find the selected field for this node
                     const selectedField = localSelectedFields.find(f => {
-                        // Normalize the field path to match node path
                         let normalizedPath = f.path;
-                        // Add normalization logic here if needed
                         return normalizedPath === node.path;
                     });
 
-                    // Debug logging for array types
-                    if (selectedField?.type === 'array') {
-                        console.log(`🔧 DEBUG Array field: ${node.name}`, {
-                            selectedFieldItems: selectedField?.items,
-                            nodeType: node.type,
-                            nodePath: node.path,
-                            selectedFieldPath: selectedField?.path,
-                            selectedFieldHasItems: 'items' in selectedField,
-                            selectedFieldItemsType: typeof selectedField?.items,
-                            selectedFieldItemsStringified: selectedField?.items ? JSON.stringify(selectedField.items, null, 2) : 'undefined'
-                        });
-                    }
-
-                    // Start with the node's schema if available                                        
-                    properties[node.name] = {
+                    // Enhanced: Resolve the field's schema on-demand
+                    let fieldSchema = {
                         type: selectedField?.type || node.type || 'object',
                         ...(selectedField?.description && { description: selectedField.description }),
-                        ...(selectedField?.type === 'array' && selectedField?.items && { 
-                            items: selectedField.items 
-                        }),
                         ...(node.required && { required: true })
                     };
 
-                    // If node has selected children, we need to build child properties
-                    if (hasSelectedChildren) {
-                        console.log(`${indent}🔧 Processing children for: ${node.name} (has selected children)`);
+                    // For array types, ensure items are properly resolved
+                    if (selectedField?.type === 'array' && selectedField?.items) {
+                        console.log(`🔧 DEBUG: Resolving array items for ${node.name}:`, selectedField.items);
+                        fieldSchema = {
+                            ...fieldSchema,
+                            items: resolvePropertyOnDemand(selectedField.items)
+                        };
+                    }
 
-                        // Find all child paths for this node
+                    properties[node.name] = fieldSchema;
+
+                    // Handle children
+                    if (hasSelectedChildren) {
                         const childPrefix = node.path + '.';
                         const childPaths = Array.from(selectedPaths)
                             .filter(path => path.startsWith(childPrefix))
                             .map(path => {
-                                // Get the immediate child name (first segment after the prefix)
                                 const relativePath = path.substring(childPrefix.length);
                                 const firstSegment = relativePath.split('.')[0];
                                 return {
@@ -1100,20 +1116,18 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
                                 };
                             });
 
-                        // Create unique child nodes
                         const uniqueChildNodes = new Map<string, SchemaTreeNode>();
                         childPaths.forEach(child => {
                             if (!uniqueChildNodes.has(child.name)) {
                                 uniqueChildNodes.set(child.name, {
                                     name: child.name,
                                     path: child.path,
-                                    type: 'object', // Default type, will be refined
+                                    type: 'object',
                                     children: []
                                 });
                             }
                         });
 
-                        // Recursively build child properties
                         const childNodes = Array.from(uniqueChildNodes.values());
                         if (childNodes.length > 0) {
                             const childProperties = buildFromNodes(childNodes, depth + 1);
@@ -1122,26 +1136,22 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
                                 if (!properties[node.name].type) {
                                     properties[node.name].type = 'object';
                                 }
-                                console.log(`${indent}✅ Added ${Object.keys(childProperties).length} child properties to: ${node.name}`);
                             }
                         }
                     }
-                } else {
-                    console.log(`${indent}❌ Skipping node: ${node.name}`);
                 }
             });
 
-            console.log(`${indent}🔧 DEBUG buildFromNodes result: ${Object.keys(properties).length} properties`, Object.keys(properties));
             return properties;
         };
 
-        // Always include required Kubernetes base fields
+        // Use original schema's metadata instead of hardcoded base
         const baseSchema = {
             type: 'object',
             properties: {
                 apiVersion: originalSchema.properties?.apiVersion || { type: 'string' },
                 kind: originalSchema.properties?.kind || { type: 'string' },
-                metadata: {
+                metadata: originalSchema.properties?.metadata || {
                     type: 'object',
                     properties: {
                         name: { type: 'string' },
@@ -1153,20 +1163,47 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
         };
 
         // Build properties from selected tree nodes
-        console.log('🔧 DEBUG: Building properties from tree nodes...');
         const selectedProperties = buildFromNodes(treeNodes);
 
-        console.log('🔧 DEBUG: Final results:', {
-            baseSchemaProperties: Object.keys(baseSchema.properties),
-            selectedProperties: Object.keys(selectedProperties),
-            totalProperties: Object.keys({ ...baseSchema.properties, ...selectedProperties }).length
-        });
+        // console.log('🔧 DEBUG: Final results:', {
+        //     baseSchemaProperties: Object.keys(baseSchema.properties),
+        //     selectedProperties: Object.keys(selectedProperties),
+        //     totalProperties: Object.keys({ ...baseSchema.properties, ...selectedProperties }).length
+        // });
 
-        // Merge base schema with selected properties
+        // Only include base properties that are actually selected or have selected children
+        const baseProperties: any = {};
+
+        // Check if apiVersion is selected
+        if (selectedPaths.has('apiVersion')) {
+            baseProperties.apiVersion = originalSchema.properties?.apiVersion || { type: 'string' };
+        }
+
+        // Check if kind is selected
+        if (selectedPaths.has('kind')) {
+            baseProperties.kind = originalSchema.properties?.kind || { type: 'string' };
+        }
+
+        // Check if metadata or any metadata children are selected
+        const hasMetadataSelected = selectedPaths.has('metadata') || 
+            Array.from(selectedPaths).some(path => path.startsWith('metadata.'));
+
+        if (hasMetadataSelected) {
+            baseProperties.metadata = originalSchema.properties?.metadata || {
+                type: 'object',
+                properties: {
+                    name: { type: 'string' },
+                    labels: { type: 'object' },
+                    annotations: { type: 'object' }
+                }
+            };
+        }
+
+        // Create the result schema with only selected base properties
         const result = {
-            ...baseSchema,
+            type: 'object',
             properties: {
-                ...baseSchema.properties,
+                ...baseProperties,
                 ...selectedProperties
             }
         };
