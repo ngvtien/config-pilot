@@ -1,5 +1,4 @@
-import React, { useState } from 'react';
-import { ChevronRight, ChevronDown } from 'lucide-react';
+import React from 'react';
 import { Badge } from '@/renderer/components/ui/badge';
 import { SchemaTreeNode } from '../../../shared/types/schema';
 
@@ -58,10 +57,23 @@ export const SchemaTreeView: React.FC<SchemaTreeViewProps> = ({
         const isSelected = selectedPaths.has(currentPath);
         const isHighlighted = currentPath === highlightedPath;
         const indent = level * 16;
-                
+
         // Create a truly unique key using the full hierarchy path
         const hierarchyPath = path ? `${path}.${node.name}` : node.name;
         const uniqueKey = `${hierarchyPath}-${level}`;
+
+        const getArrayTypeLabel = (node: SchemaTreeNode): string => {
+            if (node.type !== 'array') {
+                return node.type || 'unknown'; // Handle undefined type
+            }
+
+            // Simply check items.type for array item type
+            if (node.items?.type) {
+                return `array of ${node.items.type}`;
+            }
+
+            return 'array of object';
+        };
 
         return (
             <div key={uniqueKey} className="space-y-1">
@@ -74,17 +86,6 @@ export const SchemaTreeView: React.FC<SchemaTreeViewProps> = ({
                         }`}
                     style={{ marginLeft: `${indent}px` }}
                     onClick={() => {
-                        // if (hasChildren) {
-                        //     toggleNode(currentPath);
-                        // } else if (onFieldSelect) {
-                        //     onFieldSelect(
-                        //         currentPath,
-                        //         Array.isArray(node.type) ? node.type[0] : node.type || 'unknown',
-                        //         node.name,
-                        //         node.description,
-                        //         node.required
-                        //     );
-                        // }
                         // Allow arrays to be selectable even when they have children
                         if (node.type === 'array' && onFieldSelect) {
                             console.log(`🔧 DEBUG SchemaTreeView - Array field selected: ${node.name}`, {
@@ -130,19 +131,6 @@ export const SchemaTreeView: React.FC<SchemaTreeViewProps> = ({
                         )}
                     </div>
 
-                    {/* Expansion toggle */}
-                    {/* {hasChildren ? (
-                        <div className="w-4 h-4 flex items-center justify-center">
-                            {isExpanded ? (
-                                <ChevronDown className="h-3 w-3 text-gray-600 dark:text-gray-300" />
-                            ) : (
-                                <ChevronRight className="h-3 w-3 text-gray-600 dark:text-gray-300" />
-                            )}
-                        </div>
-                    ) : (
-                        <div className="w-4 h-4" />
-                    )} */}
-
                     {/* Show circular checkbox when field is selected (including arrays) */}
                     {((!hasChildren && isSelected) || (node.type === 'array' && isSelected)) && (
                         <div className="w-4 h-4 rounded-full bg-green-500 flex items-center justify-center shadow-md transform scale-110 transition-all duration-200">
@@ -167,7 +155,7 @@ export const SchemaTreeView: React.FC<SchemaTreeViewProps> = ({
                                 : 'bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200'
                                 }`}
                         >
-                            {Array.isArray(node.type) ? node.type[0] : node.type}
+                            {getArrayTypeLabel(node)}
                         </Badge>
                         {node.required && (
                             <Badge variant="destructive" className="text-xs px-1 py-0 flex-shrink-0">
