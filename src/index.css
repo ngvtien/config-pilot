@@ -28,7 +28,7 @@
     --destructive-foreground: 60 9.1% 97.8%;
     --border: 20 5.9% 90%;
     --input: 20 5.9% 90%;
-    --ring: 37.7 92.1% 50.2%;
+    --ring: 45 93% 47%;  /* Match primary for focus rings OLD --ring: 37.7 92.1% 50.2%; */
     --chart-1: 12 76% 61%;
     --chart-2: 173 58% 39%;
     --chart-3: 197 37% 24%;
@@ -37,12 +37,12 @@
     --radius: 0.25rem;
     --sidebar-background: 0 0% 98%;
     --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 37.7 92.1% 50.2%;
+    --sidebar-primary: 45 93% 47%; /* OLD --sidebar-primary: 37.7 92.1% 50.2%; */
     --sidebar-primary-foreground: 26 83.3% 14.1%;
     --sidebar-accent: 60 4.8% 95.9%;
     --sidebar-accent-foreground: 24 9.8% 10%;
     --sidebar-border: 20 5.9% 90%;
-    --sidebar-ring: 37.7 92.1% 50.2%;
+    --sidebar-ring: 45 93% 47%; /* OLD --sidebar-ring: 37.7 92.1% 50.2%; */
     /* Custom sidebar width for collapsed state */
     --sidebar-width-icon: 4rem;
     /* 64px instead of default 3rem (48px) */
@@ -70,7 +70,7 @@
     --destructive-foreground: 60 9.1% 97.8%;
     --border: 20 8% 18%;
     --input: 20 8% 18%;
-    --ring: 37.7 92.1% 50.2%;
+    --ring: 45 93% 47%; /* OLD --ring: 37.7 92.1% 50.2%; */
     --chart-1: 220 70% 50%;
     --chart-2: 160 60% 45%;
     --chart-3: 30 80% 55%;
@@ -80,16 +80,16 @@
     --sidebar-background: 24 9.8% 4%;
     --sidebar-gradient: linear-gradient(180deg, hsl(24 9.8% 4%) 0%, hsl(20 8% 6%) 100%);
     --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 37.7 92.1% 50.2%;
+    --sidebar-primary: 45 93% 47%; /* OLD --sidebar-primary: 37.7 92.1% 50.2%; */
     --sidebar-primary-foreground: 26 83.3% 14.1%;
     --sidebar-accent: 20 8% 14%;
     --sidebar-accent-foreground: 240 4.8% 95.9%;
     --sidebar-border: 20 8% 16%;
-    --sidebar-ring: 37.7 92.1% 50.2%;
+    --sidebar-ring: 45 93% 47%; /* OLD: --sidebar-ring: 37.7 92.1% 50.2%; */
     /* Selection and focus colors */
-    --selection-bg: 37.7 92.1% 50.2%;
-    --selection-fg: 26 83.3% 14.1%;
-    --focus-ring: 37.7 92.1% 50.2%;
+    --selection-bg: 45 93% 47%; /* OLD: --selection-bg: 37.7 92.1% 50.2%; */
+    --selection-fg: 26 83.3% 14.1%; /* OLD: --selection-fg: 26 83.3% 14.1%; */
+    --focus-ring: 45 93% 47%; /* OLD: --focus-ring: 37.7 92.1% 50.2%; */
     /* Reduced radius for sharper look */
     --radius: 0.25rem;
     /* Custom sidebar width for collapsed state */

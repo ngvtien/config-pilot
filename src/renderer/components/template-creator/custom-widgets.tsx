@@ -24,7 +24,7 @@ export function TextWidget(props: WidgetProps) {
         const newValue = props.type === 'number' ? parseFloat(e.target.value) || undefined : e.target.value
         onChange(newValue)
       }}
-      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500 sm:text-sm"
     />
   );
 }
@@ -59,7 +59,7 @@ export function CheckboxWidget(props: WidgetProps) {
       id={id}
       checked={value}
       onChange={(e) => onChange(e.target.checked)}
-      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+      className="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
     />
   )
 }
@@ -77,7 +77,7 @@ export function SelectWidget(props: WidgetProps) {
         id={id}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500 sm:text-sm"
       >
         {enumOptions?.map(({ value, label }: { value: string; label: string }) => (
           <option key={value} value={value}>
@@ -130,7 +130,7 @@ export function ArrayField(props: ArrayFieldTemplateProps) {
       <button
         type="button"
         onClick={onAddClick}
-        className="mt-2 flex items-center text-sm text-blue-600 hover:text-blue-800"
+        className="mt-2 flex items-center text-sm text-amber-600 hover:text-amber-800"
       >
         <Plus className="mr-1 h-4 w-4" /> Add Item
       </button>

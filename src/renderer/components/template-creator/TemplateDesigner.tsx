@@ -1294,15 +1294,54 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {selectedResources.map((resource, index) => {
                 // Alternate color schemes for visual variety
+                // const colorSchemes = [
+                //   {
+                //     bg: 'bg-gradient-to-br from-blue-50 to-blue-100',
+                //     border: 'border-blue-200',
+                //     hover: 'hover:from-blue-100 hover:to-blue-150',
+                //     accent: 'text-blue-700',
+                //     badge: 'bg-blue-100 text-blue-800',
+                //     configured: 'border-blue-300 bg-gradient-to-br from-blue-100 to-blue-200',
+                //     selected: 'from-blue-200 to-blue-300 border-blue-400 shadow-blue-200'
+                //   },
+                //   {
+                //     bg: 'bg-gradient-to-br from-green-50 to-green-100',
+                //     border: 'border-green-200',
+                //     hover: 'hover:from-green-100 hover:to-green-150',
+                //     accent: 'text-green-700',
+                //     badge: 'bg-green-100 text-green-800',
+                //     configured: 'border-green-300 bg-gradient-to-br from-green-100 to-green-200',
+                //     selected: 'from-green-200 to-green-300 border-green-400 shadow-green-200'
+                //   },
+                //   {
+                //     bg: 'bg-gradient-to-br from-purple-50 to-purple-100',
+                //     border: 'border-purple-200',
+                //     hover: 'hover:from-purple-100 hover:to-purple-150',
+                //     accent: 'text-purple-700',
+                //     badge: 'bg-purple-100 text-purple-800',
+                //     configured: 'border-purple-300 bg-gradient-to-br from-purple-100 to-purple-200',
+                //     selected: 'from-purple-200 to-purple-300 border-purple-400 shadow-purple-200'
+                //   },
+                //   {
+                //     bg: 'bg-gradient-to-br from-orange-50 to-orange-100',
+                //     border: 'border-orange-200',
+                //     hover: 'hover:from-orange-100 hover:to-orange-150',
+                //     accent: 'text-orange-700',
+                //     badge: 'bg-orange-100 text-orange-800',
+                //     configured: 'border-orange-300 bg-gradient-to-br from-orange-100 to-orange-200',
+                //     selected: 'from-orange-200 to-orange-300 border-orange-400 shadow-orange-200'
+                //   }
+                // ];
+
                 const colorSchemes = [
                   {
-                    bg: 'bg-gradient-to-br from-blue-50 to-blue-100',
-                    border: 'border-blue-200',
-                    hover: 'hover:from-blue-100 hover:to-blue-150',
-                    accent: 'text-blue-700',
-                    badge: 'bg-blue-100 text-blue-800',
-                    configured: 'border-blue-300 bg-gradient-to-br from-blue-100 to-blue-200',
-                    selected: 'from-blue-200 to-blue-300 border-blue-400 shadow-blue-200'
+                    bg: 'bg-gradient-to-br from-amber-50 to-amber-100',
+                    border: 'border-amber-200',
+                    hover: 'hover:from-amber-100 hover:to-amber-150',
+                    accent: 'text-amber-700',
+                    badge: 'bg-amber-100 text-amber-800',
+                    configured: 'border-amber-300 bg-gradient-to-br from-amber-100 to-amber-200',
+                    selected: 'from-amber-200 to-amber-300 border-amber-400 shadow-amber-200'
                   },
                   {
                     bg: 'bg-gradient-to-br from-green-50 to-green-100',
@@ -1332,7 +1371,7 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
                     selected: 'from-orange-200 to-orange-300 border-orange-400 shadow-orange-200'
                   }
                 ];
-                
+
                 const scheme = colorSchemes[index % colorSchemes.length];
 
                 // Check if this resource is currently selected for configuration OR was the last configured
@@ -1343,7 +1382,7 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
                 // Determine the tile's visual state
                 const getTileClasses = () => {
                   let baseClasses = `rounded-xl p-5 border-2 transition-all duration-500 relative overflow-hidden cursor-pointer group`;
-                  
+
                   if (isCurrentlySelected) {
                     // Currently selected tile - prominent styling
                     return `${baseClasses} bg-gradient-to-br ${scheme.selected} transform scale-105 shadow-xl`;
@@ -1358,7 +1397,7 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
                     return `${baseClasses} ${scheme.bg} ${scheme.border} hover:shadow-lg hover:scale-105 ${scheme.hover} opacity-90`;
                   }
                 };
-                
+
                 return (
                   <div
                     key={`${resource.apiVersion}-${resource.kind}-${index}`}
@@ -1385,17 +1424,16 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
                       setSelectedResource(schemaResource)
                       setIsSchemaModalOpen(true)
                     }}
-                  >                                        
+                  >
                     {/* Enhanced accent line with selection indicator */}
-                    <div className={`absolute top-0 left-0 right-0 transition-all duration-300 ${
-                      isCurrentlySelected 
-                        ? `h-3 ${scheme.accent.replace('text-', 'bg-')} shadow-md` 
+                    <div className={`absolute top-0 left-0 right-0 transition-all duration-300 ${isCurrentlySelected
+                        ? `h-3 ${scheme.accent.replace('text-', 'bg-')} shadow-md`
                         : isLastConfigured
                           ? `h-2 ${scheme.accent.replace('text-', 'bg-')} opacity-80`
-                        : hasConfiguredFields
-                          ? `h-2 ${scheme.accent.replace('text-', 'bg-')} group-hover:h-3`
-                          : `h-1 ${scheme.accent.replace('text-', 'bg-')} group-hover:h-2`
-                    }`}></div>
+                          : hasConfiguredFields
+                            ? `h-2 ${scheme.accent.replace('text-', 'bg-')} group-hover:h-3`
+                            : `h-1 ${scheme.accent.replace('text-', 'bg-')} group-hover:h-2`
+                      }`}></div>
 
                     {/* Selection indicator badge */}
                     {isCurrentlySelected && (
@@ -1423,7 +1461,7 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
                         <div className="flex items-center gap-2 mb-1">
                           <h3 className={`font-semibold text-lg ${scheme.accent}`}>{resource.kind}</h3>
                           {isCurrentlySelected && (
-                            <Badge variant="outline" className="text-xs bg-white/80 text-blue-600 border-blue-300">
+                            <Badge variant="outline" className="text-xs bg-white/80 text-amber-600 border-amber-300">
                               Configuring
                             </Badge>
                           )}
@@ -1447,7 +1485,7 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
                                   e.stopPropagation(); // Prevent tile click when previewing YAML
                                   handlePreviewYaml(resource);
                                 }}
-                                className="text-blue-500 hover:text-blue-700 hover:bg-blue-50/80 p-2 h-auto rounded-full transition-colors"
+                                className="text-amber-500 hover:text-amber-700 hover:bg-amber-50/80 p-2 h-auto rounded-full transition-colors"
                                 aria-label="Preview YAML"
                               >
                                 <FileText className="h-4 w-4" />
@@ -1503,7 +1541,7 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
                     {hasConfiguredFields ? (
                       <div className="mb-2">
                         <div className="flex items-center gap-2 mb-2">
-                          <div className={`w-2 h-2 rounded-full ${isLastConfigured ? 'bg-blue-500' : 'bg-green-500'}`}></div>
+                          <div className={`w-2 h-2 rounded-full ${isLastConfigured ? 'bg-amber-500' : 'bg-green-500'}`}></div>
                           <h4 className="text-sm font-semibold text-gray-700">
                             {resource.selectedFields.length} Field{resource.selectedFields.length !== 1 ? 's' : ''} Configured
                           </h4>
@@ -1536,13 +1574,12 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
                     )}
 
                     {/* Enhanced click indicator */}
-                    <div className={`text-xs text-center mt-2 transition-opacity duration-300 ${
-                      isCurrentlySelected 
-                        ? 'text-blue-600 font-medium opacity-100' 
+                    <div className={`text-xs text-center mt-2 transition-opacity duration-300 ${isCurrentlySelected
+                        ? 'text-amber-600 font-medium opacity-100'
                         : isLastConfigured
-                          ? 'text-blue-500 opacity-80 group-hover:opacity-100'
+                          ? 'text-amber-500 opacity-80 group-hover:opacity-100'
                           : 'text-gray-500 opacity-70 group-hover:opacity-100'
-                    }`}>
+                      }`}>
                       {isCurrentlySelected ? 'Currently configuring...' : isLastConfigured ? 'Last configured - click to reconfigure' : 'Click to configure'}
                     </div>
                   </div>
