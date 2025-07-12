@@ -10,6 +10,7 @@ interface TemplateField {
     required: boolean // Whether field is required
     description?: string // Field description for tooltips/help
     format?: string // Format hint (e.g., "email", "uri", "date-time")
+    items?: any // Array items schema for array types
     templateType?: 'kubernetes' | 'terraform' | 'ansible' | 'kustomize' | 'helm' | 'docker-compose' // Extensible format support
     constraints?: {
       minimum?: number

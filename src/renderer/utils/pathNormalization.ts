@@ -118,8 +118,12 @@ export function buildSchemaFromSelectedNodes(
         node.children.some(child => selectedPaths.has(child.path)) : false
       
       if (isSelected || hasSelectedChildren) {
+        // Get original property type from schema for selected fields
+        const originalProperty = originalSchema?.properties ? 
+          findPropertyInSchema(originalSchema, node.path) : null
+        
         properties[node.name] = {
-          type: node.type || 'object',
+          type: (isSelected && originalProperty?.type) || node.type || 'object',
           ...(node.description && { description: node.description }),
           ...(node.required && { required: true })
         }
@@ -184,4 +188,40 @@ export function buildSchemaFromSelectedNodes(
     ...baseSchema,
     properties: mergedProperties
   }
+}
+
+/**
+ * Finds a property in the original schema by following the dot-notation path
+ * @param schema - The original schema object
+ * @param path - Dot-notation path (e.g., "spec.replicas", "metadata.name")
+ * @returns The property definition or null if not found
+ */
+export function findPropertyInSchema(schema: any, path: string): any {
+  if (!schema || !schema.properties) {
+    return null
+  }
+
+  const parts = path.split('.')
+  let current = schema.properties
+
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i]
+    if (!current || !current[part]) {
+      return null
+    }
+    
+    if (i === parts.length - 1) {
+      // This is the final property
+      return current[part]
+    }
+    
+    if (current[part].properties) {
+      current = current[part].properties
+    } else {
+      // No more properties to traverse but we're not at the end
+      return null
+    }
+  }
+
+  return null
 }

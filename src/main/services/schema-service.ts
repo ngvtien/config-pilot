@@ -276,6 +276,14 @@ class SchemaService {
       const currentPath = path || name;
       const itemsSchema = schema.items as JSONSchema7;
 
+      // Debug logging for array items
+      console.log(`🔧 DEBUG buildSchemaTree - Array field: ${name}`, {
+        path: currentPath,
+        hasItems: !!schema.items,
+        itemsType: typeof schema.items,
+        itemsSchema: schema.items
+      });
+
       let children: SchemaTreeNode[] = [];
       if (itemsSchema.type === "object" || itemsSchema.$ref) {
         children = this.buildSchemaTree(
@@ -287,14 +295,23 @@ class SchemaService {
         );
       }
 
-      return [{
+      const arrayNode = {
         name,
         type: "array",
         path: currentPath,
         description: schema.description,
         required: requiredFields.includes(name),
+        items: schema.items, // Ensure items is always included
         children: children.length > 0 ? children : undefined
-      }];
+      };
+
+      // Debug the created array node
+      console.log(`🔧 DEBUG buildSchemaTree - Created array node: ${name}`, {
+        hasItems: !!arrayNode.items,
+        itemsValue: arrayNode.items
+      });
+
+      return [arrayNode];
     }
 
     // Handle additionalProperties for dynamic object keys

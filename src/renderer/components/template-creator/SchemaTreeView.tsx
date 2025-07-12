@@ -5,7 +5,7 @@ import { SchemaTreeNode } from '../../../shared/types/schema';
 
 interface SchemaTreeViewProps {
     nodes: SchemaTreeNode[] | null;
-    onFieldSelect?: (path: string, type: string, name: string, description?: string, required?: boolean) => void;
+    onFieldSelect?: (path: string, type: string, name: string, description?: string, required?: boolean, items?: any) => void;
     selectedPaths?: Set<string>;
     expandedPaths?: Set<string>;
     onToggleExpand?: (path: string) => void;
@@ -87,12 +87,20 @@ export const SchemaTreeView: React.FC<SchemaTreeViewProps> = ({
                         // }
                         // Allow arrays to be selectable even when they have children
                         if (node.type === 'array' && onFieldSelect) {
+                            console.log(`🔧 DEBUG SchemaTreeView - Array field selected: ${node.name}`, {
+                                path: currentPath,
+                                hasItems: !!node.items,
+                                items: node.items,
+                                itemsType: typeof node.items
+                            });
+
                             onFieldSelect(
                                 currentPath,
                                 Array.isArray(node.type) ? node.type[0] : node.type || 'unknown',
                                 node.name,
                                 node.description,
-                                node.required
+                                node.required,
+                                node.items  // This should not be undefined for array types
                             );
                         } else if (hasChildren) {
                             toggleNode(currentPath);
@@ -102,7 +110,8 @@ export const SchemaTreeView: React.FC<SchemaTreeViewProps> = ({
                                 Array.isArray(node.type) ? node.type[0] : node.type || 'unknown',
                                 node.name,
                                 node.description,
-                                node.required
+                                node.required,
+                                node.items
                             );
                         }
 

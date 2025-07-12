@@ -7,6 +7,7 @@ export interface SchemaTreeNode {
   type?: string;
   description?: string;   // Add description field
   required?: boolean;     // Add required field
+  items?: any; // Array items schema for array types
   enum?: string[];
   children?: SchemaTreeNode[];
 }

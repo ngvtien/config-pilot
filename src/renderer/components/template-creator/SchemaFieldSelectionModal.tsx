@@ -23,7 +23,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { EnhancedTemplateField, ArrayItemFieldConfig } from '@/shared/types/enhanced-template-field'
 import { FieldConfigurationPanel } from './FieldConfigurationPanel'
-import { normalizeFieldPath } from '../../utils/pathNormalization'
+import { normalizeFieldPath, findPropertyInSchema } from '../../utils/pathNormalization'
 
 interface SchemaFieldSelectionModalProps {
     isOpen: boolean
@@ -1050,10 +1050,34 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
                 if (isSelected || hasSelectedChildren) {
                     console.log(`${indent}✅ Including node: ${node.name}`);
 
-                    // Start with the node's schema if available
+                    // Find the selected field for this node to get its description
+                    const selectedField = localSelectedFields.find(f => {
+                        // Normalize the field path to match node path
+                        let normalizedPath = f.path;
+                        // Add normalization logic here if needed
+                        return normalizedPath === node.path;
+                    });
+
+                    // Debug logging for array types
+                    if (selectedField?.type === 'array') {
+                        console.log(`🔧 DEBUG Array field: ${node.name}`, {
+                            selectedFieldItems: selectedField?.items,
+                            nodeType: node.type,
+                            nodePath: node.path,
+                            selectedFieldPath: selectedField?.path,
+                            selectedFieldHasItems: 'items' in selectedField,
+                            selectedFieldItemsType: typeof selectedField?.items,
+                            selectedFieldItemsStringified: selectedField?.items ? JSON.stringify(selectedField.items, null, 2) : 'undefined'
+                        });
+                    }
+
+                    // Start with the node's schema if available                                        
                     properties[node.name] = {
-                        type: node.type || 'object',
-                        ...(node.description && { description: node.description }),
+                        type: selectedField?.type || node.type || 'object',
+                        ...(selectedField?.description && { description: selectedField.description }),
+                        ...(selectedField?.type === 'array' && selectedField?.items && { 
+                            items: selectedField.items 
+                        }),
                         ...(node.required && { required: true })
                     };
 
@@ -2294,14 +2318,30 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
                                     ) : (
                                         <SchemaTreeView
                                             nodes={schemaTree}
-                                            onFieldSelect={(path, type, name, description, required) => {
+                                            onFieldSelect={(path, type, name, description, required, items) => {
+                                                // Debug logging for field selection
+                                                console.log('🔧 DEBUG onFieldSelect called:', {
+                                                    path,
+                                                    type,
+                                                    name,
+                                                    description,
+                                                    required,
+                                                    items,
+                                                    itemsType: typeof items,
+                                                    itemsStringified: items ? JSON.stringify(items, null, 2) : 'undefined'
+                                                });
+
                                                 const field: TemplateField = {
                                                     path,
                                                     title: name,
                                                     type,
                                                     description: description || '',
-                                                    required: required || false
+                                                    required: required || false,
+                                                    ...(type === 'array' && items && { items })
                                                 };
+
+                                                // Debug the created field
+                                                console.log('🔧 DEBUG Created field:', field);
 
                                                 // Toggle selection
                                                 const isSelected = localSelectedFields.some(f => f.path === path);
