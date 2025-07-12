@@ -73,9 +73,6 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
   const [userDataDir, setUserDataDir] = useState<string>('')
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const [formData, setFormData] = useState<any>({})
-  const [searchInput, setSearchInput] = React.useState('');
-  const [kinds, setKinds] = React.useState<string[]>([]);
-
   const [selectedResources, setSelectedResources] = useState<TemplateResource[]>(() => {
     try {
       const saved = localStorage.getItem('template-designer-selected-resources')
@@ -94,6 +91,7 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
   const [isYamlPreviewOpen, setIsYamlPreviewOpen] = useState(false)
   const [previewYamlContent, setPreviewYamlContent] = useState('')
   const [previewResourceKind, setPreviewResourceKind] = useState('')
+  const [lastConfiguredResourceIndex, setLastConfiguredResourceIndex] = useState<number | null>(null);
 
   const dropdownRef = useRef<HTMLDivElement>(null)
 
@@ -154,13 +152,6 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
       console.warn('Failed to persist selected resources:', error)
     }
   }, [selectedResources])
-
-
-  const filteredKinds = React.useMemo(() => {
-    return kinds.filter(kind =>
-      kind.toLowerCase().includes(searchInput.toLowerCase())
-    );
-  }, [kinds, searchInput]);
 
   /**
    * Transform schema property for RJSF compatibility
@@ -594,37 +585,6 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
   }
 
   // Function to handle field selection
-  const handleFieldSelect = (resourceKey: string, field: TemplateField) => {
-    setSelectedFields(prev => {
-      const newFields = {
-        ...prev,
-        [resourceKey]: [...(prev[resourceKey] || []), field]
-      }
-
-      // Update template with selected fields
-      setTemplate(t => {
-        const updatedResources = t.resources.map(r => {
-          const rKey = `${r.apiVersion}/${r.kind}`
-          return rKey === resourceKey
-            ? { ...r, fields: newFields[resourceKey] }
-            : r
-        })
-
-        const newTemplate = {
-          ...t,
-          resources: updatedResources
-        }
-
-        onTemplateChange?.(newTemplate)
-        return newTemplate
-      })
-
-      return newFields
-    })
-  }
-  /**
-   * Handle form data changes
-   */
   const handleFormChange = ({ formData: newFormData }: { formData: any }) => {
     setFormData(newFormData)
   }
@@ -937,14 +897,6 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
     const templatesDir = joinPath(helmDir, 'templates')
     await window.electronAPI.createDirectory(templatesDir)
 
-    // Generate individual resource template files
-    // for (const resource of templateMetadata.resources) {
-    //   const resourceFileName = `${resource.kind.toLowerCase()}.yaml`
-    //   const resourcePath = joinPath(templatesDir, resourceFileName)
-
-    //   const resourceTemplate = generateHelmResourceTemplate(resource, templateMetadata.name)
-    //   await window.electronAPI.writeFile(resourcePath, resourceTemplate)
-    // }
     // Generate individual resource template files using the enhanced function
     for (const resource of templateMetadata.resources) {
       const resourceFileName = `${resource.kind.toLowerCase()}.yaml`
@@ -981,74 +933,23 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
   }
 
   /**
-   * Generate Helm resource template
-   */
-  // const generateHelmResourceTemplate = (resource: any, templateName: string): string => {
-  //   const chartName = templateName.toLowerCase().replace(/[^a-z0-9-]/g, '-')
-
-  //   let template = `apiVersion: ${resource.apiVersion}\n`
-  //   template += `kind: ${resource.kind}\n`
-  //   template += `metadata:\n`
-  //   template += `  name: {{ include "${chartName}.fullname" . }}\n`
-  //   template += `  labels:\n`
-  //   template += `    {{- include "${chartName}.labels" . | nindent 4 }}\n`
-
-  //   if (resource.kind === 'Deployment' || resource.kind === 'StatefulSet' || resource.kind === 'DaemonSet') {
-  //     template += `spec:\n`
-  //     template += `  replicas: {{ .Values.${resource.kind.toLowerCase()}.replicas | default 1 }}\n`
-  //     template += `  selector:\n`
-  //     template += `    matchLabels:\n`
-  //     template += `      {{- include "${chartName}.selectorLabels" . | nindent 6 }}\n`
-  //     template += `  template:\n`
-  //     template += `    metadata:\n`
-  //     template += `      labels:\n`
-  //     template += `        {{- include "${chartName}.selectorLabels" . | nindent 8 }}\n`
-  //     template += `    spec:\n`
-  //     template += `      containers:\n`
-  //     template += `      - name: {{ .Chart.Name }}\n`
-  //     template += `        image: "{{ .Values.${resource.kind.toLowerCase()}.image.repository }}:{{ .Values.${resource.kind.toLowerCase()}.image.tag | default .Chart.AppVersion }}"\n`
-  //     template += `        imagePullPolicy: {{ .Values.${resource.kind.toLowerCase()}.image.pullPolicy }}\n`
-  //   } else {
-  //     template += `spec:\n`
-  //     template += `  # Add your ${resource.kind} specification here\n`
-  //     if (resource.selectedFields && resource.selectedFields.length > 0) {
-  //       template += `  # Based on selected fields: ${resource.selectedFields.map((f: any) => f.path).join(', ')}\n`
-  //     }
-  //   }
-
-  //   return template
-  // }
-
-
-  /**
    * Handle YAML preview for a specific resource
    */
-  // const handlePreviewYaml = (resource: TemplateResource) => {
-  //   if (!resource.selectedFields || resource.selectedFields.length === 0) {
-  //     setPreviewYamlContent('# No fields selected for this resource\n# Please select fields to generate YAML preview')
-  //   } else {
-  //     const yamlContent = generateResourceYamlPreview(resource, template.name || 'template')
-  //     setPreviewYamlContent(yamlContent)
-  //   }
-  //   setPreviewResourceKind(resource.kind)
-  //   setIsYamlPreviewOpen(true)
-  // }
-  
-const handlePreviewYaml = (resource: TemplateResource) => {
-  if (!resource.selectedFields || resource.selectedFields.length === 0) {
-    setPreviewYamlContent('# No fields selected for this resource\n# Please select fields to generate YAML preview')
-  } else {
-    // Use the new filtered schema approach
-    const resourceKey = resource.apiVersion ? 
-      `${resource.apiVersion}/${resource.kind}` : 
-      resource.kind
-    
-    const yamlContent = generateYamlFromFilteredSchema(resourceKey, resource)
-    setPreviewYamlContent(yamlContent)
+  const handlePreviewYaml = (resource: TemplateResource) => {
+    if (!resource.selectedFields || resource.selectedFields.length === 0) {
+      setPreviewYamlContent('# No fields selected for this resource\n# Please select fields to generate YAML preview')
+    } else {
+      // Use the new filtered schema approach
+      const resourceKey = resource.apiVersion ?
+        `${resource.apiVersion}/${resource.kind}` :
+        resource.kind
+
+      const yamlContent = generateYamlFromFilteredSchema(resourceKey, resource)
+      setPreviewYamlContent(yamlContent)
+    }
+    setPreviewResourceKind(resource.kind)
+    setIsYamlPreviewOpen(true)
   }
-  setPreviewResourceKind(resource.kind)
-  setIsYamlPreviewOpen(true)
-}
 
   /**
    * Generate Kustomize files
@@ -1399,37 +1300,70 @@ const handlePreviewYaml = (resource: TemplateResource) => {
                     border: 'border-blue-200',
                     hover: 'hover:from-blue-100 hover:to-blue-150',
                     accent: 'text-blue-700',
-                    badge: 'bg-blue-100 text-blue-800'
+                    badge: 'bg-blue-100 text-blue-800',
+                    configured: 'border-blue-300 bg-gradient-to-br from-blue-100 to-blue-200',
+                    selected: 'from-blue-200 to-blue-300 border-blue-400 shadow-blue-200'
                   },
                   {
                     bg: 'bg-gradient-to-br from-green-50 to-green-100',
                     border: 'border-green-200',
                     hover: 'hover:from-green-100 hover:to-green-150',
                     accent: 'text-green-700',
-                    badge: 'bg-green-100 text-green-800'
+                    badge: 'bg-green-100 text-green-800',
+                    configured: 'border-green-300 bg-gradient-to-br from-green-100 to-green-200',
+                    selected: 'from-green-200 to-green-300 border-green-400 shadow-green-200'
                   },
                   {
                     bg: 'bg-gradient-to-br from-purple-50 to-purple-100',
                     border: 'border-purple-200',
                     hover: 'hover:from-purple-100 hover:to-purple-150',
                     accent: 'text-purple-700',
-                    badge: 'bg-purple-100 text-purple-800'
+                    badge: 'bg-purple-100 text-purple-800',
+                    configured: 'border-purple-300 bg-gradient-to-br from-purple-100 to-purple-200',
+                    selected: 'from-purple-200 to-purple-300 border-purple-400 shadow-purple-200'
                   },
                   {
                     bg: 'bg-gradient-to-br from-orange-50 to-orange-100',
                     border: 'border-orange-200',
                     hover: 'hover:from-orange-100 hover:to-orange-150',
                     accent: 'text-orange-700',
-                    badge: 'bg-orange-100 text-orange-800'
+                    badge: 'bg-orange-100 text-orange-800',
+                    configured: 'border-orange-300 bg-gradient-to-br from-orange-100 to-orange-200',
+                    selected: 'from-orange-200 to-orange-300 border-orange-400 shadow-orange-200'
                   }
                 ];
-
+                
                 const scheme = colorSchemes[index % colorSchemes.length];
 
+                // Check if this resource is currently selected for configuration OR was the last configured
+                const isCurrentlySelected = selectedResourceIndex === index;
+                const isLastConfigured = lastConfiguredResourceIndex === index && !isCurrentlySelected;
+                const hasConfiguredFields = resource.selectedFields && resource.selectedFields.length > 0;
+
+                // Determine the tile's visual state
+                const getTileClasses = () => {
+                  let baseClasses = `rounded-xl p-5 border-2 transition-all duration-500 relative overflow-hidden cursor-pointer group`;
+                  
+                  if (isCurrentlySelected) {
+                    // Currently selected tile - prominent styling
+                    return `${baseClasses} bg-gradient-to-br ${scheme.selected} transform scale-105 shadow-xl`;
+                  } else if (isLastConfigured) {
+                    // Last configured tile - retain bigger size with enhanced styling
+                    return `${baseClasses} ${scheme.configured} hover:shadow-lg hover:scale-105 ${scheme.hover} transform scale-[1.02] shadow-lg`;
+                  } else if (hasConfiguredFields) {
+                    // Other configured tiles - subtle indication
+                    return `${baseClasses} ${scheme.configured} hover:shadow-lg hover:scale-[1.02] ${scheme.hover}`;
+                  } else {
+                    // Unconfigured tile - default styling with subtle indication
+                    return `${baseClasses} ${scheme.bg} ${scheme.border} hover:shadow-lg hover:scale-105 ${scheme.hover} opacity-90`;
+                  }
+                };
+                
                 return (
                   <div
                     key={`${resource.apiVersion}-${resource.kind}-${index}`}
-                    className={`${scheme.bg} ${scheme.border} ${scheme.hover} rounded-xl p-5 border-2 hover:shadow-lg hover:scale-105 transition-all duration-300 relative overflow-hidden cursor-pointer group`}
+                    // className={`${scheme.bg} ${scheme.border} ${scheme.hover} rounded-xl p-5 border-2 hover:shadow-lg hover:scale-105 transition-all duration-300 relative overflow-hidden cursor-pointer group`}
+                    className={getTileClasses()}
                     onClick={async () => {
                       const schemaResource = resource.originalSchema || resource;
                       if (resource.source == 'kubernetes') {
@@ -1451,33 +1385,55 @@ const handlePreviewYaml = (resource: TemplateResource) => {
                       setSelectedResource(schemaResource)
                       setIsSchemaModalOpen(true)
                     }}
+                  >                                        
+                    {/* Enhanced accent line with selection indicator */}
+                    <div className={`absolute top-0 left-0 right-0 transition-all duration-300 ${
+                      isCurrentlySelected 
+                        ? `h-3 ${scheme.accent.replace('text-', 'bg-')} shadow-md` 
+                        : isLastConfigured
+                          ? `h-2 ${scheme.accent.replace('text-', 'bg-')} opacity-80`
+                        : hasConfiguredFields
+                          ? `h-2 ${scheme.accent.replace('text-', 'bg-')} group-hover:h-3`
+                          : `h-1 ${scheme.accent.replace('text-', 'bg-')} group-hover:h-2`
+                    }`}></div>
 
-                  >
-                    {/* Subtle accent line */}
-                    <div className={`absolute top-0 left-0 right-0 h-1 ${scheme.accent.replace('text-', 'bg-')} transition-all duration-300 group-hover:h-2`}></div>
+                    {/* Selection indicator badge */}
+                    {isCurrentlySelected && (
+                      <div className="absolute top-3 right-3 z-10">
+                        <div className={`w-3 h-3 rounded-full ${scheme.accent.replace('text-', 'bg-')} animate-pulse shadow-lg`}></div>
+                      </div>
+                    )}
+
+                    {/* Last configured indicator */}
+                    {isLastConfigured && !isCurrentlySelected && (
+                      <div className="absolute top-3 right-3 z-10">
+                        <div className="w-2 h-2 rounded-full bg-blue-400 shadow-md border border-white"></div>
+                      </div>
+                    )}
+
+                    {/* Configuration status indicator */}
+                    {hasConfiguredFields && !isCurrentlySelected && !isLastConfigured && (
+                      <div className="absolute top-3 right-3 z-10">
+                        <div className="w-2 h-2 rounded-full bg-green-500 shadow-md"></div>
+                      </div>
+                    )}
 
                     <div className="flex justify-between items-start mb-4">
                       <div className="flex-1">
-                        <h3 className={`font-semibold text-lg ${scheme.accent} mb-1`}>{resource.kind}</h3>
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className={`font-semibold text-lg ${scheme.accent}`}>{resource.kind}</h3>
+                          {isCurrentlySelected && (
+                            <Badge variant="outline" className="text-xs bg-white/80 text-blue-600 border-blue-300">
+                              Configuring
+                            </Badge>
+                          )}
+                        </div>
                         <p className="text-sm text-gray-600 font-medium">{resource.apiVersion}</p>
                         {resource.namespace && (
                           <p className="text-xs text-gray-500 mt-1 bg-white/50 px-2 py-1 rounded-full inline-block">
                             📁 {resource.namespace}
                           </p>
                         )}
-
-                        {/* Status indicators */}
-                        {/* <div className="flex items-center gap-2 mt-2">
-          {resource.selectedFields && resource.selectedFields.length > 0 ? (
-            <Badge className="bg-green-100 text-green-800 text-xs">
-              ✅ {resource.selectedFields.length} fields configured
-            </Badge>
-          ) : (
-            <Badge className="bg-yellow-100 text-yellow-800 text-xs">
-              ⚠️ Not configured
-            </Badge>
-          )}
-        </div> */}
                       </div>
 
                       <div className="flex items-center gap-1">
@@ -1543,9 +1499,15 @@ const handlePreviewYaml = (resource: TemplateResource) => {
 
                     </div>
 
-                    {resource.selectedFields && resource.selectedFields.length > 0 && (
+                    {/* Enhanced status section */}
+                    {hasConfiguredFields ? (
                       <div className="mb-2">
-                        <h4 className="text-sm font-semibold mb-2 text-gray-700">✅ {resource.selectedFields.length} Selected Fields:</h4>
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className={`w-2 h-2 rounded-full ${isLastConfigured ? 'bg-blue-500' : 'bg-green-500'}`}></div>
+                          <h4 className="text-sm font-semibold text-gray-700">
+                            {resource.selectedFields.length} Field{resource.selectedFields.length !== 1 ? 's' : ''} Configured
+                          </h4>
+                        </div>
                         <div className="space-y-2 max-h-20 overflow-y-auto">
                           {resource.selectedFields.map((field, fieldIndex) => (
                             <div key={fieldIndex} className="flex items-center justify-between bg-white/60 rounded-lg p-2">
@@ -1559,11 +1521,29 @@ const handlePreviewYaml = (resource: TemplateResource) => {
                           ))}
                         </div>
                       </div>
+                    ) : (
+                      <div className="mb-2">
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className="w-2 h-2 rounded-full bg-yellow-500"></div>
+                          <h4 className="text-sm font-medium text-gray-600">
+                            No fields configured
+                          </h4>
+                        </div>
+                        <p className="text-xs text-gray-500 bg-white/40 rounded-lg p-2">
+                          Click to select and configure fields for this resource
+                        </p>
+                      </div>
                     )}
 
-                    {/* Click indicator */}
-                    <div className="text-xs text-gray-500 text-center mt-2 opacity-70">
-                      Click to configure
+                    {/* Enhanced click indicator */}
+                    <div className={`text-xs text-center mt-2 transition-opacity duration-300 ${
+                      isCurrentlySelected 
+                        ? 'text-blue-600 font-medium opacity-100' 
+                        : isLastConfigured
+                          ? 'text-blue-500 opacity-80 group-hover:opacity-100'
+                          : 'text-gray-500 opacity-70 group-hover:opacity-100'
+                    }`}>
+                      {isCurrentlySelected ? 'Currently configuring...' : isLastConfigured ? 'Last configured - click to reconfigure' : 'Click to configure'}
                     </div>
                   </div>
                 )
@@ -1607,13 +1587,16 @@ const handlePreviewYaml = (resource: TemplateResource) => {
       )}
 
       {/* Schema Field Selection Modal */}
-      {/* <SourceSpecificSearch /> */}
       <SchemaFieldSelectionModal
         isOpen={isSchemaModalOpen}
         onClose={() => {
+          // Update last configured resource index before closing
+          if (selectedResourceIndex !== null) {
+            setLastConfiguredResourceIndex(selectedResourceIndex);
+          }
           setIsSchemaModalOpen(false)
           setSelectedResourceForSchema(null)
-          setSelectedResourceIndex(null)
+          setSelectedResourceIndex(null) // Only clear the current selection, not the last configured
         }}
         resource={selectedResourceForSchema}
         selectedFields={selectedResourceIndex !== null ? selectedResources[selectedResourceIndex]?.selectedFields || [] : []}
