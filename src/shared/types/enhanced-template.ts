@@ -5,45 +5,27 @@ import type { GitRepository } from './git-repository'
  * Enhanced template field with validation and UI hints
  */
 export interface EnhancedTemplateField {
-  path: string // Field path (e.g., "spec.containers[].image")
-  title: string // Human-readable field name
-  type: 'string' | 'number' | 'boolean' | 'object' | 'array' | 'integer'
-  required: boolean // Whether field is required
-  description?: string // Field description for tooltips/help
-  format?: string // Format hint (e.g., "email", "uri", "date-time")
-  
-  // Enhanced validation constraints
-  constraints?: {
-    minimum?: number
-    maximum?: number
-    pattern?: string
-    enum?: string[]
-    minLength?: number
-    maxLength?: number
-    minItems?: number
-    maxItems?: number
-  }
-  
-  // UI rendering hints
-  uiHints?: {
-    widget?: 'text' | 'textarea' | 'select' | 'checkbox' | 'number' | 'password' | 'email' | 'url'
-    placeholder?: string
-    helpText?: string
-    group?: string // For grouping fields in UI
-    order?: number // For field ordering
-  }
-  
-  // Default values and examples
-  default?: any
-  examples?: any[]
-  
-  // Context-aware field (can reference context variables)
-  contextAware?: boolean
-  contextPath?: string // Path to context variable (e.g., "environment", "customer")
-  
-  // Template-specific metadata
-  templateType: 'kubernetes' | 'terraform' | 'ansible' | 'kustomize' | 'helm' | 'docker-compose'
-  metadata?: Record<string, any>
+    name: string;
+    type: 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object';
+    title?: string;
+    description?: string;
+    required?: boolean;
+    default?: any;
+    format?: string;
+    enum?: any[];  // Fixed: enum should be any[] not string[]
+    items?: {
+        type: EnhancedTemplateField['type'];
+        fields?: EnhancedTemplateField[];
+    };
+    properties?: EnhancedTemplateField[];
+    constraints?: {
+        minLength?: number;
+        maxLength?: number;
+        minimum?: number;
+        maximum?: number;
+        pattern?: string;
+        enum?: any[];  // Fixed: enum should be any[] not string[]
+    };
 }
 
 /**

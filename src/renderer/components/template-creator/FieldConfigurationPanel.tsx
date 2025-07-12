@@ -26,6 +26,9 @@ interface FieldConfigurationPanelProps {
     onNestedFieldToggle: (parentPath: string, nestedField: SchemaProperty, checked: boolean) => void
     onArrayConfigChange: (parentPath: string, config: ArrayItemFieldConfig) => void
     onFieldUpdate?: (fieldPath: string, updatedField: SchemaProperty) => void
+    onTitleChange?: (fieldPath: string, title: string) => void
+    onDescriptionChange?: (fieldPath: string, description: string) => void
+    onFormatChange?: (fieldPath: string, format: string) => void
     className?: string
 }
 
@@ -40,6 +43,9 @@ export const FieldConfigurationPanel: React.FC<FieldConfigurationPanelProps> = (
     onNestedFieldToggle,
     onArrayConfigChange,
     onFieldUpdate,
+    onTitleChange,
+    onDescriptionChange,
+    onFormatChange,
     className = ""
 }) => {
     const [localDefaultValue, setLocalDefaultValue] = useState<any>(null)
@@ -93,16 +99,51 @@ export const FieldConfigurationPanel: React.FC<FieldConfigurationPanelProps> = (
     }
 
     /**
-     * Handle Enhanced Property Editor save
+     * Handle Enhanced Property Editor save with JSONSchema7 persistence
      */
     const handleEnhancedEditorSave = (updatedProperty: SchemaProperty) => {
-        if (field && onFieldUpdate) {
-            onFieldUpdate(field.path, updatedProperty)
+        if (!field) return
+
+        console.log('🔧 DEBUG: Enhanced editor save called', { updatedProperty, fieldPath: field.path })
+
+        // Apply default value change
+        if (updatedProperty.default !== field.defaultValue) {
+            handleDefaultValueChange(updatedProperty.default)
         }
 
-        // Update local default value
-        if (updatedProperty.default !== undefined) {
-            handleDefaultValueChange(updatedProperty.default)
+        // Apply title change if handler is provided
+        if (onTitleChange && updatedProperty.title !== field.title) {
+            console.log('🔧 DEBUG: Applying title change', {
+                oldTitle: field.title,
+                newTitle: updatedProperty.title,
+                fieldPath: field.path
+            })
+            onTitleChange(field.path, updatedProperty.title || '')
+        }
+
+        // Apply description change if handler is provided
+        if (onDescriptionChange && updatedProperty.description !== field.description) {
+            console.log('🔧 DEBUG: Applying description change', {
+                oldDescription: field.description,
+                newDescription: updatedProperty.description,
+                fieldPath: field.path
+            })
+            onDescriptionChange(field.path, updatedProperty.description || '')
+        }
+
+        // Apply format change if handler is provided
+        if (onFormatChange && updatedProperty.format !== field.format) {
+            console.log('🔧 DEBUG: Applying format change', {
+                oldFormat: field.format,
+                newFormat: updatedProperty.format,
+                fieldPath: field.path
+            })
+            onFormatChange(field.path, updatedProperty.format || '')
+        }
+
+        // Call existing field update handler if provided
+        if (onFieldUpdate) {
+            onFieldUpdate(field.path, updatedProperty)
         }
 
         setShowEnhancedEditor(false)
@@ -128,7 +169,12 @@ export const FieldConfigurationPanel: React.FC<FieldConfigurationPanelProps> = (
             onDefaultValueChange(field?.path || '', value)
         }
     }
-
+    const handleClearDefaultValue = () => {
+        setLocalDefaultValue(null)
+        if (field) {
+            handleDefaultValueChange(null)
+        }
+    }
     /**
      * Add a new array item with default values
      */
@@ -246,7 +292,20 @@ export const FieldConfigurationPanel: React.FC<FieldConfigurationPanelProps> = (
                 return (
                     <div className="space-y-4">
                         <div className="space-y-2">
-                            <label className="text-sm font-medium">Default Value</label>
+                            <div className="flex items-center justify-between">
+                                <label className="text-sm font-medium">Default Value</label>
+                                {localDefaultValue !== null && localDefaultValue !== undefined && localDefaultValue !== '' && (
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={handleClearDefaultValue}
+                                        className="h-6 px-2 text-xs"
+                                    >
+                                        <X className="h-3 w-3 mr-1" />
+                                        Clear
+                                    </Button>
+                                )}
+                            </div>
                             {field.constraints?.enum ? (
                                 <Select value={localDefaultValue || ''} onValueChange={handleDefaultValueChange}>
                                     <SelectTrigger data-testid="select">
@@ -314,7 +373,20 @@ export const FieldConfigurationPanel: React.FC<FieldConfigurationPanelProps> = (
             case 'integer':
                 return (
                     <div className="space-y-2">
-                        <label className="text-sm font-medium">Default Value</label>
+                        <div className="flex items-center justify-between">
+                            <label className="text-sm font-medium">Default Value</label>
+                            {localDefaultValue !== null && localDefaultValue !== undefined && (
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={handleClearDefaultValue}
+                                    className="h-6 px-2 text-xs"
+                                >
+                                    <X className="h-3 w-3 mr-1" />
+                                    Clear
+                                </Button>
+                            )}
+                        </div>
                         <Input
                             data-testid="input"
                             type="number"
@@ -333,7 +405,20 @@ export const FieldConfigurationPanel: React.FC<FieldConfigurationPanelProps> = (
             case 'boolean':
                 return (
                     <div className="space-y-2">
-                        <label className="text-sm font-medium">Default Value</label>
+                        <div className="flex items-center justify-between">
+                            <label className="text-sm font-medium">Default Value</label>
+                            {localDefaultValue !== null && localDefaultValue !== undefined && (
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={handleClearDefaultValue}
+                                    className="h-6 px-2 text-xs"
+                                >
+                                    <X className="h-3 w-3 mr-1" />
+                                    Clear
+                                </Button>
+                            )}
+                        </div>
                         <div className="flex items-center space-x-2">
                             <Switch
                                 data-testid="switch"
@@ -361,7 +446,20 @@ export const FieldConfigurationPanel: React.FC<FieldConfigurationPanelProps> = (
             default:
                 return (
                     <div className="space-y-2">
-                        <label className="text-sm font-medium">Default Value</label>
+                        <div className="flex items-center justify-between">
+                            <label className="text-sm font-medium">Default Value</label>
+                            {localDefaultValue !== null && localDefaultValue !== undefined && localDefaultValue !== '' && (
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={handleClearDefaultValue}
+                                    className="h-6 px-2 text-xs"
+                                >
+                                    <X className="h-3 w-3 mr-1" />
+                                    Clear
+                                </Button>
+                            )}
+                        </div>
                         <Input
                             data-testid="input"
                             value={localDefaultValue || ''}
@@ -652,9 +750,9 @@ export const FieldConfigurationPanel: React.FC<FieldConfigurationPanelProps> = (
                 } catch {
                     objectValue = {};
                 }
-                
+
                 const objectEntries = Object.entries(objectValue);
-                
+
                 return (
                     <div className="space-y-2">
                         <div className="flex items-center justify-between">
@@ -736,7 +834,7 @@ export const FieldConfigurationPanel: React.FC<FieldConfigurationPanelProps> = (
                         </details>
                     </div>
                 )
-                
+
             default:
                 return (
                     <Input

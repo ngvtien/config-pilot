@@ -15,7 +15,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/renderer/components/
 import { ChevronRight, ChevronDown, Copy, Loader2 } from 'lucide-react';
 import { DescriptionTooltip } from './DescriptionTooltip';
 import { FlattenedResource, SchemaProperty, SchemaTreeNode } from '../../../shared/types/schema';
+import { UISchemaProperty } from './SchemaFieldSelectionModal';
 import { SchemaTreeView } from './SchemaTreeView';
+
 
 interface ResourceDetailModalProps {
     isOpen: boolean;
@@ -84,10 +86,10 @@ export function ResourceDetailModal({ isOpen, onClose, resource }: ResourceDetai
         schema: any,
         prefix: string = '',
         level: number = 0
-    ): SchemaProperty[] => {
+    ): UISchemaProperty[] => {
         if (!schema?.properties) return [];
 
-        const properties: SchemaProperty[] = [];
+        const properties: UISchemaProperty[] = [];
 
         Object.entries(schema.properties).forEach(([key, property]: [string, any]) => {
             const fieldPath = prefix ? `${prefix}.${key}` : key;
@@ -115,7 +117,7 @@ export function ResourceDetailModal({ isOpen, onClose, resource }: ResourceDetai
                 items: property.items
             });
 
-            const schemaProperty: SchemaProperty = {
+            const schemaProperty: UISchemaProperty = {
                 name: key,
                 path: fieldPath,
                 type: property.type || 'unknown',
@@ -178,13 +180,13 @@ export function ResourceDetailModal({ isOpen, onClose, resource }: ResourceDetai
     /**
      * Render a schema property with proper hierarchical grouping
      */
-    const renderProperty = (property: SchemaProperty, level = 0) => {
+    const renderProperty = (property: UISchemaProperty, level = 0) => {
         const isExpanded = expandedObjects.has(property.path);
         const indent = level * 20;
 
         // Parse children on-demand when expanded
-        let childProperties: SchemaProperty[] = [];
-        let arrayItems: SchemaProperty | undefined;
+        let childProperties: UISchemaProperty[] = [];
+        let arrayItems: UISchemaProperty | undefined;
 
         if (property.hasChildren && isExpanded) {
             const rawProp = property._rawProperty;
@@ -205,7 +207,7 @@ export function ResourceDetailModal({ isOpen, onClose, resource }: ResourceDetai
                     hasChildren: Object.keys(rawProp.items.properties).length > 0,
                     level: level + 1,
                     _rawProperty: rawProp.items
-                } as SchemaProperty;
+                } as UISchemaProperty;
             }
         }
 

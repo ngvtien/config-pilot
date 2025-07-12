@@ -13,7 +13,7 @@ import { Checkbox } from '@/renderer/components/ui/checkbox'
 import { ScrollArea } from '@/renderer/components/ui/scroll-area'
 import { Separator } from '@/renderer/components/ui/separator'
 import { Card, CardContent, CardHeader, CardTitle } from '@/renderer/components/ui/card'
-import { ChevronRight, ChevronDown, Copy, Edit } from 'lucide-react'
+import { ChevronRight, ChevronDown, Copy, Edit, X } from 'lucide-react'
 import { DescriptionTooltip } from './DescriptionTooltip'
 import type { KubernetesResourceSchema } from '@/renderer/services/kubernetes-schema-indexer'
 import type { TemplateField, TemplateResource } from '@/shared/types/template'
@@ -22,8 +22,8 @@ import { SchemaTreeView } from './SchemaTreeView';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { EnhancedTemplateField, ArrayItemFieldConfig } from '@/shared/types/enhanced-template-field'
-import { FieldConfigurationPanel } from './FieldConfigurationPanel'
 import { normalizeFieldPath } from '../../utils/pathNormalization'
+import { EnhancedPropertyEditor } from '../enhanced-property-editor'
 
 interface SchemaFieldSelectionModalProps {
     isOpen: boolean
@@ -33,20 +33,116 @@ interface SchemaFieldSelectionModalProps {
     onFieldsChange: (fields: TemplateField[]) => void
 }
 
-export interface SchemaProperty {
+// Add JSONSchema7-compliant field configuration interface (minimal - just default for now)
+interface JSONSchema7FieldConfig {
+    default?: any
+    title?: string
+    description?: string
+    format?: string
+}
+
+/**
+ * Helper function to get field configuration in JSONSchema7 format
+ * Only returns properties that have actual values (no nulls/empty strings)
+ */
+const getFieldConfiguration = (resourceKey: string, fieldPath: string): JSONSchema7FieldConfig => {
+    const allConfigs = getPersistedFieldConfigurations(resourceKey)
+    const storedConfig = allConfigs[fieldPath]
+
+    // Handle backward compatibility - current storage might just be the default value
+    if (storedConfig !== undefined && storedConfig !== null) {
+        if (typeof storedConfig === 'object' && !Array.isArray(storedConfig)) {
+            // New format: object with multiple properties
+            const config: JSONSchema7FieldConfig = {}
+
+            if (storedConfig.default !== undefined && storedConfig.default !== null && storedConfig.default !== '') {
+                config.default = storedConfig.default
+            }
+            if (storedConfig.title && typeof storedConfig.title === 'string' && storedConfig.title.trim()) {
+                config.title = storedConfig.title.trim()
+            }
+            if (storedConfig.description && typeof storedConfig.description === 'string' && storedConfig.description.trim()) {
+                config.description = storedConfig.description.trim()
+            }
+            if (storedConfig.format && typeof storedConfig.format === 'string' && storedConfig.format.trim()) {
+                config.format = storedConfig.format.trim()
+            }
+
+            return config
+        } else {
+            // Old format: just the default value
+            return { default: storedConfig }
+        }
+    }
+
+    return {}
+}
+
+/**
+ * Helper function to update field configuration in JSONSchema7 format
+ * Only stores properties that have actual values
+ */
+const updateFieldConfiguration = (
+    resourceKey: string,
+    fieldPath: string,
+    updates: Partial<JSONSchema7FieldConfig>
+): JSONSchema7FieldConfig => {
+    const allConfigs = getPersistedFieldConfigurations(resourceKey)
+    let currentConfig = allConfigs[fieldPath] || {}
+
+    // Ensure currentConfig is an object (handle backward compatibility)
+    if (typeof currentConfig !== 'object' || Array.isArray(currentConfig)) {
+        currentConfig = { default: currentConfig }
+    }
+
+    // Apply updates
+    const mergedConfig = { ...currentConfig, ...updates }
+
+    // Clean the configuration - only keep properties with actual values
+    const cleanConfig: any = {}
+
+    if (mergedConfig.default !== undefined && mergedConfig.default !== null && mergedConfig.default !== '') {
+        cleanConfig.default = mergedConfig.default
+    }
+    if (mergedConfig.title && typeof mergedConfig.title === 'string' && mergedConfig.title.trim()) {
+        cleanConfig.title = mergedConfig.title.trim()
+    }
+    if (mergedConfig.description && typeof mergedConfig.description === 'string' && mergedConfig.description.trim()) {
+        cleanConfig.description = mergedConfig.description.trim()
+    }
+    if (mergedConfig.format && typeof mergedConfig.format === 'string' && mergedConfig.format.trim()) {
+        cleanConfig.format = mergedConfig.format.trim()
+    }
+
+    // If clean config is empty, remove the field entirely
+    if (Object.keys(cleanConfig).length === 0) {
+        delete allConfigs[fieldPath]
+    } else {
+        allConfigs[fieldPath] = cleanConfig
+    }
+
+    persistFieldConfigurations(resourceKey, allConfigs)
+
+    // Return the current configuration
+    return getFieldConfiguration(resourceKey, fieldPath)
+}
+
+// Local interface for UI rendering - properties as array for easier iteration
+export interface UISchemaProperty {
     name: string
     path: string
     type: string
     description?: string
     required?: boolean
-    properties?: SchemaProperty[]
-    items?: SchemaProperty
+    properties?: UISchemaProperty[]  // Array for UI rendering
+    items?: UISchemaProperty
     hasChildren: boolean
     format?: string
     templateType?: 'kubernetes' | 'terraform' | 'ansible' | 'kustomize'
-    isReference: boolean
+    isReference?: boolean
     level?: number
-    enum?: string[]
+    enum?: any[]
+    _rawProperty?: any  // Store the raw property data for lazy parsing
 }
 
 // Persistence keys for localStorage
@@ -228,10 +324,11 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
     const [isLoadingSchema, setIsLoadingSchema] = useState(false);
     const [highlightedFieldPath, setHighlightedFieldPath] = useState<string | null>(null);
     const [showSelectedPreview, setShowSelectedPreview] = useState(false)
-    const [selectedFieldForConfig, setSelectedFieldForConfig] = useState<EnhancedTemplateField | null>(null)
+    //const [selectedFieldForConfig, setSelectedFieldForConfig] = useState<EnhancedTemplateField | null>(null)
     const [fieldConfigurations, setFieldConfigurations] = useState<Record<string, any>>({})
     const [arrayConfigurations, setArrayConfigurations] = useState<Record<string, ArrayItemFieldConfig>>({})
-    const [showFieldConfigModal, setShowFieldConfigModal] = useState(false)
+    //const [showFieldConfigModal, setShowFieldConfigModal] = useState(false)
+    const [expandedFieldPath, setExpandedFieldPath] = useState<string | null>(null)
 
     const [schemaTimestamp, setSchemaTimestamp] = useState(Date.now())
 
@@ -394,40 +491,135 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
         }
     }, [resourceKey])
 
-    const handleOpenFieldConfig = (field: EnhancedTemplateField) => {
-        // Merge the field with saved configurations
-        const fieldWithSavedConfig = {
-            ...field,
-            defaultValue: fieldConfigurations[field.path] !== undefined
-                ? fieldConfigurations[field.path]
-                : field.defaultValue
-        };
-        setSelectedFieldForConfig(fieldWithSavedConfig);
-        setShowFieldConfigModal(true);
-    };
+    // /**
+    //  * Handle closing field configuration modal
+    //  */
+    // const handleCloseFieldConfig = () => {
+    //     setShowFieldConfigModal(false)
+    //     setSelectedFieldForConfig(null)
+    // }
 
-    /**
-     * Handle closing field configuration modal
-     */
-    const handleCloseFieldConfig = () => {
-        setShowFieldConfigModal(false)
-        setSelectedFieldForConfig(null)
+    const toggleFieldConfig = (fieldPath: string) => {
+        setExpandedFieldPath(prev => prev === fieldPath ? null : fieldPath)
+    }
+
+    const convertTemplateFieldToSchemaProperty = (field: EnhancedTemplateField): SchemaProperty => {
+        return {
+            name: field.title,
+            type: field.type,
+            description: field.description,
+            required: field.required,
+            defaultValue: field.defaultValue,
+            enumOptions: field.enumOptions,
+            format: field.format,
+            items: field.items
+        }
+    }
+
+    const handleFieldConfigSave = (property: SchemaProperty) => {
+        // Update the field in localSelectedFields
+        setLocalSelectedFields(prev => prev.map(field =>
+            field.path === expandedFieldPath
+                ? { ...field, ...property, title: property.name }
+                : field
+        ))
+        setExpandedFieldPath(null)
+    }
+
+    const handleFieldConfigCancel = () => {
+        setExpandedFieldPath(null)
+    }
+
+    const handleFieldConfigDelete = () => {
+        if (expandedFieldPath) {
+            handleRemoveField(expandedFieldPath)
+            setExpandedFieldPath(null)
+        }
     }
 
     /**
      * Handle default value changes for fields
+     * Enhanced handlers for all 4 JSONSchema7 properties
      */
-    // Update handleDefaultValueChange to persist immediately
     const handleDefaultValueChange = (fieldPath: string, value: any) => {
+        if (!resourceKey) return
+
+        console.log('🔧 DEBUG: handleDefaultValueChange called', { fieldPath, value, resourceKey })
+
+        // Clean the value (empty string becomes undefined)
+        const cleanValue = value === '' ? undefined : value
+
+        // Update using JSONSchema7-compliant structure
+        const updatedConfig = updateFieldConfiguration(resourceKey, fieldPath, { default: cleanValue })
+
+        console.log('🔧 DEBUG: Updated field configuration', { fieldPath, updatedConfig })
+
+        // Update local state for backward compatibility
         setFieldConfigurations(prev => {
-            const updated = { ...prev, [fieldPath]: value }
-            // Persist immediately
-            if (resourceKey) {
-                persistFieldConfigurations(resourceKey, updated)
+            const updated = {
+                ...prev,
+                [fieldPath]: updatedConfig.default
             }
+            console.log('🔧 DEBUG: Updated fieldConfigurations state', updated)
             return updated
         })
+
+        // Force schema rebuild by updating timestamp
+        setSchemaTimestamp(Date.now())
+        console.log('🔧 DEBUG: Triggered schema rebuild with new timestamp')
     }
+
+    /**
+     * Handle title changes for fields
+     */
+    const handleTitleChange = (fieldPath: string, title: string) => {
+        if (!resourceKey) return
+
+        console.log('🔧 DEBUG: handleTitleChange called', { fieldPath, title, resourceKey })
+
+        const cleanTitle = title && title.trim() ? title.trim() : undefined
+        const updatedConfig = updateFieldConfiguration(resourceKey, fieldPath, { title: cleanTitle })
+
+        console.log('🔧 DEBUG: Updated title configuration', { fieldPath, updatedConfig })
+
+        // Force schema rebuild
+        setSchemaTimestamp(Date.now())
+    }
+
+    /**
+     * Handle description changes for fields
+     */
+    const handleDescriptionChange = (fieldPath: string, description: string) => {
+        if (!resourceKey) return
+
+        console.log('🔧 DEBUG: handleDescriptionChange called', { fieldPath, description, resourceKey })
+
+        const cleanDescription = description && description.trim() ? description.trim() : undefined
+        const updatedConfig = updateFieldConfiguration(resourceKey, fieldPath, { description: cleanDescription })
+
+        console.log('🔧 DEBUG: Updated description configuration', { fieldPath, updatedConfig })
+
+        // Force schema rebuild
+        setSchemaTimestamp(Date.now())
+    }
+
+    /**
+     * Handle format changes for fields
+     */
+    const handleFormatChange = (fieldPath: string, format: string) => {
+        if (!resourceKey) return
+
+        console.log('🔧 DEBUG: handleFormatChange called', { fieldPath, format, resourceKey })
+
+        const cleanFormat = format && format.trim() ? format.trim() : undefined
+        const updatedConfig = updateFieldConfiguration(resourceKey, fieldPath, { format: cleanFormat })
+
+        console.log('🔧 DEBUG: Updated format configuration', { fieldPath, updatedConfig })
+
+        // Force schema rebuild
+        setSchemaTimestamp(Date.now())
+    }
+
     /**
      * Handle nested field toggle for complex types
      */
@@ -516,7 +708,7 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
             if (!resolved && property.$ref.startsWith('#/definitions/io.k8s.')) {
                 // This is a Kubernetes definition that should be in the definitions file
                 console.log('🔍 DEBUG: Attempting to resolve Kubernetes definition from external source:', property.$ref)
-                
+
                 // For now, we'll mark it as resolvable but return a placeholder
                 // In a real implementation, you might want to load this from the definitions file
                 resolved = {
@@ -536,8 +728,8 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
 
             console.log('🔍 DEBUG: Could not resolve reference:', property.$ref)
             return {
-                resolved: { 
-                    type: 'object', 
+                resolved: {
+                    type: 'object',
                     description: `Unresolved reference: ${property.$ref}`,
                     'x-unresolved-ref': property.$ref
                 },
@@ -565,14 +757,14 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
         // Enhanced: Handle array items with better $ref resolution
         if (property.type === 'array' && property.items) {
             console.log('🔍 DEBUG: Processing array items:', property.items)
-            
+
             // If items has $ref, resolve it
             if (property.items.$ref) {
                 console.log('🔍 DEBUG: Array items has $ref:', property.items.$ref)
                 const result = resolveSchemaReference(property.items, fullSchema, new Set(visited))
                 return {
-                    resolved: { 
-                        ...property, 
+                    resolved: {
+                        ...property,
                         items: result.resolved,
                         'x-items-was-ref': property.items.$ref // Track original ref for debugging
                     },
@@ -638,13 +830,13 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
             // If this property has unresolved references, try to resolve them
             if (property['x-unresolved-ref'] || property['x-kubernetes-ref']) {
                 console.log('🔧 DEBUG: Attempting on-demand resolution for:', property['x-unresolved-ref'] || property['x-kubernetes-ref']);
-                
+
                 // Try to resolve using the full schema context
                 const resolved = resolveSchemaReference(
                     { $ref: property['x-unresolved-ref'] || property['x-kubernetes-ref'] },
                     originalSchema
                 );
-                
+
                 if (resolved.resolved && !resolved.resolved['x-unresolved-ref']) {
                     console.log('🔧 DEBUG: Successfully resolved on-demand:', resolved.resolved);
                     return resolved.resolved;
@@ -687,10 +879,12 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
 
         /**
          * Recursively build schema from tree nodes
+         * Enhanced buildFromNodes function that applies all 4 JSONSchema7 properties
          * @param nodes - Array of tree nodes to process
          * @param depth - Current depth for logging indentation
          * @returns Schema object with properties from selected nodes
          */
+
         const buildFromNodes = (nodes: SchemaTreeNode[], depth = 0): any => {
             const indent = '  '.repeat(depth);
             const properties: any = {};
@@ -700,7 +894,7 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
                 const hasSelectedChildren = hasSelectedChildrenByPath(node.path, selectedPaths);
 
                 if (isSelected || hasSelectedChildren) {
-                    console.log(`${indent}✅ Including node: ${node.name}`);
+                    console.log(`${indent}✅ Including node: ${node.name} (path: ${node.path})`);
 
                     // Find the selected field for this node
                     const selectedField = localSelectedFields.find(f => {
@@ -708,14 +902,56 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
                         return normalizedPath === node.path;
                     });
 
-                    // Enhanced: Resolve the field's schema on-demand
+                    // Start with base field schema
                     let fieldSchema = {
                         type: selectedField?.type || node.type || 'object',
                         ...(selectedField?.description && { description: selectedField.description }),
                         ...(node.required && { required: true })
                     };
 
-                    // For array types, ensure items are properly resolved
+                    // 🎯 APPLY ALL JSONSchema7 FIELD CONFIGURATIONS (only non-empty values)
+                    if (resourceKey) {
+                        const fieldConfig = getFieldConfiguration(resourceKey, node.path)
+                        console.log(`${indent}🔧 DEBUG: Field config for ${node.path}:`, fieldConfig)
+
+                        // Apply default value if configured
+                        if (fieldConfig.default !== undefined) {
+                            fieldSchema = {
+                                ...fieldSchema,
+                                default: fieldConfig.default
+                            }
+                            console.log(`${indent}✅ Applied default value to ${node.path}:`, fieldConfig.default)
+                        }
+
+                        // Apply title if configured
+                        if (fieldConfig.title) {
+                            fieldSchema = {
+                                ...fieldSchema,
+                                title: fieldConfig.title
+                            }
+                            console.log(`${indent}✅ Applied title to ${node.path}:`, fieldConfig.title)
+                        }
+
+                        // Apply description if configured (override original description)
+                        if (fieldConfig.description) {
+                            fieldSchema = {
+                                ...fieldSchema,
+                                description: fieldConfig.description
+                            }
+                            console.log(`${indent}✅ Applied description to ${node.path}:`, fieldConfig.description)
+                        }
+
+                        // Apply format if configured
+                        if (fieldConfig.format) {
+                            fieldSchema = {
+                                ...fieldSchema,
+                                format: fieldConfig.format
+                            }
+                            console.log(`${indent}✅ Applied format to ${node.path}:`, fieldConfig.format)
+                        }
+                    }
+
+                    // Handle array types
                     if (selectedField?.type === 'array' && selectedField?.items) {
                         console.log(`🔧 DEBUG: Resolving array items for ${node.name}:`, selectedField.items);
                         fieldSchema = {
@@ -726,7 +962,7 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
 
                     properties[node.name] = fieldSchema;
 
-                    // Handle children
+                    // Handle children (existing logic)
                     if (hasSelectedChildren) {
                         const childPrefix = node.path + '.';
                         const childPaths = Array.from(selectedPaths)
@@ -770,7 +1006,6 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
             return properties;
         };
 
-        // Build properties from selected tree nodes
         const selectedProperties = buildFromNodes(treeNodes);
 
         // console.log('🔧 DEBUG: Final results:', {
@@ -782,18 +1017,32 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
         // Only include base properties that are actually selected or have selected children
         const baseProperties: any = {};
 
-        // Check if apiVersion is selected
+        // Check if apiVersion is selected and apply its configuration
         if (selectedPaths.has('apiVersion')) {
             baseProperties.apiVersion = originalSchema.properties?.apiVersion || { type: 'string' };
+            if (resourceKey) {
+                const apiVersionConfig = getFieldConfiguration(resourceKey, 'apiVersion');
+                if (apiVersionConfig.default !== undefined) {
+                    baseProperties.apiVersion.default = apiVersionConfig.default;
+                    console.log('✅ Applied default to apiVersion:', apiVersionConfig.default);
+                }
+            }
         }
 
-        // Check if kind is selected
+        // Check if kind is selected and apply its configuration
         if (selectedPaths.has('kind')) {
             baseProperties.kind = originalSchema.properties?.kind || { type: 'string' };
+            if (resourceKey) {
+                const kindConfig = getFieldConfiguration(resourceKey, 'kind');
+                if (kindConfig.default !== undefined) {
+                    baseProperties.kind.default = kindConfig.default;
+                    console.log('✅ Applied default to kind:', kindConfig.default);
+                }
+            }
         }
 
         // Check if metadata or any metadata children are selected
-        const hasMetadataSelected = selectedPaths.has('metadata') || 
+        const hasMetadataSelected = selectedPaths.has('metadata') ||
             Array.from(selectedPaths).some(path => path.startsWith('metadata.'));
 
         if (hasMetadataSelected) {
@@ -805,6 +1054,15 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
                     annotations: { type: 'object' }
                 }
             };
+
+            // Apply metadata configuration
+            if (resourceKey) {
+                const metadataConfig = getFieldConfiguration(resourceKey, 'metadata');
+                if (metadataConfig.default !== undefined) {
+                    baseProperties.metadata.default = metadataConfig.default;
+                    console.log('✅ Applied default to metadata:', metadataConfig.default);
+                }
+            }
         }
 
         // Create the result schema with only selected base properties
@@ -816,9 +1074,10 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
             }
         };
 
-        console.log('🔧 DEBUG: Final schema result:', result);
+        console.log('🔧 DEBUG: Final schema result with field configurations:', result);
         return result;
     };
+
 
     /**     
     * Memoized filtered schema that applies field configurations and filters based on selected fields
@@ -872,10 +1131,10 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
         schema: any,
         prefix: string = '',
         level: number = 0
-    ): SchemaProperty[] => {
+    ): UISchemaProperty[] => {
         if (!schema?.properties) return []
 
-        const properties: SchemaProperty[] = []
+        const properties: UISchemaProperty[] = []
 
         Object.entries(schema.properties).forEach(([key, property]: [string, any]) => {
             const fieldPath = prefix ? `${prefix}.${key}` : key
@@ -969,7 +1228,7 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
     }
 
     // Update the handleFieldToggle function to ensure immediate persistence (around line 812)
-    const handleFieldToggle = (property: SchemaProperty, checked: boolean) => {
+    const handleFieldToggle = (property: UISchemaProperty, checked: boolean) => {
         const field: TemplateField = {
             path: property.path,
             title: property.name,
@@ -1049,7 +1308,7 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
     /**
      * Check if field is partially selected (some children selected)
      */
-    const isPartiallySelected = (property: SchemaProperty) => {
+    const isPartiallySelected = (property: UISchemaProperty) => {
         if (!property.hasChildren) return false
         const childPaths = getAllChildPaths(property)
         const selectedChildPaths = localSelectedFields.filter(f =>
@@ -1061,10 +1320,10 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
     /**
      * Get all possible child paths for an object property
      */
-    const getAllChildPaths = (property: SchemaProperty): string[] => {
+    const getAllChildPaths = (property: UISchemaProperty): string[] => {
         const paths: string[] = []
 
-        const collectPaths = (prop: SchemaProperty) => {
+        const collectPaths = (prop: UISchemaProperty) => {
             paths.push(prop.path)
             if (prop.properties) {
                 prop.properties.forEach(collectPaths)
@@ -1236,9 +1495,9 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
                     </DialogDescription>
                 </DialogHeader>
 
-                <div className="flex-1 grid grid-cols-2 gap-6 min-h-0">
+                <div className="flex-1 grid grid-cols-3 gap-6 min-h-0">
                     {/* Left Panel - Schema Display */}
-                    <Card className="flex flex-col min-h-0">
+                    <Card className="flex flex-col min-h-0 col-span-1">
                         <CardHeader className="flex-shrink-0">
                             <CardTitle className="text-lg">Schema Structure</CardTitle>
                         </CardHeader>
@@ -1297,7 +1556,7 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
                     </Card>
 
                     {/* Right Panel - Selected Fields Summary */}
-                    <Card className="flex flex-col min-h-0">
+                    <Card className="flex flex-col min-h-0 col-span-2">
                         <CardHeader className="flex-shrink-0">
                             <div className="flex items-center justify-between">
                                 <CardTitle className="text-lg">
@@ -1326,50 +1585,76 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
                                 ) : (
                                     <div className="space-y-2">
                                         {localSelectedFields.map((field, index) => (
-                                            <div
-                                                key={field.path}
-                                                className={`p-3 border rounded-lg transition-all duration-300 ${highlightedFieldPath === field.path
-                                                    ? 'hover:bg-gray-50 dark:hover:bg-gray-800 transform scale-105 shadow-lg'
-                                                    : 'hover:bg-gray-50 dark:hover:bg-gray-800'
-                                                    }`}
-                                            >
-                                                <div className="flex items-center justify-between">
-                                                    <div className="flex items-center space-x-2">
-                                                        <span className="font-medium">{field.title}</span>
-                                                        {field.required && (
-                                                            <Badge variant="destructive" className="text-xs">Required</Badge>
-                                                        )}
-                                                    </div>
-                                                    <div className="flex items-center space-x-2">
-                                                        <Badge variant="outline" className="text-xs bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-slate-300 dark:border-slate-600">
-                                                            {getEnhancedTypeLabel(field)}
-                                                        </Badge>
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            onClick={() => handleOpenFieldConfig(field)}
-                                                            className="h-8 w-8 p-0 text-blue-500 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
-                                                            title="Configure field"
-                                                        >
-                                                            <Edit className="h-4 w-4" />
-                                                        </Button>
+                                            <div key={field.path} className="border rounded-lg">
+                                                {/* Clickable Field Header - Toggle Configuration */}
+                                                <div
+                                                    className={`p-3 cursor-pointer transition-all duration-300 ${expandedFieldPath === field.path
+                                                            ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
+                                                            : 'hover:bg-gray-50 dark:hover:bg-gray-800'
+                                                        } ${highlightedFieldPath === field.path
+                                                            ? 'transform scale-105 shadow-lg'
+                                                            : ''
+                                                        }`}
+                                                    onClick={() => toggleFieldConfig(field.path)}
+                                                    title={expandedFieldPath === field.path ? "Click to close configuration" : "Click to configure field"}
+                                                >
+                                                    <div className="flex items-center justify-between">
+                                                        <div className="flex items-center space-x-2 flex-1">
+                                                            <span className="font-medium">{field.title}</span>
+                                                            {field.required && (
+                                                                <Badge variant="destructive" className="text-xs">Required</Badge>
+                                                            )}
+                                                            <Badge variant="outline" className="text-xs bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-slate-300 dark:border-slate-600">
+                                                                {getEnhancedTypeLabel(field)}
+                                                            </Badge>
+                                                            {/* Visual indicator for expandable state */}
+                                                            <div className={`transition-transform duration-200 ${expandedFieldPath === field.path ? 'rotate-90' : ''
+                                                                }`}>
+                                                                <ChevronRight className="h-4 w-4 text-gray-400" />
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Larger Remove Button */}
                                                         <Button
                                                             variant="ghost"
                                                             size="sm"
                                                             onClick={(e) => {
-                                                                e.stopPropagation();
+                                                                e.stopPropagation(); // Prevent triggering the row click
                                                                 handleRemoveField(field.path);
                                                             }}
-                                                            className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                                                            className="h-9 w-9 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex-shrink-0"
                                                             title="Remove field"
                                                         >
-                                                            <span className="text-lg font-medium">×</span>
+                                                            <X className="h-5 w-5" />
                                                         </Button>
                                                     </div>
+
+                                                    <div className="text-xs text-gray-500 mt-1">{field.path}</div>
+                                                    {field.description && (
+                                                        <div className="text-sm text-gray-600 dark:text-gray-300 mt-1">{field.description}</div>
+                                                    )}
+
+                                                    {/* Configuration hint */}
+                                                    {expandedFieldPath !== field.path && (
+                                                        <div className="text-xs text-blue-600 dark:text-blue-400 mt-2 opacity-70">
+                                                            Click to configure this field
+                                                        </div>
+                                                    )}
                                                 </div>
-                                                <div className="text-xs text-gray-500 mt-1">{field.path}</div>
-                                                {field.description && (
-                                                    <div className="text-sm text-gray-600 dark:text-gray-300 mt-1">{field.description}</div>
+
+                                                {/* Expandable Configuration Section */}
+                                                {expandedFieldPath === field.path && (
+                                                    <div className="border-t bg-gray-50 dark:bg-gray-900/50 p-4 animate-in slide-in-from-top-2 duration-200">
+                                                        <div className="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300 border-b pb-2">
+                                                            Configure: {field.title}
+                                                        </div>
+                                                        <EnhancedPropertyEditor
+                                                            property={convertTemplateFieldToSchemaProperty(field)}
+                                                            onSave={handleFieldConfigSave}
+                                                            onCancel={handleFieldConfigCancel}
+                                                            onDelete={handleFieldConfigDelete}
+                                                        />
+                                                    </div>
                                                 )}
                                             </div>
                                         ))}
@@ -1578,40 +1863,6 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
                     </Dialog>
                 )}
 
-                {/* Field Configuration Modal */}
-                <Dialog open={showFieldConfigModal} onOpenChange={handleCloseFieldConfig}>
-                    <DialogContent className="max-w-2xl h-[70vh] flex flex-col">
-                        <DialogHeader>
-                            <DialogTitle className="flex items-center space-x-2">
-                                <span>Configure Field: {selectedFieldForConfig?.title}</span>
-                                <Badge variant="outline">{selectedFieldForConfig?.type}</Badge>
-                            </DialogTitle>
-                            <DialogDescription>
-                                Configure default values and behavior for this field.
-                            </DialogDescription>
-                        </DialogHeader>
-
-                        <div className="flex-1 min-h-0">
-                            {selectedFieldForConfig && (
-                                <FieldConfigurationPanel
-                                    field={selectedFieldForConfig}
-                                    onDefaultValueChange={handleDefaultValueChange}
-                                    onNestedFieldToggle={handleNestedFieldToggle}
-                                    onArrayConfigChange={handleArrayConfigChange}
-                                />
-                            )}
-                        </div>
-
-                        <DialogFooter>
-                            <Button variant="outline" onClick={handleCloseFieldConfig}>
-                                Cancel
-                            </Button>
-                            <Button onClick={handleCloseFieldConfig}>
-                                Save Configuration
-                            </Button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
             </DialogContent>
         </Dialog>
     )

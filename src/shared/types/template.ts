@@ -3,25 +3,18 @@ import type { KubernetesResourceSchema } from '@/renderer/services/kubernetes-sc
  * Represents a field in a template with extensible format support
  * Supports Kubernetes, Terraform, Ansible, Kustomize, and future formats
  */
-interface TemplateField {
-    path: string // Field path (e.g., "spec.containers[].image")
-    title: string // Human-readable field name
-    type: string // Field type (string, number, boolean, object, array)
-    required: boolean // Whether field is required
-    description?: string // Field description for tooltips/help
-    format?: string // Format hint (e.g., "email", "uri", "date-time")
-    items?: any // Array items schema for array types
-    templateType?: 'kubernetes' | 'terraform' | 'ansible' | 'kustomize' | 'helm' | 'docker-compose' // Extensible format support
-    constraints?: {
-      minimum?: number
-      maximum?: number
-      pattern?: string
-      enum?: string[]
-      minLength?: number
-      maxLength?: number
-    } // Validation constraints for different formats
-    metadata?: Record<string, any> // Format-specific metadata
-  }
+export interface TemplateField {
+    name: string;
+    type: 'string' | 'number' | 'boolean' | 'array' | 'object';
+    required: boolean;
+    default?: any;
+    description?: string;
+    enum?: any[];  // Fixed: enum should be any[] not string[]
+    items?: {
+        type: TemplateField['type'];
+        fields?: TemplateField[];
+    };
+}
   
 
 /**

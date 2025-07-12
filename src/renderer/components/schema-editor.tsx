@@ -54,17 +54,7 @@ import { syntaxHighlighting } from "@codemirror/language"
 import type { ContextData } from "@/shared/types/context-data"
 import { jsonTheme, jsonHighlightStyle } from "@/renderer/lib/codemirror-themes"
 import { buildConfigPath } from "@/renderer/lib/path-utils"
-
-interface SchemaProperty {
-  type: string
-  title?: string
-  description?: string
-  default?: any
-  enum?: string[]
-  properties?: { [key: string]: SchemaProperty }
-  items?: SchemaProperty
-  required?: string[]
-}
+import type { SchemaProperty } from "@/shared/types/schema"
 
 interface Schema {
   type: string

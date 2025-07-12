@@ -10,15 +10,11 @@ import { Badge } from '@/renderer/components/ui/badge';
 import { Plus, Trash2, X } from 'lucide-react';
 import { SchemaProperty } from '@/shared/types/schema';
 
-/**
- * Enhanced PropertyEditor component that provides comprehensive schema property definition
- * capabilities including metadata editing and advanced default value configuration
- */
 interface EnhancedPropertyEditorProps {
     property: SchemaProperty;
     onSave: (property: SchemaProperty) => void;
-    onDelete?: () => void;
-    onCancel?: () => void;
+    onDelete: () => void;
+    onCancel: () => void;
 }
 
 interface FormData {
@@ -27,7 +23,7 @@ interface FormData {
     description: string;
     format: string;
     default: any;
-    enum?: string[];
+    enum?: any[];
     items?: {
         type: string;
         properties?: Record<string, any>;
@@ -38,7 +34,7 @@ interface FormData {
 export function EnhancedPropertyEditor({ property, onSave, onDelete, onCancel }: EnhancedPropertyEditorProps) {
     const [formData, setFormData] = useState<FormData>({
         type: property.type || 'string',
-        title: property.title || '',
+        title: property.title || property.name || '',
         description: property.description || '',
         format: property.format || '',
         default: property.default || getDefaultValueForType(property.type || 'string'),
@@ -47,8 +43,9 @@ export function EnhancedPropertyEditor({ property, onSave, onDelete, onCancel }:
         properties: property.properties || undefined
     });
 
-    const [enumOptions, setEnumOptions] = useState<string[]>(property.enum || []);
+    const [enumOptions, setEnumOptions] = useState<any[]>(property.enum || []);
     const [newEnumValue, setNewEnumValue] = useState('');
+    const [enumType, setEnumType] = useState<'string' | 'number' | 'integer' | 'boolean'>('string');
     const [arrayItems, setArrayItems] = useState<any[]>(
         Array.isArray(property.default) ? property.default : []
     );
@@ -65,6 +62,19 @@ export function EnhancedPropertyEditor({ property, onSave, onDelete, onCancel }:
             case 'array': return [];
             case 'object': return {};
             default: return '';
+        }
+    }
+
+    /**
+     * Convert enum value to appropriate type
+     */
+    function convertEnumValue(value: string, type: 'string' | 'number' | 'integer' | 'boolean'): any {
+        switch (type) {
+            case 'string': return value;
+            case 'number': return parseFloat(value) || 0;
+            case 'integer': return parseInt(value) || 0;
+            case 'boolean': return value.toLowerCase() === 'true';
+            default: return value;
         }
     }
 
@@ -97,14 +107,19 @@ export function EnhancedPropertyEditor({ property, onSave, onDelete, onCancel }:
     };
 
     /**
-     * Add enum option for string types
+     * Add enum option with proper type conversion
      */
     const addEnumOption = () => {
-        if (newEnumValue.trim() && !enumOptions.includes(newEnumValue.trim())) {
-            const updatedOptions = [...enumOptions, newEnumValue.trim()];
-            setEnumOptions(updatedOptions);
-            setFormData(prev => ({ ...prev, enum: updatedOptions }));
-            setNewEnumValue('');
+        if (newEnumValue.trim()) {
+            const convertedValue = convertEnumValue(newEnumValue.trim(), enumType);
+            
+            // Check for duplicates based on converted value
+            if (!enumOptions.some(option => option === convertedValue)) {
+                const updatedOptions = [...enumOptions, convertedValue];
+                setEnumOptions(updatedOptions);
+                setFormData(prev => ({ ...prev, enum: updatedOptions }));
+                setNewEnumValue('');
+            }
         }
     };
 
@@ -159,7 +174,7 @@ export function EnhancedPropertyEditor({ property, onSave, onDelete, onCancel }:
                     return (
                         <Select
                             value={formData.default || ''}
-                            onValueChange={(value) => handleDefaultValueChange(value)}
+                            onValueChange={(value: any) => handleDefaultValueChange(value)}
                         >
                             <SelectTrigger data-testid="select">
                                 <SelectValue placeholder="Select default value" />
@@ -178,7 +193,7 @@ export function EnhancedPropertyEditor({ property, onSave, onDelete, onCancel }:
                     <Textarea
                         data-testid="textarea"
                         value={formData.default || ''}
-                        onChange={(e) => handleDefaultValueChange(e.target.value)}
+                        onChange={(e: { target: { value: any; }; }) => handleDefaultValueChange(e.target.value)}
                         placeholder="Enter default value"
                         rows={3}
                     />
@@ -191,7 +206,7 @@ export function EnhancedPropertyEditor({ property, onSave, onDelete, onCancel }:
                         data-testid="input"
                         type="number"
                         value={formData.default || 0}
-                        onChange={(e) => handleDefaultValueChange(
+                        onChange={(e: any) => handleDefaultValueChange(
                             formData.type === 'integer'
                                 ? parseInt(e.target.value) || 0
                                 : parseFloat(e.target.value) || 0
