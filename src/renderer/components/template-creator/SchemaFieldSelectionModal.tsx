@@ -17,7 +17,7 @@ import { ChevronRight, ChevronDown, Copy, Edit, X } from 'lucide-react'
 import { DescriptionTooltip } from './DescriptionTooltip'
 import type { KubernetesResourceSchema } from '@/renderer/services/kubernetes-schema-indexer'
 import type { TemplateField, TemplateResource } from '@/shared/types/template'
-import { SchemaTreeNode } from '../../../shared/types/schema';
+import { SchemaProperty, SchemaTreeNode } from '../../../shared/types/schema';
 import { SchemaTreeView } from './SchemaTreeView';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
@@ -509,21 +509,73 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
             type: field.type,
             description: field.description,
             required: field.required,
-            defaultValue: field.defaultValue,
-            enumOptions: field.enumOptions,
+            default: field.defaultValue,
+            enum: field.enumOptions,
             format: field.format,
             items: field.items
         }
     }
 
+    // const handleFieldConfigSave = (property: SchemaProperty) => {
+    //     // Update the field in localSelectedFields
+    //     setLocalSelectedFields(prev => prev.map(field =>
+    //         field.path === expandedFieldPath
+    //             ? { ...field, ...property, title: property.name }
+    //             : field
+    //     ))
+    //     setExpandedFieldPath(null)
+    // }
+
+    /**
+     * Handle field configuration save from EnhancedPropertyEditor
+     * Extracts and persists individual configuration values to localStorage
+     */
     const handleFieldConfigSave = (property: SchemaProperty) => {
-        // Update the field in localSelectedFields
+        if (!expandedFieldPath) return;
+
+        console.log('🔧 DEBUG: handleFieldConfigSave called', { expandedFieldPath, property });
+
+        // Extract and persist individual configuration values using the existing handlers
+        // This ensures the configurations are properly stored in localStorage
+
+        // Handle default value changes
+        if (property.default !== undefined) {
+            handleDefaultValueChange(expandedFieldPath, property.default);
+        }
+
+        // Handle title changes - check property.title instead of property.name
+        if (property.title !== undefined) {
+            const currentField = localSelectedFields.find(f => f.path === expandedFieldPath);
+            if (currentField && property.title !== currentField.title) {
+                handleTitleChange(expandedFieldPath, property.title);
+            }
+        }
+
+        // Handle description changes
+        if (property.description !== undefined) {
+            handleDescriptionChange(expandedFieldPath, property.description);
+        }
+
+        // Handle format changes
+        if (property.format !== undefined) {
+            handleFormatChange(expandedFieldPath, property.format);
+        }
+
+        // Update the field in localSelectedFields with the new property values
         setLocalSelectedFields(prev => prev.map(field =>
             field.path === expandedFieldPath
-                ? { ...field, ...property, title: property.name }
+                ? {
+                    ...field,
+                    title: property.title || field.title,
+                    description: property.description || field.description,
+                    format: property.format || field.format,
+                    default: property.default
+                }
                 : field
-        ))
-        setExpandedFieldPath(null)
+        ));
+
+        // Close the configuration panel
+        setExpandedFieldPath(null);
     }
 
     const handleFieldConfigCancel = () => {
@@ -1589,8 +1641,8 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
                                                 {/* Clickable Field Header - Toggle Configuration */}
                                                 <div
                                                     className={`p-3 cursor-pointer transition-all duration-300 ${expandedFieldPath === field.path
-                                                            ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
-                                                            : 'hover:bg-gray-50 dark:hover:bg-gray-800'
+                                                        ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
+                                                        : 'hover:bg-gray-50 dark:hover:bg-gray-800'
                                                         } ${highlightedFieldPath === field.path
                                                             ? 'transform scale-105 shadow-lg'
                                                             : ''
@@ -1600,7 +1652,7 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
                                                 >
                                                     <div className="flex items-center justify-between">
                                                         <div className="flex items-center space-x-2 flex-1">
-                                                            <span className="font-medium">{field.title}</span>
+                                                            <span className="font-medium">{field.name}</span>
                                                             {field.required && (
                                                                 <Badge variant="destructive" className="text-xs">Required</Badge>
                                                             )}

@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/renderer/components/ui/card';
+import { useState } from 'react';
 import { Button } from '@/renderer/components/ui/button';
 import { Input } from '@/renderer/components/ui/input';
 import { Textarea } from '@/renderer/components/ui/textarea';
@@ -49,6 +48,39 @@ export function EnhancedPropertyEditor({ property, onSave, onDelete, onCancel }:
     const [arrayItems, setArrayItems] = useState<any[]>(
         Array.isArray(property.default) ? property.default : []
     );
+
+    /**
+     * Clear handlers for different fields
+     */
+    const handleClearTitle = () => {
+        setFormData(prev => ({ ...prev, title: '' }));
+    };
+
+    const handleClearDescription = () => {
+        setFormData(prev => ({ ...prev, description: '' }));
+    };
+
+    const handleClearFormat = () => {
+        setFormData(prev => ({ ...prev, format: '' }));
+    };
+
+    const handleClearDefault = () => {
+        const defaultValue = getDefaultValueForType(formData.type);
+        setFormData(prev => ({ ...prev, default: defaultValue }));
+        if (formData.type === 'array') {
+            setArrayItems([]);
+        }
+    };
+
+    /**
+     * Check if field has content to show clear button
+     */
+    const hasContent = (value: any, type?: string) => {
+        if (type === 'array') {
+            return Array.isArray(value) && value.length > 0;
+        }
+        return value !== null && value !== undefined && value !== '';
+    };
 
     /**
      * Get default value based on property type
@@ -112,7 +144,7 @@ export function EnhancedPropertyEditor({ property, onSave, onDelete, onCancel }:
     const addEnumOption = () => {
         if (newEnumValue.trim()) {
             const convertedValue = convertEnumValue(newEnumValue.trim(), enumType);
-            
+
             // Check for duplicates based on converted value
             if (!enumOptions.some(option => option === convertedValue)) {
                 const updatedOptions = [...enumOptions, convertedValue];
@@ -454,7 +486,23 @@ export function EnhancedPropertyEditor({ property, onSave, onDelete, onCancel }:
 
             {/* Property Title */}
             <div className="space-y-2">
-                <Label htmlFor="title">Title</Label>
+                <div className="flex items-center justify-between">
+                    <Label htmlFor="title">Title</Label>
+                    {hasContent(formData.title) && (
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                handleClearTitle();
+                            }}
+                            className="h-6 px-2 text-xs"
+                        >
+                            <X className="h-3 w-3 mr-1" />
+                            Clear
+                        </Button>
+                    )}
+                </div>
                 <Input
                     data-testid="input"
                     id="title"
@@ -466,7 +514,23 @@ export function EnhancedPropertyEditor({ property, onSave, onDelete, onCancel }:
 
             {/* Property Description */}
             <div className="space-y-2">
-                <Label htmlFor="description">Description</Label>
+                <div className="flex items-center justify-between">
+                    <Label htmlFor="description">Description</Label>
+                    {hasContent(formData.description) && (
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                handleClearDescription();
+                            }}
+                            className="h-6 px-2 text-xs"
+                        >
+                            <X className="h-3 w-3 mr-1" />
+                            Clear
+                        </Button>
+                    )}
+                </div>
                 <Textarea
                     data-testid="textarea"
                     id="description"
@@ -480,7 +544,23 @@ export function EnhancedPropertyEditor({ property, onSave, onDelete, onCancel }:
             {/* Property Format (for strings) */}
             {formData.type === 'string' && (
                 <div className="space-y-2">
-                    <Label htmlFor="format">Format</Label>
+                    <div className="flex items-center justify-between">
+                        <Label htmlFor="format">Format</Label>
+                        {hasContent(formData.format) && (
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleClearFormat();
+                                }}
+                                className="h-6 px-2 text-xs"
+                            >
+                                <X className="h-3 w-3 mr-1" />
+                                Clear
+                            </Button>
+                        )}
+                    </div>
                     <Select
                         value={formData.format || 'none'}
                         onValueChange={(value) => handleFieldChange('format', value === 'none' ? '' : value)}
@@ -542,25 +622,50 @@ export function EnhancedPropertyEditor({ property, onSave, onDelete, onCancel }:
 
             {/* Default Value */}
             <div className="space-y-2">
-                <Label>Default Value</Label>
+                <div className="flex items-center justify-between">
+                    <Label>Default Value</Label>
+                    {hasContent(formData.default, formData.type) && (
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                handleClearDefault();
+                            }}
+                            className="h-6 px-2 text-xs"
+                        >
+                            <X className="h-3 w-3 mr-1" />
+                            Clear
+                        </Button>
+                    )}
+                </div>
                 {renderDefaultValueEditor()}
             </div>
 
-            {/* Action Buttons */}
+            {/* Action Buttons - Plain HTML approach */}
             <div className="flex justify-end space-x-2 pt-4">
                 {onCancel && (
-                    <Button variant="outline" onClick={onCancel}>
+                    <button 
+                        onClick={onCancel}
+                        className="h-10 px-4 border border-gray-300 rounded-md bg-white text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
                         Cancel
-                    </Button>
+                    </button>
                 )}
                 {onDelete && (
-                    <Button variant="destructive" onClick={onDelete}>
+                    <button 
+                        onClick={onDelete}
+                        className="h-10 px-4 border border-red-300 rounded-md bg-white text-red-600 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500"
+                    >
                         Delete
-                    </Button>
+                    </button>
                 )}
-                <Button onClick={handleSave}>
+                <button 
+                    onClick={handleSave}
+                    className="h-10 px-4 border border-orange-500 rounded-md bg-orange-500 text-white hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                >
                     Save Property
-                </Button>
+                </button>
             </div>
         </div>
     );
