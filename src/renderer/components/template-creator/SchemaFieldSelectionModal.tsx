@@ -505,7 +505,8 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
 
     const convertTemplateFieldToSchemaProperty = (field: EnhancedTemplateField): SchemaProperty => {
         return {
-            name: field.title,
+            name: field.name,
+            title: field.title,
             type: field.type,
             description: field.description,
             required: field.required,
@@ -1283,6 +1284,7 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
     const handleFieldToggle = (property: UISchemaProperty, checked: boolean) => {
         const field: TemplateField = {
             path: property.path,
+            name: property.name,
             title: property.name,
             type: property.type,
             required: property.required || false,
@@ -1578,6 +1580,7 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
 
                                                 const field: TemplateField = {
                                                     path,
+                                                    name,
                                                     title: name,
                                                     type,
                                                     description: description || '',

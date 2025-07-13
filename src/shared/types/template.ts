@@ -14,6 +14,18 @@ export interface TemplateField {
         type: TemplateField['type'];
         fields?: TemplateField[];
     };
+    path?: string;
+    title?: string;
+    format?: string;
+    templateType?: 'kubernetes' | 'terraform' | 'ansible' | 'kustomize' | 'helm' | 'docker-compose';
+    constraints?: {
+        minLength?: number;
+        maxLength?: number;
+        minimum?: number;
+        maximum?: number;
+        pattern?: string;
+        enum?: any[];
+    };    
 }
   
 
