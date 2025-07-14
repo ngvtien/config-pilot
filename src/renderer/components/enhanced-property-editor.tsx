@@ -8,11 +8,13 @@ import { Switch } from '@/renderer/components/ui/switch';
 import { Badge } from '@/renderer/components/ui/badge';
 import { Plus, Trash2, X } from 'lucide-react';
 import { SchemaProperty } from '@/shared/types/schema';
+import { ScrollArea } from "@/renderer/components/ui/scroll-area"
 
 interface EnhancedPropertyEditorProps {
     property: SchemaProperty;
     fieldPath: string;
     onStateChange: (fieldPath: string, currentState: SchemaProperty) => void;
+    enableTypeEditing?: boolean;
 }
 
 interface FormData {
@@ -29,7 +31,7 @@ interface FormData {
     properties?: Record<string, any>;
 }
 
-export function EnhancedPropertyEditor({ property, fieldPath, onStateChange }: EnhancedPropertyEditorProps) {
+export function EnhancedPropertyEditor({ property, fieldPath, onStateChange, enableTypeEditing = false }: EnhancedPropertyEditorProps) {
     const [formData, setFormData] = useState<FormData>({
         type: property.type || 'string',
         title: property.title || '',
@@ -1247,26 +1249,28 @@ export function EnhancedPropertyEditor({ property, fieldPath, onStateChange }: E
 
     return (
         <div className="w-full space-y-6">
-            {/* Property Type */}
-            <div className="space-y-2">
-                <Label htmlFor="type">Type</Label>
-                <Select
-                    value={formData.type}
-                    onValueChange={(value) => handleFieldChange('type', value)}
-                >
-                    <SelectTrigger data-testid="select" aria-label="type">
-                        <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="string">String</SelectItem>
-                        <SelectItem value="number">Number</SelectItem>
-                        <SelectItem value="integer">Integer</SelectItem>
-                        <SelectItem value="boolean">Boolean</SelectItem>
-                        <SelectItem value="array">Array</SelectItem>
-                        <SelectItem value="object">Object</SelectItem>
-                    </SelectContent>
-                </Select>
-            </div>
+            {/* Property Type - Now conditional */}
+            {enableTypeEditing && (
+                <div className="space-y-2">
+                    <Label htmlFor="type">Type</Label>
+                    <Select
+                        value={formData.type}
+                        onValueChange={(value) => handleFieldChange('type', value)}
+                    >
+                        <SelectTrigger data-testid="select" aria-label="type">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="string">String</SelectItem>
+                            <SelectItem value="number">Number</SelectItem>
+                            <SelectItem value="integer">Integer</SelectItem>
+                            <SelectItem value="boolean">Boolean</SelectItem>
+                            <SelectItem value="array">Array</SelectItem>
+                            <SelectItem value="object">Object</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+            )}
 
             {/* Property Title */}
             <div className="space-y-2">
