@@ -43,9 +43,15 @@ export function EnhancedPropertyEditor({ property, fieldPath, onStateChange }: E
 
     const [enumOptions, setEnumOptions] = useState<any[]>(property.enum || []);
     const [newEnumValue, setNewEnumValue] = useState('');
-    const [enumType, setEnumType] = useState<'string' | 'number' | 'integer' | 'boolean'>('string');
+    //const [enumType, setEnumType] = useState<'string' | 'number' | 'integer' | 'boolean'>('string');
     const [arrayItems, setArrayItems] = useState<any[]>(
         Array.isArray(property.default) ? property.default : []
+    );
+
+    const [enumType, setEnumType] = useState<'string' | 'number' | 'integer' | 'boolean'>(
+        property.type === 'number' ? 'number' :
+            property.type === 'integer' ? 'integer' :
+                property.type === 'boolean' ? 'boolean' : 'string'
     );
 
     const [objectProperties, setObjectProperties] = useState<Array<{
@@ -199,7 +205,7 @@ export function EnhancedPropertyEditor({ property, fieldPath, onStateChange }: E
                     properties[prop.name] = { type: prop.type };
                 }
             });
-            
+
             handleFieldChange('items', {
                 ...formData.items,
                 properties
@@ -212,7 +218,7 @@ export function EnhancedPropertyEditor({ property, fieldPath, onStateChange }: E
                     properties[prop.name] = { type: prop.type };
                 }
             });
-            
+
             handleFieldChange('properties', properties);
         }
 
@@ -236,7 +242,7 @@ export function EnhancedPropertyEditor({ property, fieldPath, onStateChange }: E
                     properties[prop.name] = { type: prop.type };
                 }
             });
-            
+
             handleFieldChange('items', {
                 ...formData.items,
                 properties
@@ -249,7 +255,7 @@ export function EnhancedPropertyEditor({ property, fieldPath, onStateChange }: E
                     properties[prop.name] = { type: prop.type };
                 }
             });
-            
+
             handleFieldChange('properties', properties);
         }
 
@@ -297,7 +303,7 @@ export function EnhancedPropertyEditor({ property, fieldPath, onStateChange }: E
     //     }
     // }, [formData.type, formData.properties]);
 
-        // Sync object properties with formData.items.properties for arrays
+    // Sync object properties with formData.items.properties for arrays
     useEffect(() => {
         if (formData.type === 'array' && formData.items?.type === 'object') {
             if (formData.items.properties && Object.keys(formData.items.properties).length > 0) {
@@ -490,11 +496,22 @@ export function EnhancedPropertyEditor({ property, fieldPath, onStateChange }: E
      */
     function convertEnumValue(value: string, type: 'string' | 'number' | 'integer' | 'boolean'): any {
         switch (type) {
-            case 'string': return value;
-            case 'number': return parseFloat(value) || 0;
-            case 'integer': return parseInt(value) || 0;
-            case 'boolean': return value.toLowerCase() === 'true';
-            default: return value;
+            case 'string':
+                return value;
+            case 'number':
+                const num = parseFloat(value);
+                if (isNaN(num)) throw new Error(`Invalid number: ${value}`);
+                return num;
+            case 'integer':
+                const int = parseInt(value);
+                if (isNaN(int)) throw new Error(`Invalid integer: ${value}`);
+                return int;
+            case 'boolean':
+                if (value.toLowerCase() === 'true') return true;
+                if (value.toLowerCase() === 'false') return false;
+                throw new Error(`Invalid boolean: ${value}`);
+            default:
+                return value;
         }
     }
 
@@ -542,19 +559,29 @@ export function EnhancedPropertyEditor({ property, fieldPath, onStateChange }: E
     };
 
     /**
-     * Add enum option with proper type conversion
+     * Add enum option with enhanced validation and type conversion
      */
     const addEnumOption = () => {
-        if (newEnumValue.trim()) {
+        if (!newEnumValue.trim()) return;
+
+        try {
             const convertedValue = convertEnumValue(newEnumValue.trim(), enumType);
 
-            if (!enumOptions.some(option => option === convertedValue)) {
-                const updatedOptions = [...enumOptions, convertedValue];
-                setEnumOptions(updatedOptions);
-                setFormData(prev => ({ ...prev, enum: updatedOptions }));
-                setNewEnumValue('');
-                setTimeout(notifyStateChange, 0);
+            // Check for duplicates
+            if (enumOptions.some(option => option === convertedValue)) {
+                // Could show a toast notification here
+                console.warn('Duplicate enum value:', convertedValue);
+                return;
             }
+
+            const updatedOptions = [...enumOptions, convertedValue];
+            setEnumOptions(updatedOptions);
+            setFormData(prev => ({ ...prev, enum: updatedOptions }));
+            setNewEnumValue('');
+            setTimeout(notifyStateChange, 0);
+        } catch (error) {
+            // Could show error toast here
+            console.error('Invalid enum value:', error.message);
         }
     };
 
@@ -654,15 +681,17 @@ export function EnhancedPropertyEditor({ property, fieldPath, onStateChange }: E
                                 <SelectValue placeholder="Select default value" />
                             </SelectTrigger>
                             <SelectContent>
+                                <SelectItem value="">No default</SelectItem>
                                 {enumOptions.map((option) => (
                                     <SelectItem key={option} value={option}>
-                                        {option}
+                                        "{option}"
                                     </SelectItem>
                                 ))}
                             </SelectContent>
                         </Select>
                     );
                 }
+
                 return (
                     <Textarea
                         data-testid="textarea"
@@ -675,6 +704,31 @@ export function EnhancedPropertyEditor({ property, fieldPath, onStateChange }: E
 
             case 'number':
             case 'integer':
+                if (enumOptions.length > 0) {
+                    return (
+                        <Select
+                            value={String(formData.default) || ''}
+                            onValueChange={(value: string) => {
+                                const numValue = formData.type === 'integer' ?
+                                    parseInt(value) : parseFloat(value);
+                                handleDefaultValueChange(numValue);
+                            }}
+                        >
+                            <SelectTrigger data-testid="select">
+                                <SelectValue placeholder="Select default value" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="">No default</SelectItem>
+                                {enumOptions.map((option) => (
+                                    <SelectItem key={option} value={String(option)}>
+                                        {option}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    );
+                }
+
                 return (
                     <Input
                         data-testid="input"
@@ -690,6 +744,28 @@ export function EnhancedPropertyEditor({ property, fieldPath, onStateChange }: E
                 );
 
             case 'boolean':
+                if (enumOptions.length > 0) {
+                    return (
+                        <Select
+                            value={String(formData.default) || ''}
+                            onValueChange={(value: string) => {
+                                handleDefaultValueChange(value === 'true');
+                            }}
+                        >
+                            <SelectTrigger data-testid="select">
+                                <SelectValue placeholder="Select default value" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="">No default</SelectItem>
+                                {enumOptions.map((option) => (
+                                    <SelectItem key={String(option)} value={String(option)}>
+                                        {String(option)}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    );
+                }
                 return (
                     <div className="flex items-center space-x-2">
                         <Switch
@@ -710,8 +786,8 @@ export function EnhancedPropertyEditor({ property, fieldPath, onStateChange }: E
                             <Select
                                 value={formData.items?.type || 'string'}
                                 onValueChange={(value) => {
-                                    handleFieldChange('items', { 
-                                        ...formData.items, 
+                                    handleFieldChange('items', {
+                                        ...formData.items,
                                         type: value,
                                         // Clear properties when changing away from object type
                                         ...(value !== 'object' ? { properties: undefined } : {})
@@ -735,7 +811,7 @@ export function EnhancedPropertyEditor({ property, fieldPath, onStateChange }: E
                             </Select>
                         </div>
 
-                        {/* Object Properties Configuration (when array item type is object) */}
+                        {/* Enhanced Object Properties Configuration with Enum Support */}
                         {formData.items?.type === 'object' && (
                             <div className="space-y-4 p-4 border rounded-md bg-muted/20">
                                 <div className="flex items-center justify-between">
@@ -754,36 +830,44 @@ export function EnhancedPropertyEditor({ property, fieldPath, onStateChange }: E
                                 {objectProperties.length > 0 ? (
                                     <div className="space-y-3 max-h-40 overflow-y-auto">
                                         {objectProperties.map((prop, index) => (
-                                            <div key={index} className="flex items-center gap-2 p-3 border rounded-md bg-background">
-                                                <Input
-                                                    value={prop.name}
-                                                    onChange={(e) => handleObjectPropertyChange(index, 'name', e.target.value)}
-                                                    placeholder="Property name"
-                                                    className="flex-1"
-                                                />
-                                                <Select
-                                                    value={prop.type}
-                                                    onValueChange={(value) => handleObjectPropertyChange(index, 'type', value)}
-                                                >
-                                                    <SelectTrigger className="w-24">
-                                                        <SelectValue />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="string">String</SelectItem>
-                                                        <SelectItem value="number">Number</SelectItem>
-                                                        <SelectItem value="integer">Integer</SelectItem>
-                                                        <SelectItem value="boolean">Boolean</SelectItem>
-                                                    </SelectContent>
-                                                </Select>
-                                                <Button
-                                                    type="button"
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={() => handleRemoveObjectProperty(index)}
-                                                    className="text-destructive"
-                                                >
-                                                    <Trash2 className="h-4 w-4" />
-                                                </Button>
+                                            <div key={index} className="space-y-2 p-3 border rounded-md bg-background">
+                                                <div className="flex items-center gap-2">
+                                                    <Input
+                                                        value={prop.name}
+                                                        onChange={(e) => handleObjectPropertyChange(index, 'name', e.target.value)}
+                                                        placeholder="Property name"
+                                                        className="flex-1"
+                                                    />
+                                                    <Select
+                                                        value={prop.type}
+                                                        onValueChange={(value) => handleObjectPropertyChange(index, 'type', value)}
+                                                    >
+                                                        <SelectTrigger className="w-24">
+                                                            <SelectValue />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="string">String</SelectItem>
+                                                            <SelectItem value="number">Number</SelectItem>
+                                                            <SelectItem value="integer">Integer</SelectItem>
+                                                            <SelectItem value="boolean">Boolean</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => handleRemoveObjectProperty(index)}
+                                                        className="text-destructive"
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </div>
+
+                                                {/* Add enum support for object properties */}
+                                                <div className="text-xs text-muted-foreground pl-2 border-l-2 border-muted">
+                                                    Property: <code>{prop.name || 'unnamed'}</code> ({prop.type})
+                                                    {/* Future: Add enum configuration for object properties */}
+                                                </div>
                                             </div>
                                         ))}
                                     </div>
@@ -792,16 +876,8 @@ export function EnhancedPropertyEditor({ property, fieldPath, onStateChange }: E
                                         No properties defined. Click "Add Property" to start.
                                     </div>
                                 )}
-
-                                {objectProperties.length > 0 && (
-                                    <div className="text-xs text-muted-foreground bg-muted/30 p-2 rounded-md">
-                                        <span className="font-medium">Properties:</span>{" "}
-                                        {objectProperties.map(prop => prop.name).join(", ")}
-                                    </div>
-                                )}
                             </div>
                         )}
-
                         {/* Add Array Item Button */}
                         <div className="flex items-center justify-between">
                             <Label>Array Items</Label>
@@ -1290,41 +1366,120 @@ export function EnhancedPropertyEditor({ property, fieldPath, onStateChange }: E
                 </div>
             )}
 
-            {/* Enum Options (for strings) */}
-            {formData.type === 'string' && (
+            {/* Enhanced Enum Options - Support for all types */}
+            {/* Enhanced Enum Options - Support for all types */}
+            {['string', 'number', 'integer', 'boolean'].includes(formData.type) && (
                 <div className="space-y-4">
-                    <Label>Enum Options (Optional)</Label>
-
-                    {/* Add new enum option */}
-                    <div className="flex space-x-2">
-                        <Input data-testid="input"
-                            value={newEnumValue}
-                            onChange={(e) => setNewEnumValue(e.target.value)}
-                            placeholder="Add enum option"
-                            onKeyPress={(e) => e.key === 'Enter' && addEnumOption()}
-                        />
-                        <Button
-                            type="button"
-                            variant="outline"
-                            onClick={addEnumOption}
-                            disabled={!newEnumValue.trim()}
-                        >
-                            <Plus className="h-4 w-4" />
-                        </Button>
+                    <div className="flex items-center justify-between">
+                        <Label>Enum Options (Optional)</Label>
+                        {enumOptions.length > 0 && (
+                            <Badge variant="outline" className="text-xs">
+                                {enumOptions.length} option{enumOptions.length !== 1 ? 's' : ''}
+                            </Badge>
+                        )}
                     </div>
 
-                    {/* Display enum options */}
+                    {/* Enum Type Selector (for non-string types) */}
+                    {formData.type !== 'string' && (
+                        <div className="space-y-2">
+                            <Label className="text-sm">Enum Value Type</Label>
+                            <Select
+                                value={enumType}
+                                onValueChange={(value: 'string' | 'number' | 'integer' | 'boolean') => {
+                                    setEnumType(value);
+                                    // Clear existing enum options when type changes
+                                    setEnumOptions([]);
+                                    setFormData(prev => ({ ...prev, enum: undefined }));
+                                }}
+                            >
+                                <SelectTrigger className="w-full">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="string">String</SelectItem>
+                                    <SelectItem value="number">Number</SelectItem>
+                                    <SelectItem value="integer">Integer</SelectItem>
+                                    <SelectItem value="boolean">Boolean</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    )}
+
+                    {/* Enhanced Add Enum Option */}
+                    <div className="space-y-2">
+                        <div className="flex space-x-2">
+                            {enumType === 'boolean' ? (
+                                <Select
+                                    value={newEnumValue}
+                                    onValueChange={setNewEnumValue}
+                                >
+                                    <SelectTrigger className="flex-1">
+                                        <SelectValue placeholder="Select boolean value" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="true">True</SelectItem>
+                                        <SelectItem value="false">False</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            ) : (
+                                <Input
+                                    value={newEnumValue}
+                                    onChange={(e) => setNewEnumValue(e.target.value)}
+                                    placeholder={`Add ${enumType} enum option`}
+                                    type={enumType === 'number' || enumType === 'integer' ? 'number' : 'text'}
+                                    step={enumType === 'integer' ? '1' : 'any'}
+                                    onKeyPress={(e) => e.key === 'Enter' && addEnumOption()}
+                                    className="flex-1"
+                                />
+                            )}
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={addEnumOption}
+                                disabled={!newEnumValue.trim()}
+                            >
+                                <Plus className="h-4 w-4" />
+                            </Button>
+                        </div>
+
+                        {/* Validation hint */}
+                        {enumType !== 'string' && (
+                            <div className="text-xs text-muted-foreground">
+                                {enumType === 'number' && 'Enter decimal numbers (e.g., 1.5, 2.0)'}
+                                {enumType === 'integer' && 'Enter whole numbers (e.g., 1, 2, 3)'}
+                                {enumType === 'boolean' && 'Select true or false values'}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Enhanced Enum Options Display */}
                     {enumOptions.length > 0 && (
-                        <div className="flex flex-wrap gap-2">
-                            {enumOptions.map((option, index) => (
-                                <Badge key={index} variant="secondary" className="flex items-center gap-1">
-                                    {option}
-                                    <X
-                                        className="h-3 w-3 cursor-pointer hover:text-red-500"
-                                        onClick={() => removeEnumOption(index)}
-                                    />
-                                </Badge>
-                            ))}
+                        <div className="space-y-2">
+                            <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto p-2 border rounded-md bg-muted/20">
+                                {enumOptions.map((option, index) => (
+                                    <Badge
+                                        key={index}
+                                        variant="secondary"
+                                        className="flex items-center gap-1 px-2 py-1"
+                                    >
+                                        <span className="text-xs font-mono">
+                                            {enumType === 'string' ? `"${option}"` : String(option)}
+                                        </span>
+                                        <X
+                                            className="h-3 w-3 cursor-pointer hover:text-red-500 transition-colors"
+                                            onClick={() => removeEnumOption(index)}
+                                        />
+                                    </Badge>
+                                ))}
+                            </div>
+
+                            {/* Enum summary */}
+                            <div className="text-xs text-muted-foreground bg-muted/30 p-2 rounded-md">
+                                <span className="font-medium">Enum values ({enumType}):</span>{" "}
+                                {enumOptions.map(opt =>
+                                    enumType === 'string' ? `"${opt}"` : String(opt)
+                                ).join(', ')}
+                            </div>
                         </div>
                     )}
                 </div>
@@ -1351,41 +1506,6 @@ export function EnhancedPropertyEditor({ property, fieldPath, onStateChange }: E
                 </div>
                 {renderDefaultValueEditor()}
             </div>
-
-            {/* Action Buttons - Plain HTML approach */}
-            {/* <div className="flex justify-end space-x-2 pt-4">
-                {onCancel && (
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onCancel();
-                        }}
-                        className="h-10 px-4 border border-gray-300 rounded-md bg-white text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                        Cancel
-                    </button>
-                )}
-                {onDelete && (
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onDelete();
-                        }}
-                        className="h-10 px-4 border border-red-300 rounded-md bg-white text-red-600 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500"
-                    >
-                        Delete
-                    </button>
-                )}
-                <button
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        handleSave();
-                    }}
-                    className="h-10 px-4 border border-orange-500 rounded-md bg-orange-500 text-white hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                >
-                    Save Property
-                </button>
-            </div> */}
         </div>
     );
 }

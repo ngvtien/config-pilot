@@ -1789,13 +1789,6 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
                                                         <div className="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300 border-b pb-2">
                                                             Configure: {field.title}
                                                         </div>
-                                                        {/* <EnhancedPropertyEditor
-                                                            property={convertTemplateFieldToSchemaProperty(field)}
-                                                            onSave={handleFieldConfigSave}
-                                                            onCancel={handleFieldConfigCancel}
-                                                            onDelete={handleFieldConfigDelete}
-                                                        /> */}
-
                                                         <EnhancedPropertyEditor
                                                             property={getEffectiveFieldConfig(field.path)}
                                                             fieldPath={field.path}
