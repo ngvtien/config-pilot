@@ -17,7 +17,7 @@ import { RJSFSchema } from '@rjsf/utils'
 import { TextWidget, TextareaWidget, CheckboxWidget, SelectWidget } from './custom-widgets'
 import { Template, TemplateResource, TemplateField } from '@/shared/types/template'
 import { Textarea } from '@/renderer/components/ui/textarea'
-import { SchemaFieldSelectionModal } from './SchemaFieldSelectionModal'
+import { SchemaFieldSelectionModal, clearResourceData } from './SchemaFieldSelectionModal'
 import { joinPath } from '@/renderer/lib/path-utils'
 import { generateHelmResourceTemplate, generateResourceYamlPreview } from '@/renderer/utils/helm-template-generator'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/renderer/components/ui/tooltip'
@@ -596,24 +596,33 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
     }
   }, [userDataDir, kubernetesVersion])
 
-  /**
-   * Remove a selected resource
-   */
-  const removeResource = (resourceToRemove: TemplateResource) => {
-    setSelectedResources(prev =>
-      prev.filter(resource =>
-        !(resource.apiVersion === resourceToRemove.apiVersion &&
-          resource.kind === resourceToRemove.kind)
-      )
+/**
+ * Remove a selected resource and clear all its cached data
+ */
+const removeResource = (resourceToRemove: TemplateResource) => {
+  // Generate resource key for clearing cached data
+  const resourceKey = `${resourceToRemove.apiVersion}/${resourceToRemove.kind}`;
+  
+  // CLEAR ALL cached data for this resource FIRST
+  clearResourceData(resourceKey);
+  
+  // Remove from selected resources
+  setSelectedResources(prev =>
+    prev.filter(resource =>
+      !(resource.apiVersion === resourceToRemove.apiVersion &&
+        resource.kind === resourceToRemove.kind)
     )
+  )
 
-    // Clear selected resource if it's the one being removed
-    if (selectedResource &&
-      selectedResource.kind === resourceToRemove.kind &&
-      `${selectedResource.group}/${selectedResource.version}` === resourceToRemove.apiVersion) {
-      setSelectedResource(null)
-    }
+  // Clear selected resource if it's the one being removed
+  if (selectedResource &&
+    selectedResource.kind === resourceToRemove.kind &&
+    `${selectedResource.group}/${selectedResource.version}` === resourceToRemove.apiVersion) {
+    setSelectedResource(null)
   }
+  
+  console.log(`🧹 REMOVED resource and CLEARED ALL cached data: ${resourceKey}`);
+}
 
   // Filter search results to exclude already selected resources
   const filteredSearchResults = useMemo(() => {

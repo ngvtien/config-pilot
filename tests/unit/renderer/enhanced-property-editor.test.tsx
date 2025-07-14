@@ -10,9 +10,7 @@ import { SchemaProperty } from '@/shared/types/schema';
  * Covers all property types, default value handling, and user interactions
  */
 describe('EnhancedPropertyEditor', () => {
-  const mockOnSave = vi.fn();
-  const mockOnDelete = vi.fn();
-  const mockOnCancel = vi.fn();
+  const mockOnStateChange = vi.fn();
 
   const defaultProperty: SchemaProperty = {
     name: 'testProperty',
@@ -35,9 +33,8 @@ describe('EnhancedPropertyEditor', () => {
       render(
         <EnhancedPropertyEditor
           property={defaultProperty}
-          onSave={mockOnSave}
-          onDelete={mockOnDelete}
-          onCancel={mockOnCancel}
+          fieldPath="test.property"
+          onStateChange={mockOnStateChange}
         />
       );
 
@@ -46,17 +43,16 @@ describe('EnhancedPropertyEditor', () => {
       expect(screen.getByDisplayValue('A test property')).toBeInTheDocument();
     });
 
-    it('should render without optional handlers', () => {
+    it('should render with minimal props', () => {
       render(
         <EnhancedPropertyEditor
           property={defaultProperty}
-          onSave={mockOnSave}
+          fieldPath="test.property"
+          onStateChange={mockOnStateChange}
         />
       );
 
       expect(screen.getByText('Enhanced Property Editor')).toBeInTheDocument();
-      expect(screen.queryByText('Delete')).not.toBeInTheDocument();
-      expect(screen.queryByText('Cancel')).not.toBeInTheDocument();
     });
   });
 
@@ -69,7 +65,8 @@ describe('EnhancedPropertyEditor', () => {
       render(
         <EnhancedPropertyEditor
           property={defaultProperty}
-          onSave={mockOnSave}
+          fieldPath="test.property"
+          onStateChange={mockOnStateChange}
         />
       );
 
@@ -85,7 +82,8 @@ describe('EnhancedPropertyEditor', () => {
       render(
         <EnhancedPropertyEditor
           property={defaultProperty}
-          onSave={mockOnSave}
+          fieldPath="test.property"
+          onStateChange={mockOnStateChange}
         />
       );
 
@@ -101,7 +99,8 @@ describe('EnhancedPropertyEditor', () => {
       render(
         <EnhancedPropertyEditor
           property={defaultProperty}
-          onSave={mockOnSave}
+          fieldPath="test.property"
+          onStateChange={mockOnStateChange}
         />
       );
 
@@ -117,7 +116,8 @@ describe('EnhancedPropertyEditor', () => {
       render(
         <EnhancedPropertyEditor
           property={defaultProperty}
-          onSave={mockOnSave}
+          fieldPath="test.property"
+          onStateChange={mockOnStateChange}
         />
       );
 
@@ -139,7 +139,8 @@ describe('EnhancedPropertyEditor', () => {
       render(
         <EnhancedPropertyEditor
           property={defaultProperty}
-          onSave={mockOnSave}
+          fieldPath="test.property"
+          onStateChange={mockOnStateChange}
         />
       );
 
@@ -160,7 +161,8 @@ describe('EnhancedPropertyEditor', () => {
       render(
         <EnhancedPropertyEditor
           property={propertyWithEnum}
-          onSave={mockOnSave}
+          fieldPath="test.property"
+          onStateChange={mockOnStateChange}
         />
       );
 
@@ -188,7 +190,8 @@ describe('EnhancedPropertyEditor', () => {
       render(
         <EnhancedPropertyEditor
           property={propertyWithEnum}
-          onSave={mockOnSave}
+          fieldPath="test.property"
+          onStateChange={mockOnStateChange}
         />
       );
 
@@ -216,7 +219,8 @@ describe('EnhancedPropertyEditor', () => {
       render(
         <EnhancedPropertyEditor
           property={arrayProperty}
-          onSave={mockOnSave}
+          fieldPath="test.property"
+          onStateChange={mockOnStateChange}
         />
       );
 
@@ -229,7 +233,8 @@ describe('EnhancedPropertyEditor', () => {
       render(
         <EnhancedPropertyEditor
           property={arrayProperty}
-          onSave={mockOnSave}
+          fieldPath="test.property"
+          onStateChange={mockOnStateChange}
         />
       );
 
@@ -244,7 +249,8 @@ describe('EnhancedPropertyEditor', () => {
       render(
         <EnhancedPropertyEditor
           property={arrayProperty}
-          onSave={mockOnSave}
+          fieldPath="test.property"
+          onStateChange={mockOnStateChange}
         />
       );
 
@@ -273,7 +279,8 @@ describe('EnhancedPropertyEditor', () => {
       render(
         <EnhancedPropertyEditor
           property={numberArrayProperty}
-          onSave={mockOnSave}
+          fieldPath="test.property"
+          onStateChange={mockOnStateChange}
         />
       );
 
@@ -283,15 +290,16 @@ describe('EnhancedPropertyEditor', () => {
   });
 
   /**
-   * Test save functionality
+   * Test state change functionality
    */
-  describe('Save Functionality', () => {
-    it('should call onSave with updated property', async () => {
+  describe('State Change Functionality', () => {
+    it('should call onStateChange when title is updated', async () => {
       const user = userEvent.setup();
       render(
         <EnhancedPropertyEditor
           property={defaultProperty}
-          onSave={mockOnSave}
+          fieldPath="test.property"
+          onStateChange={mockOnStateChange}
         />
       );
 
@@ -299,21 +307,24 @@ describe('EnhancedPropertyEditor', () => {
       await user.clear(titleInput);
       await user.type(titleInput, 'Updated Title');
 
-      await user.click(screen.getByText('Save Property'));
-
-      expect(mockOnSave).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: 'Updated Title'
-        })
-      );
+      // Wait for the debounced state change
+      await waitFor(() => {
+        expect(mockOnStateChange).toHaveBeenCalledWith(
+          'test.property',
+          expect.objectContaining({
+            title: 'Updated Title'
+          })
+        );
+      });
     });
 
-    it('should include enum options in saved property', async () => {
+    it('should include enum options in state change', async () => {
       const user = userEvent.setup();
       render(
         <EnhancedPropertyEditor
           property={defaultProperty}
-          onSave={mockOnSave}
+          fieldPath="test.property"
+          onStateChange={mockOnStateChange}
         />
       );
 
@@ -321,46 +332,15 @@ describe('EnhancedPropertyEditor', () => {
       await user.type(enumInput, 'option1');
       await user.click(screen.getByRole('button', { name: /\+/ }));
 
-      await user.click(screen.getByText('Save Property'));
-
-      expect(mockOnSave).toHaveBeenCalledWith(
-        expect.objectContaining({
-          enum: ['option1']
-        })
-      );
-    });
-  });
-
-  /**
-   * Test action buttons
-   */
-  describe('Action Buttons', () => {
-    it('should call onDelete when delete button is clicked', async () => {
-      const user = userEvent.setup();
-      render(
-        <EnhancedPropertyEditor
-          property={defaultProperty}
-          onSave={mockOnSave}
-          onDelete={mockOnDelete}
-        />
-      );
-
-      await user.click(screen.getByText('Delete'));
-      expect(mockOnDelete).toHaveBeenCalled();
-    });
-
-    it('should call onCancel when cancel button is clicked', async () => {
-      const user = userEvent.setup();
-      render(
-        <EnhancedPropertyEditor
-          property={defaultProperty}
-          onSave={mockOnSave}
-          onCancel={mockOnCancel}
-        />
-      );
-
-      await user.click(screen.getByText('Cancel'));
-      expect(mockOnCancel).toHaveBeenCalled();
+      // Wait for the debounced state change
+      await waitFor(() => {
+        expect(mockOnStateChange).toHaveBeenCalledWith(
+          'test.property',
+          expect.objectContaining({
+            enum: ['option1']
+          })
+        );
+      });
     });
   });
 
@@ -372,7 +352,8 @@ describe('EnhancedPropertyEditor', () => {
       render(
         <EnhancedPropertyEditor
           property={defaultProperty}
-          onSave={mockOnSave}
+          fieldPath="test.property"
+          onStateChange={mockOnStateChange}
         />
       );
 
@@ -384,7 +365,8 @@ describe('EnhancedPropertyEditor', () => {
       render(
         <EnhancedPropertyEditor
           property={defaultProperty}
-          onSave={mockOnSave}
+          fieldPath="test.property"
+          onStateChange={mockOnStateChange}
         />
       );
 
@@ -411,7 +393,8 @@ describe('EnhancedPropertyEditor', () => {
       render(
         <EnhancedPropertyEditor
           property={objectProperty}
-          onSave={mockOnSave}
+          fieldPath="test.property"
+          onStateChange={mockOnStateChange}
         />
       );
 

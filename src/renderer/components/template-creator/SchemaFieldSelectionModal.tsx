@@ -66,9 +66,10 @@ const getFieldConfiguration = (resourceKey: string, fieldPath: string): JSONSche
                 config.default = storedConfig.default
                 console.log(`🔧 DEBUG: Found stored default for ${fieldPath}:`, storedConfig.default);
             }
-            if (storedConfig.title && typeof storedConfig.title === 'string' && storedConfig.title.trim()) {
-                config.title = storedConfig.title.trim()
-                console.log(`🔧 DEBUG: Found stored title for ${fieldPath}:`, storedConfig.title.trim());
+            // FIXED: Always include title if it exists, even if empty
+            if (storedConfig.title !== undefined && typeof storedConfig.title === 'string') {
+                config.title = storedConfig.title
+                console.log(`🔧 DEBUG: Found stored title for ${fieldPath}:`, storedConfig.title);
             }
             if (storedConfig.description && typeof storedConfig.description === 'string' && storedConfig.description.trim()) {
                 config.description = storedConfig.description.trim()
@@ -91,6 +92,7 @@ const getFieldConfiguration = (resourceKey: string, fieldPath: string): JSONSche
     console.log(`🔧 DEBUG: No stored config found for ${fieldPath}, returning empty object`);
     return {}
 }
+
 /**
  * Helper function to update field configuration in JSONSchema7 format
  * Only stores properties that have actual values
@@ -210,6 +212,113 @@ function persistFieldConfigurations(resourceKey: string, configurations: Record<
     }
 }
 
+/**
+ * Clear field configurations for a specific resource
+ */
+export function clearFieldConfiguration(resourceKey: string, fieldPath: string) {
+    try {
+        const stored = localStorage.getItem(STORAGE_KEYS.FIELD_CONFIGURATIONS)
+        if (stored) {
+            const allConfigurations = JSON.parse(stored)
+            if (allConfigurations[resourceKey]) {
+                delete allConfigurations[resourceKey][fieldPath]
+                localStorage.setItem(STORAGE_KEYS.FIELD_CONFIGURATIONS, JSON.stringify(allConfigurations))
+                console.log(`🧹 Cleared field configuration for ${resourceKey}.${fieldPath}`)
+            }
+        }
+    } catch (error) {
+        console.warn('Failed to clear field configuration:', error)
+    }
+}
+
+export const setEffectiveFieldConfiguration = (resourceKey: string, fieldPath: string, config: Partial<JSONSchema7FieldConfig>): JSONSchema7FieldConfig => {
+    const allConfigs = getPersistedFieldConfigurations(resourceKey)
+
+    // Clean the config - remove undefined and empty string values
+    const cleanConfig: any = {}
+    Object.entries(config).forEach(([key, value]) => {
+        if (value !== undefined && value !== '') {
+            cleanConfig[key] = value
+        }
+    })
+
+    // If clean config is empty, remove the field entirely
+    if (Object.keys(cleanConfig).length === 0) {
+        delete allConfigs[fieldPath]
+    } else {
+        allConfigs[fieldPath] = cleanConfig
+    }
+
+    persistFieldConfigurations(resourceKey, allConfigs)
+
+    // Return the current configuration - use getFieldConfiguration since this is the setter
+    return getFieldConfiguration(resourceKey, fieldPath)
+}
+
+/**
+ * Clear all field configurations
+ */
+/**
+ * Clear all field configurations and cached data
+ */
+export function clearAllFieldConfigurations() {
+    try {
+        // Clear all localStorage entries
+        localStorage.removeItem(STORAGE_KEYS.FIELD_CONFIGURATIONS)
+        localStorage.removeItem(STORAGE_KEYS.SELECTED_FIELDS)
+        localStorage.removeItem(STORAGE_KEYS.SELECTED_FIELDS_SCHEMA)
+
+        // Clear all sessionStorage entries
+        sessionStorage.removeItem(STORAGE_KEYS.EXPANDED_NODES)
+
+        console.log('🧹 CLEARED ALL localStorage and sessionStorage for field configurations')
+    } catch (error) {
+        console.warn('Failed to clear all field configurations:', error)
+    }
+}
+
+/**
+ * Clear all data for a specific resource
+ */
+export function clearResourceData(resourceKey: string) {
+    try {
+        // Clear field configurations for this resource
+        const stored = localStorage.getItem(STORAGE_KEYS.FIELD_CONFIGURATIONS)
+        if (stored) {
+            const allConfigurations = JSON.parse(stored)
+            delete allConfigurations[resourceKey]
+            localStorage.setItem(STORAGE_KEYS.FIELD_CONFIGURATIONS, JSON.stringify(allConfigurations))
+        }
+
+        // Clear selected fields for this resource
+        const storedFields = localStorage.getItem(STORAGE_KEYS.SELECTED_FIELDS)
+        if (storedFields) {
+            const allSelections = JSON.parse(storedFields)
+            delete allSelections[resourceKey]
+            localStorage.setItem(STORAGE_KEYS.SELECTED_FIELDS, JSON.stringify(allSelections))
+        }
+
+        // Clear selected fields schema for this resource
+        const storedSchema = localStorage.getItem(STORAGE_KEYS.SELECTED_FIELDS_SCHEMA)
+        if (storedSchema) {
+            const allSchemas = JSON.parse(storedSchema)
+            delete allSchemas[resourceKey]
+            localStorage.setItem(STORAGE_KEYS.SELECTED_FIELDS_SCHEMA, JSON.stringify(allSchemas))
+        }
+
+        // Clear expanded nodes for this resource
+        const storedExpanded = sessionStorage.getItem(STORAGE_KEYS.EXPANDED_NODES)
+        if (storedExpanded) {
+            const allExpanded = JSON.parse(storedExpanded)
+            delete allExpanded[resourceKey]
+            sessionStorage.setItem(STORAGE_KEYS.EXPANDED_NODES, JSON.stringify(allExpanded))
+        }
+
+        console.log(`🧹 CLEARED ALL data for resource: ${resourceKey}`)
+    } catch (error) {
+        console.warn(`Failed to clear resource data for ${resourceKey}:`, error)
+    }
+}
 /**
  * Get persisted selected fields from localStorage
  */
@@ -344,6 +453,8 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
     const [expandedFieldPath, setExpandedFieldPath] = useState<string | null>(null)
 
     const [schemaTimestamp, setSchemaTimestamp] = useState(Date.now())
+
+    const [currentFieldStates, setCurrentFieldStates] = useState<Record<string, SchemaProperty>>({});
 
     const memoizedFullSchema = useMemo(() => {
         if (!resource?.schema) return '{}'
@@ -504,195 +615,60 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
         }
     }, [resourceKey])
 
-    // /**
-    //  * Handle closing field configuration modal
-    //  */
-    // const handleCloseFieldConfig = () => {
-    //     setShowFieldConfigModal(false)
-    //     setSelectedFieldForConfig(null)
-    // }
+    /**
+     * Handle field state changes - just store whatever the editor gives us
+     */
+    /**
+     * Handle field state changes - just store whatever the editor gives us
+     */
+    const handleFieldStateChange = (fieldPath: string, currentState: SchemaProperty) => {
+        console.log('🔥 DEBUG: ===== handleFieldStateChange START =====');
+        console.log('🔥 DEBUG: Field state change detected', {
+            fieldPath,
+            currentState,
+            currentStateTitle: currentState.title,
+            currentStateDefault: currentState.default,
+            currentStateDescription: currentState.description,
+            currentStateFormat: currentState.format
+        });
+
+        setCurrentFieldStates(prev => {
+            const updated = {
+                ...prev,
+                [fieldPath]: currentState
+            };
+            console.log('🔥 DEBUG: Updated currentFieldStates', updated);
+            return updated;
+        });
+
+        // Trigger schema preview update
+        const newTimestamp = Date.now();
+        console.log('🔥 DEBUG: Triggering schema rebuild with timestamp', newTimestamp);
+        setSchemaTimestamp(newTimestamp);
+        
+        console.log('🔥 DEBUG: ===== handleFieldStateChange END =====');
+    };
+
+    /**
+     * Get effective field configuration for a field
+     * Priority: current editor state > persisted config > base field
+     */
+    const getEffectiveFieldConfig = (fieldPath: string): SchemaProperty => {
+        const baseField = localSelectedFields.find(f => f.path === fieldPath);
+        const persistedConfig = getPersistedFieldConfigurations(resourceKey)[fieldPath] || {};
+        const currentState = currentFieldStates[fieldPath];
+
+        if (currentState) {
+            // Editor is open and has current state - use that
+            return currentState;
+        } else {
+            // Editor is closed - use persisted + base
+            return { ...baseField, ...persistedConfig };
+        }
+    };
 
     const toggleFieldConfig = (fieldPath: string) => {
         setExpandedFieldPath(prev => prev === fieldPath ? null : fieldPath)
-    }
-
-    const convertTemplateFieldToSchemaProperty = (field: EnhancedTemplateField): SchemaProperty => {
-        console.log('🔧 DEBUG: convertTemplateFieldToSchemaProperty called', {
-            fieldPath: field.path,
-            fieldTitle: field.title,
-            fieldName: field.name,
-            fieldDefaultValue: field.defaultValue,
-            fullField: field
-        });
-
-        const converted = {
-            path: field.path,
-            name: field.name,
-            title: field.title,
-            type: field.type,
-            description: field.description,
-            required: field.required,
-            default: field.defaultValue,
-            enum: field.enumOptions,
-            format: field.format,
-            items: field.items
-        };
-
-        console.log('🔧 DEBUG: convertTemplateFieldToSchemaProperty result', converted);
-        return converted;
-    }
-
-    /**
-     * Handle field configuration save from EnhancedPropertyEditor
-     * FIXED: Single atomic operation eliminates cascading updates
-     */
-    const handleFieldConfigSave = (property: SchemaProperty) => {
-        console.log('🔧 DEBUG: ===== handleFieldConfigSave START =====');
-        console.log('🔧 DEBUG: handleFieldConfigSave called', {
-            expandedFieldPath,
-            resourceKey,
-            property,
-            propertyTitle: property.title,
-            propertyTitleLength: property.title?.length,
-            propertyTitleTrimmed: property.title?.trim(),
-            propertyDefault: property.default
-        });
-
-        if (!expandedFieldPath || !resourceKey) {
-            console.log('🔧 DEBUG: Early return - missing expandedFieldPath or resourceKey');
-            return;
-        }
-
-        // Find the current field to compare changes
-        const currentField = localSelectedFields.find(f => f.path === expandedFieldPath);
-        console.log('🔧 DEBUG: Current field before update', {
-            currentField,
-            currentTitle: currentField?.title,
-            currentDefault: currentField?.defaultValue
-        });
-
-        // Get existing configuration
-        const allConfigs = getPersistedFieldConfigurations(resourceKey);
-        const existingConfig = allConfigs[expandedFieldPath] || {};
-        console.log('🔧 DEBUG: Existing config before update', existingConfig);
-
-        // Start with existing configuration
-        const fieldConfig = { ...existingConfig };
-
-        // Handle default value
-        if (property.default !== undefined && property.default !== '') {
-            fieldConfig.default = property.default;
-            console.log('🔧 DEBUG: Adding default to fieldConfig', property.default);
-        } else if (property.default === '' || property.default === undefined) {
-            delete fieldConfig.default;
-            console.log('🔧 DEBUG: Removing default from fieldConfig');
-        }
-
-        // CRITICAL FIX: Handle title clearing properly
-        if (property.title !== undefined) {
-            if (property.title.trim()) {
-                fieldConfig.title = property.title.trim();
-                console.log('🔧 DEBUG: Adding title to fieldConfig', property.title.trim());
-            } else {
-                // Explicitly delete the title property when it's cleared
-                delete fieldConfig.title;
-                console.log('🔧 DEBUG: Title is empty/whitespace, DELETING title from fieldConfig');
-            }
-        }
-
-        // Handle description
-        if (property.description !== undefined) {
-            if (property.description && property.description.trim()) {
-                fieldConfig.description = property.description.trim();
-                console.log('🔧 DEBUG: Adding description to fieldConfig', property.description.trim());
-            } else {
-                delete fieldConfig.description;
-                console.log('🔧 DEBUG: Removing description from fieldConfig');
-            }
-        }
-
-        // Handle format
-        if (property.format !== undefined) {
-            if (property.format && property.format.trim()) {
-                fieldConfig.format = property.format.trim();
-                console.log('🔧 DEBUG: Adding format to fieldConfig', property.format.trim());
-            } else {
-                delete fieldConfig.format;
-                console.log('🔧 DEBUG: Removing format from fieldConfig');
-            }
-        }
-
-        console.log('🔧 DEBUG: Final fieldConfig object', fieldConfig);
-
-        // Update localStorage
-        if (Object.keys(fieldConfig).length === 0) {
-            delete allConfigs[expandedFieldPath];
-            console.log('🔧 DEBUG: Deleting entire config for', expandedFieldPath);
-        } else {
-            allConfigs[expandedFieldPath] = fieldConfig;
-            console.log('🔧 DEBUG: Setting config for', expandedFieldPath, fieldConfig);
-        }
-
-        persistFieldConfigurations(resourceKey, allConfigs);
-        console.log('🔧 DEBUG: Persisted configurations to localStorage');
-
-        // Verify what was actually stored
-        const verifyConfigs = getPersistedFieldConfigurations(resourceKey);
-        console.log('🔧 DEBUG: Verification - configs after persistence', verifyConfigs);
-        console.log('🔧 DEBUG: Verification - specific field config', verifyConfigs[expandedFieldPath]);
-
-        // ... existing code ...
-        // 3. Single state update with all changes
-        console.log('🔧 DEBUG: About to update localSelectedFields');
-        setLocalSelectedFields(prev => {
-            console.log('🔧 DEBUG: localSelectedFields before update', prev);
-            const updated = prev.map(field =>
-                field.path === expandedFieldPath
-                    ? {
-                        ...field,
-                        title: property.title !== undefined ? property.title : field.title,
-                        description: property.description !== undefined ? property.description : field.description,
-                        format: property.format !== undefined ? property.format : field.format,
-                        default: property.default !== undefined ? property.default : field.default
-                    }
-                    : field
-            );
-            console.log('🔧 DEBUG: localSelectedFields after update', updated);
-            return updated;
-        });
-
-        // 4. Update field configurations state for backward compatibility
-        console.log('🔧 DEBUG: Updating fieldConfigurations state');
-        setFieldConfigurations(prev => {
-            const updated = {
-                ...prev,
-                [expandedFieldPath]: fieldConfig.default
-            };
-            console.log('🔧 DEBUG: fieldConfigurations updated', updated);
-            return updated;
-        });
-
-        // 5. Single schema rebuild trigger (instead of 4 calls)
-        const newTimestamp = Date.now();
-        console.log('🔧 DEBUG: Setting schema timestamp', newTimestamp);
-        setSchemaTimestamp(newTimestamp);
-
-        // 6. Close configuration panel
-        console.log('🔧 DEBUG: Closing configuration panel');
-        setExpandedFieldPath(null);
-
-        console.log('🔧 DEBUG: ===== handleFieldConfigSave END =====');
-    };
-
-    const handleFieldConfigCancel = () => {
-        setExpandedFieldPath(null)
-    }
-
-    const handleFieldConfigDelete = () => {
-        if (expandedFieldPath) {
-            handleRemoveField(expandedFieldPath)
-            setExpandedFieldPath(null)
-        }
     }
 
     /**
@@ -864,6 +840,50 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
     }, [localSelectedFields])
 
     /**
+     * Get effective field configuration - prioritizes current editor state over persisted config
+     */
+    const getEffectiveFieldConfiguration = (fieldPath: string): JSONSchema7FieldConfig => {
+        console.log('🔥 DEBUG: ===== getEffectiveFieldConfiguration START =====');
+        console.log('🔥 DEBUG: Getting effective config for', fieldPath);
+        
+        // First check if we have current editor state for this field
+        const currentState = currentFieldStates[fieldPath];
+        console.log('🔥 DEBUG: Current state from currentFieldStates', currentState);
+        
+        if (currentState) {
+            const config: JSONSchema7FieldConfig = {};
+
+            if (currentState.default !== undefined && currentState.default !== null && currentState.default !== '') {
+                config.default = currentState.default;
+                console.log('🔥 DEBUG: Applied default from currentState', currentState.default);
+            }
+            // FIXED: Always include title from currentState, even if empty
+            if (currentState.title !== undefined) {
+                config.title = currentState.title;
+                console.log('🔥 DEBUG: Applied title from currentState', currentState.title);
+            }
+            if (currentState.description && currentState.description.trim()) {
+                config.description = currentState.description.trim();
+                console.log('🔥 DEBUG: Applied description from currentState', currentState.description.trim());
+            }
+            if (currentState.format && currentState.format.trim()) {
+                config.format = currentState.format.trim();
+                console.log('🔥 DEBUG: Applied format from currentState', currentState.format.trim());
+            }
+
+            console.log('🔥 DEBUG: Final config from currentState', config);
+            console.log('🔥 DEBUG: ===== getEffectiveFieldConfiguration END (currentState) =====');
+            return config;
+        }
+
+        // Fall back to persisted configuration
+        const persistedConfig = getFieldConfiguration(resourceKey!, fieldPath);
+        console.log('🔥 DEBUG: No currentState, using persisted config', persistedConfig);
+        console.log('🔥 DEBUG: ===== getEffectiveFieldConfiguration END (persisted) =====');
+        return persistedConfig;
+    };
+
+    /**
      * Build filtered schema directly from selected tree nodes
      * This eliminates the need for complex path normalization and matching
      */
@@ -969,8 +989,11 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
 
                     // 🎯 APPLY ALL JSONSchema7 FIELD CONFIGURATIONS (only non-empty values)
                     if (resourceKey) {
-                        const fieldConfig = getFieldConfiguration(resourceKey, node.path)
-                        console.log(`${indent}🔧 DEBUG: Field config for ${node.path}:`, fieldConfig)
+                        const fieldConfig = getEffectiveFieldConfiguration(node.path);
+                        console.log(`🔥 DEBUG: ===== APPLYING FIELD CONFIG =====`);
+                        console.log(`🔥 DEBUG: Node path: ${node.path}`);
+                        console.log(`🔥 DEBUG: Field config:`, fieldConfig);
+                        console.log(`🔥 DEBUG: Field schema before config:`, fieldSchema);
 
                         // Apply default value if configured
                         if (fieldConfig.default !== undefined) {
@@ -978,16 +1001,16 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
                                 ...fieldSchema,
                                 default: fieldConfig.default
                             }
-                            console.log(`${indent}✅ Applied default value to ${node.path}:`, fieldConfig.default)
+                            console.log(`🔥 DEBUG: Applied default value to ${node.path}:`, fieldConfig.default)
                         }
 
-                        // Apply title if configured
-                        if (fieldConfig.title) {
+                        // FIXED: Apply title if configured, including empty strings
+                        if (fieldConfig.title !== undefined) {
                             fieldSchema = {
                                 ...fieldSchema,
                                 title: fieldConfig.title
                             }
-                            console.log(`${indent}✅ Applied title to ${node.path}:`, fieldConfig.title)
+                            console.log(`🔥 DEBUG: Applied title to ${node.path}:`, fieldConfig.title)
                         }
 
                         // Apply description if configured (override original description)
@@ -996,7 +1019,7 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
                                 ...fieldSchema,
                                 description: fieldConfig.description
                             }
-                            console.log(`${indent}✅ Applied description to ${node.path}:`, fieldConfig.description)
+                            console.log(`🔥 DEBUG: Applied description to ${node.path}:`, fieldConfig.description)
                         }
 
                         // Apply format if configured
@@ -1005,8 +1028,11 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
                                 ...fieldSchema,
                                 format: fieldConfig.format
                             }
-                            console.log(`${indent}✅ Applied format to ${node.path}:`, fieldConfig.format)
+                            console.log(`🔥 DEBUG: Applied format to ${node.path}:`, fieldConfig.format)
                         }
+
+                        console.log(`🔥 DEBUG: Field schema after config:`, fieldSchema);
+                        console.log(`🔥 DEBUG: ===== FIELD CONFIG APPLIED =====`);
                     }
 
                     // Handle array types
@@ -1066,20 +1092,13 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
 
         const selectedProperties = buildFromNodes(treeNodes);
 
-        // console.log('🔧 DEBUG: Final results:', {
-        //     baseSchemaProperties: Object.keys(baseSchema.properties),
-        //     selectedProperties: Object.keys(selectedProperties),
-        //     totalProperties: Object.keys({ ...baseSchema.properties, ...selectedProperties }).length
-        // });
-
-        // Only include base properties that are actually selected or have selected children
         const baseProperties: any = {};
 
         // Check if apiVersion is selected and apply its configuration
         if (selectedPaths.has('apiVersion')) {
             baseProperties.apiVersion = originalSchema.properties?.apiVersion || { type: 'string' };
             if (resourceKey) {
-                const apiVersionConfig = getFieldConfiguration(resourceKey, 'apiVersion');
+                const apiVersionConfig = getEffectiveFieldConfiguration('apiVersion');
                 if (apiVersionConfig.default !== undefined) {
                     baseProperties.apiVersion.default = apiVersionConfig.default;
                     console.log('✅ Applied default to apiVersion:', apiVersionConfig.default);
@@ -1091,7 +1110,7 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
         if (selectedPaths.has('kind')) {
             baseProperties.kind = originalSchema.properties?.kind || { type: 'string' };
             if (resourceKey) {
-                const kindConfig = getFieldConfiguration(resourceKey, 'kind');
+                const kindConfig = getEffectiveFieldConfiguration('kind');
                 if (kindConfig.default !== undefined) {
                     baseProperties.kind.default = kindConfig.default;
                     console.log('✅ Applied default to kind:', kindConfig.default);
@@ -1115,7 +1134,7 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
 
             // Apply metadata configuration
             if (resourceKey) {
-                const metadataConfig = getFieldConfiguration(resourceKey, 'metadata');
+                const metadataConfig = getEffectiveFieldConfiguration('metadata');
                 if (metadataConfig.default !== undefined) {
                     baseProperties.metadata.default = metadataConfig.default;
                     console.log('✅ Applied default to metadata:', metadataConfig.default);
@@ -1133,6 +1152,19 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
         };
 
         console.log('🔧 DEBUG: Final schema result with field configurations:', result);
+        // 🔥 ADD COMPREHENSIVE FILTERED SCHEMA LOGGING
+        console.log('🔥 DEBUG: ===== COMPLETE FILTERED SCHEMA =====');
+        console.log('🔥 DEBUG: Full filtered schema JSON:', JSON.stringify(result, null, 2));
+        console.log('🔥 DEBUG: Schema properties:', Object.keys(result.properties || {}));
+        
+        // Log each property in detail
+        if (result.properties) {
+            Object.entries(result.properties).forEach(([propName, propSchema]) => {
+                console.log(`🔥 DEBUG: Property "${propName}":`, propSchema);
+            });
+        }
+        console.log('🔥 DEBUG: ===== END FILTERED SCHEMA =====');
+
         return result;
     };
 
@@ -1166,7 +1198,7 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
         console.log('✅ Built filtered schema with fixed utilities:', result)
         return result
 
-    }, [resource?.schema, localSelectedFields, schemaTimestamp, schemaTree, resource?.source, resource?.kind, resource?.key])
+    }, [resource?.schema, localSelectedFields, schemaTimestamp, schemaTree, resource?.source, resource?.kind, resource?.key, currentFieldStates])
 
     const memoizedSelectedSchema = useMemo(() => {
         return JSON.stringify(filteredSchema, null, 2);
@@ -1244,13 +1276,6 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
         return properties
     }
 
-    const schemaProperties = useMemo(() => {
-        if (!resource?.schema) {
-            return []
-        }
-        return parseSchemaProperties(resource.schema)
-    }, [resource])
-
     /**
      * Toggle expansion of object properties with persistence
      */
@@ -1290,7 +1315,7 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
         const field: TemplateField = {
             path: property.path,
             name: property.name,
-            title: property.name,
+            title: '',
             type: property.type,
             required: property.required || false,
             description: property.description,
@@ -1336,14 +1361,42 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
     }
 
     /**
-     * Clear all selected fields
+     * Clear all selected fields and ALL cached data
      */
     const handleClearAll = () => {
+        // Clear UI state
         setLocalSelectedFields([]);
-    };
+        setCurrentFieldStates({});
+        setExpandedObjects(new Set());
 
+        // Clear ALL storage and cache
+        clearAllFieldConfigurations();
+
+        // Force schema timestamp update to trigger complete re-render
+        setSchemaTimestamp(Date.now());
+
+        console.log('🧹 CLEARED ALL selected fields and cached data - COMPLETE RESET');
+    };
+    /**
+     * Remove a field and clear its cache and localStorage configuration
+     */
     const handleRemoveField = (fieldPath: string) => {
+        // Remove from selected fields
         setLocalSelectedFields(prev => prev.filter(f => f.path !== fieldPath));
+
+        // Clear the field configuration from localStorage
+        if (resourceKey) {
+            clearFieldConfiguration(resourceKey, fieldPath);
+            console.log(`🧹 Cleared localStorage for field: ${fieldPath}`);
+        }
+
+        // Clear from current field states cache
+        setCurrentFieldStates(prev => {
+            const newStates = { ...prev };
+            delete newStates[fieldPath];
+            console.log(`🧹 Cleared cache for field: ${fieldPath}`);
+            return newStates;
+        });
     };
 
     const handleToggleExpand = (path: string) => {
@@ -1501,6 +1554,36 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
      * Handle save with persistence
      */
     const handleSave = () => {
+        // Merge current field states into selected fields before saving
+        const fieldsWithConfigurations = localSelectedFields.map(field => {
+            const currentState = currentFieldStates[field.path];
+            if (currentState) {
+                // Apply current field state (including cleared titles) to the field
+                return {
+                    ...field,
+                    title: currentState.title !== undefined ? currentState.title : field.title,
+                    description: currentState.description !== undefined ? currentState.description : field.description,
+                    defaultValue: currentState.default !== undefined ? currentState.default : field.defaultValue,
+                    // Add other properties as needed
+                };
+            }
+            return field;
+        });
+
+        // FIXED: Persist current field states to local storage before closing
+        if (resourceKey && Object.keys(currentFieldStates).length > 0) {
+            const configurationsToSave: Record<string, any> = {};
+            Object.entries(currentFieldStates).forEach(([fieldPath, state]) => {
+                configurationsToSave[fieldPath] = {
+                    ...(state.default !== undefined && { default: state.default }),
+                    ...(state.title !== undefined && { title: state.title }),
+                    ...(state.description !== undefined && { description: state.description }),
+                    ...(state.format !== undefined && { format: state.format })
+                };
+            });
+            persistFieldConfigurations(resourceKey, configurationsToSave);
+            console.log('💾 Persisted current field states to local storage:', configurationsToSave);
+        }
 
         // Persist the filtered schema when saving
         if (resourceKey && filteredSchema && Object.keys(filteredSchema).length > 0) {
@@ -1508,10 +1591,9 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
             persistSelectedFieldsSchema(resourceKey, filteredSchema)
         }
 
-        onFieldsChange(localSelectedFields)
+        onFieldsChange(fieldsWithConfigurations)
         onClose()
     }
-
     /**
      * Handle cancel - reset to original selection
      */
@@ -1585,7 +1667,7 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
                                                 const field: TemplateField = {
                                                     path,
                                                     name,
-                                                    title: name,
+                                                    title: '',
                                                     type,
                                                     description: description || '',
                                                     required: required || false,
@@ -1707,11 +1789,17 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
                                                         <div className="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300 border-b pb-2">
                                                             Configure: {field.title}
                                                         </div>
-                                                        <EnhancedPropertyEditor
+                                                        {/* <EnhancedPropertyEditor
                                                             property={convertTemplateFieldToSchemaProperty(field)}
                                                             onSave={handleFieldConfigSave}
                                                             onCancel={handleFieldConfigCancel}
                                                             onDelete={handleFieldConfigDelete}
+                                                        /> */}
+
+                                                        <EnhancedPropertyEditor
+                                                            property={getEffectiveFieldConfig(field.path)}
+                                                            fieldPath={field.path}
+                                                            onStateChange={handleFieldStateChange}
                                                         />
                                                     </div>
                                                 )}

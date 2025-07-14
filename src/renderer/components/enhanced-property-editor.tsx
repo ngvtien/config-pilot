@@ -11,9 +11,8 @@ import { SchemaProperty } from '@/shared/types/schema';
 
 interface EnhancedPropertyEditorProps {
     property: SchemaProperty;
-    onSave: (property: SchemaProperty) => void;
-    onDelete: () => void;
-    onCancel: () => void;
+    fieldPath: string;
+    onStateChange: (fieldPath: string, currentState: SchemaProperty) => void;
 }
 
 interface FormData {
@@ -30,10 +29,10 @@ interface FormData {
     properties?: Record<string, any>;
 }
 
-export function EnhancedPropertyEditor({ property, onSave, onDelete, onCancel }: EnhancedPropertyEditorProps) {
+export function EnhancedPropertyEditor({ property, fieldPath, onStateChange }: EnhancedPropertyEditorProps) {
     const [formData, setFormData] = useState<FormData>({
         type: property.type || 'string',
-        title: property.title || property.name || '',
+        title: property.title || '',
         description: property.description || '',
         format: property.format || '',
         default: property.default || getDefaultValueForType(property.type || 'string'),
@@ -50,23 +49,145 @@ export function EnhancedPropertyEditor({ property, onSave, onDelete, onCancel }:
     );
 
     /**
+     * Get current state as SchemaProperty object
+     */
+const getCurrentState = (): SchemaProperty => {
+    return {
+        ...property,
+        type: formData.type,
+        title: formData.title|| undefined,  // Convert empty string to undefined
+        description: formData.description || undefined,
+        format: formData.format || undefined,
+        default: formData.default,
+        enum: formData.enum,
+        items: formData.items,
+        properties: formData.properties
+    };
+};
+
+    /**
+     * Notify parent of current state whenever it changes
+     */
+    const notifyStateChange = () => {
+        onStateChange(fieldPath, getCurrentState());
+    };
+
+    /**
+     * Helper function to determine if a default value should be treated as "cleared"
+     */
+    const isDefaultValueCleared = (value: any, type: string): boolean => {
+        const typeDefault = getDefaultValueForType(type);
+        return value === typeDefault || value === undefined || value === null;
+    };
+
+    /**
      * Clear handlers for different fields
      */
+    // const handleClearTitle = () => {
+    //     setFormData(prev => ({ ...prev, title: '' }));
+    //     setTimeout(notifyStateChange, 0);
+    // };
     const handleClearTitle = () => {
-        setFormData(prev => ({ ...prev, title: '' }));
-    };
+        setFormData(prev => {
+            const updated = { ...prev, title: '' };
+            // Notify parent immediately with the updated state
+            setTimeout(() => {
+                onStateChange(fieldPath, {
+                    ...property,
+                    type: updated.type,
+                    title: undefined,
+                    description: prev.description === '' ? undefined : prev.description,
+                    format: prev.format === '' ? undefined : prev.format,
+                    //default: updated.default,
+                    default: isDefaultValueCleared(prev.default, prev.type) ? undefined : prev.default,
+                    enum: updated.enum,
+                    items: updated.items,
+                    properties: updated.properties
+                });
+            }, 0);
+            return updated;
+        });
+    };    
 
     const handleClearDescription = () => {
-        setFormData(prev => ({ ...prev, description: '' }));
+        setFormData(prev => {
+            const updated = { ...prev, description: '' }; // Empty string for UI display
+            // Notify parent with undefined to exclude from schema
+            setTimeout(() => {
+                onStateChange(fieldPath, {
+                    ...property,
+                    type: updated.type,
+                    title: prev.title === '' ? undefined : prev.title,
+                    description: undefined, // Send undefined to parent
+                    format: prev.format === '' ? undefined : prev.format,
+                    //default: updated.default,
+                    default: isDefaultValueCleared(prev.default, prev.type) ? undefined : prev.default,
+                    enum: updated.enum,
+                    items: updated.items,
+                    properties: updated.properties
+                });
+            }, 0);
+            return updated;
+        });
     };
+
+    // const handleClearFormat = () => {
+    //     setFormData(prev => ({ ...prev, format: '' }));
+    //     setTimeout(notifyStateChange, 0);
+    // };
 
     const handleClearFormat = () => {
-        setFormData(prev => ({ ...prev, format: '' }));
+        setFormData(prev => {
+            const updated = { ...prev, format: '' }; // Empty string for UI display
+            // Notify parent with undefined to exclude from schema
+            setTimeout(() => {
+                onStateChange(fieldPath, {
+                    ...property,
+                    type: updated.type,
+                    title: prev.title === '' ? undefined : prev.title,
+                    description: prev.description === '' ? undefined : prev.description,
+                    format: undefined, // Send undefined to parent
+                    //default: updated.default,
+                    default: isDefaultValueCleared(prev.default, prev.type) ? undefined : prev.default,
+                    enum: updated.enum,
+                    items: updated.items,
+                    properties: updated.properties
+                });
+            }, 0);
+            return updated;
+        });
     };
 
+    // const handleClearDefault = () => {
+    //     const defaultValue = getDefaultValueForType(formData.type);
+    //     setFormData(prev => ({ ...prev, default: defaultValue }));
+    //     if (formData.type === 'array') {
+    //         setArrayItems([]);
+    //     }
+    //     setTimeout(notifyStateChange, 0);
+    // };
     const handleClearDefault = () => {
-        const defaultValue = getDefaultValueForType(formData.type);
-        setFormData(prev => ({ ...prev, default: defaultValue }));
+        setFormData(prev => {
+            const typeDefault = getDefaultValueForType(prev.type);
+            const updated = { ...prev, default: typeDefault }; // Set type-appropriate default for UI
+            
+            setTimeout(() => {
+                onStateChange(fieldPath, {
+                    ...property,
+                    type: updated.type,
+                    title: prev.title === '' ? undefined : prev.title,
+                    description: prev.description === '' ? undefined : prev.description,
+                    format: prev.format === '' ? undefined : prev.format,
+                    default: undefined, // Always send undefined when cleared - let schema use its own defaults
+                    enum: updated.enum,
+                    items: updated.items,
+                    properties: updated.properties
+                });
+            }, 0);
+            return updated;
+        });
+                
+        // Clear array items if it's an array type
         if (formData.type === 'array') {
             setArrayItems([]);
         }
@@ -117,7 +238,7 @@ export function EnhancedPropertyEditor({ property, onSave, onDelete, onCancel }:
         setFormData(prev => {
             const updated = { ...prev, [field]: value };
 
-            // Reset default value when type changes
+            // Reset related fields when type changes
             if (field === 'type') {
                 updated.default = getDefaultValueForType(value);
                 updated.enum = undefined;
@@ -127,15 +248,30 @@ export function EnhancedPropertyEditor({ property, onSave, onDelete, onCancel }:
                 setArrayItems([]);
             }
 
+            // Notify parent with the immediately updated state
+            setTimeout(() => {
+                onStateChange(fieldPath, {
+                    ...property,
+                    type: updated.type,
+                    title: updated.title,
+                    description: updated.description,
+                    format: updated.format || undefined,
+                    default: updated.default,
+                    enum: updated.enum,
+                    items: updated.items,
+                    properties: updated.properties
+                });
+            }, 0);
+
             return updated;
         });
     };
-
     /**
      * Handle default value changes for different types
      */
     const handleDefaultValueChange = (value: any) => {
         setFormData(prev => ({ ...prev, default: value }));
+        setTimeout(notifyStateChange, 0);
     };
 
     /**
@@ -145,12 +281,12 @@ export function EnhancedPropertyEditor({ property, onSave, onDelete, onCancel }:
         if (newEnumValue.trim()) {
             const convertedValue = convertEnumValue(newEnumValue.trim(), enumType);
 
-            // Check for duplicates based on converted value
             if (!enumOptions.some(option => option === convertedValue)) {
                 const updatedOptions = [...enumOptions, convertedValue];
                 setEnumOptions(updatedOptions);
                 setFormData(prev => ({ ...prev, enum: updatedOptions }));
                 setNewEnumValue('');
+                setTimeout(notifyStateChange, 0);
             }
         }
     };
@@ -165,6 +301,7 @@ export function EnhancedPropertyEditor({ property, onSave, onDelete, onCancel }:
             ...prev,
             enum: updatedOptions.length > 0 ? updatedOptions : undefined
         }));
+        setTimeout(notifyStateChange, 0);
     };
 
     /**
@@ -176,6 +313,7 @@ export function EnhancedPropertyEditor({ property, onSave, onDelete, onCancel }:
         const updatedItems = [...arrayItems, newItem];
         setArrayItems(updatedItems);
         setFormData(prev => ({ ...prev, default: updatedItems }));
+        setTimeout(notifyStateChange, 0);
     };
 
     /**
@@ -185,6 +323,7 @@ export function EnhancedPropertyEditor({ property, onSave, onDelete, onCancel }:
         const updatedItems = arrayItems.map((item, i) => i === index ? value : item);
         setArrayItems(updatedItems);
         setFormData(prev => ({ ...prev, default: updatedItems }));
+        setTimeout(notifyStateChange, 0);
     };
 
     /**
@@ -194,6 +333,7 @@ export function EnhancedPropertyEditor({ property, onSave, onDelete, onCancel }:
         const updatedItems = arrayItems.filter((_, i) => i !== index);
         setArrayItems(updatedItems);
         setFormData(prev => ({ ...prev, default: updatedItems }));
+        setTimeout(notifyStateChange, 0);
     };
 
     /**
@@ -286,6 +426,7 @@ export function EnhancedPropertyEditor({ property, onSave, onDelete, onCancel }:
                                         items: { ...prev.items, type: value }
                                     }));
                                     setArrayItems([]);
+                                    setTimeout(notifyStateChange, 0);
                                 }}
                             >
                                 <SelectTrigger data-testid="select" aria-label="array item type">
@@ -431,35 +572,6 @@ export function EnhancedPropertyEditor({ property, onSave, onDelete, onCancel }:
         }
     };
 
-    /**
-  
-              value={item || ''}
-              onChange={(e) => updateArrayItem(index, e.target.value)}
-              placeholder="Enter value"
-              className="flex-1"
-            />
-          );
-      }
-    };
-  
-    /**
-     * Handle save operation
-     */
-    const handleSave = () => {
-        const updatedProperty: SchemaProperty = {
-            ...property,
-            type: formData.type,
-            title: formData.title,
-            description: formData.description,
-            format: formData.format || undefined,
-            default: formData.default,
-            enum: formData.enum,
-            items: formData.items,
-            properties: formData.properties
-        };
-
-        onSave(updatedProperty);
-    };
 
     return (
         <div className="w-full space-y-6">
@@ -494,6 +606,8 @@ export function EnhancedPropertyEditor({ property, onSave, onDelete, onCancel }:
                             variant="outline"
                             onClick={(e) => {
                                 e.stopPropagation();
+                                e.nativeEvent.stopImmediatePropagation();
+                                e.preventDefault();
                                 handleClearTitle();
                             }}
                             className="h-6 px-2 text-xs"
@@ -643,30 +757,39 @@ export function EnhancedPropertyEditor({ property, onSave, onDelete, onCancel }:
             </div>
 
             {/* Action Buttons - Plain HTML approach */}
-            <div className="flex justify-end space-x-2 pt-4">
+            {/* <div className="flex justify-end space-x-2 pt-4">
                 {onCancel && (
-                    <button 
-                        onClick={onCancel}
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onCancel();
+                        }}
                         className="h-10 px-4 border border-gray-300 rounded-md bg-white text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                         Cancel
                     </button>
                 )}
                 {onDelete && (
-                    <button 
-                        onClick={onDelete}
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onDelete();
+                        }}
                         className="h-10 px-4 border border-red-300 rounded-md bg-white text-red-600 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500"
                     >
                         Delete
                     </button>
                 )}
-                <button 
-                    onClick={handleSave}
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        handleSave();
+                    }}
                     className="h-10 px-4 border border-orange-500 rounded-md bg-orange-500 text-white hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-500"
                 >
                     Save Property
                 </button>
-            </div>
+            </div> */}
         </div>
     );
 }
