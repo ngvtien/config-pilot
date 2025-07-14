@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import {
     Dialog,
     DialogContent,
@@ -645,7 +645,7 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
         const newTimestamp = Date.now();
         console.log('🔥 DEBUG: Triggering schema rebuild with timestamp', newTimestamp);
         setSchemaTimestamp(newTimestamp);
-        
+
         console.log('🔥 DEBUG: ===== handleFieldStateChange END =====');
     };
 
@@ -845,11 +845,11 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
     const getEffectiveFieldConfiguration = (fieldPath: string): JSONSchema7FieldConfig => {
         console.log('🔥 DEBUG: ===== getEffectiveFieldConfiguration START =====');
         console.log('🔥 DEBUG: Getting effective config for', fieldPath);
-        
+
         // First check if we have current editor state for this field
         const currentState = currentFieldStates[fieldPath];
         console.log('🔥 DEBUG: Current state from currentFieldStates', currentState);
-        
+
         if (currentState) {
             const config: JSONSchema7FieldConfig = {};
 
@@ -1156,7 +1156,7 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
         console.log('🔥 DEBUG: ===== COMPLETE FILTERED SCHEMA =====');
         console.log('🔥 DEBUG: Full filtered schema JSON:', JSON.stringify(result, null, 2));
         console.log('🔥 DEBUG: Schema properties:', Object.keys(result.properties || {}));
-        
+
         // Log each property in detail
         if (result.properties) {
             Object.entries(result.properties).forEach(([propName, propSchema]) => {
@@ -1210,6 +1210,45 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
             persistSelectedFieldsSchema(resourceKey, filteredSchema)
         }
     }, [filteredSchema, resourceKey])
+
+    // Add a ref for the selected fields scroll area
+    const selectedFieldsScrollRef = useRef<HTMLDivElement>(null);
+
+    // Add keyboard shortcuts for better UX
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape' && expandedFieldPath) {
+                setExpandedFieldPath(null);
+            }
+        };
+
+        document.addEventListener('keydown', handleKeyDown);
+        return () => document.removeEventListener('keydown', handleKeyDown);
+    }, [expandedFieldPath]);
+
+    // Enhanced scroll function with better positioning
+    const scrollToField = (fieldPath: string) => {
+        const fieldElement = document.querySelector(`[data-field-path="${fieldPath}"]`);
+        const scrollContainer = selectedFieldsScrollRef.current;
+
+        if (fieldElement && scrollContainer) {
+            const containerRect = scrollContainer.getBoundingClientRect();
+            const fieldRect = fieldElement.getBoundingClientRect();
+
+            // Check if field is already visible
+            const isVisible = (
+                fieldRect.top >= containerRect.top &&
+                fieldRect.bottom <= containerRect.bottom
+            );
+
+            if (!isVisible) {
+                fieldElement.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'center'
+                });
+            }
+        }
+    };
 
     /**
      * Parse schema properties with reference resolution
@@ -1651,19 +1690,9 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
                                     ) : (
                                         <SchemaTreeView
                                             nodes={schemaTree}
+                                            // Enhanced onFieldSelect handler with automatic navigation
                                             onFieldSelect={(path, type, name, description, required, items) => {
-                                                // Debug logging for field selection
-                                                console.log('🔧 DEBUG onFieldSelect called:', {
-                                                    path,
-                                                    type,
-                                                    name,
-                                                    description,
-                                                    required,
-                                                    items,
-                                                    itemsType: typeof items,
-                                                    itemsStringified: items ? JSON.stringify(items, null, 2) : 'undefined'
-                                                });
-
+                                                // ... existing field creation logic ...
                                                 const field: TemplateField = {
                                                     path,
                                                     name,
@@ -1674,17 +1703,38 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
                                                     ...(type === 'array' && items && { items })
                                                 };
 
-                                                // Debug the created field
-                                                console.log('🔧 DEBUG Created field:', field);
-
                                                 // Toggle selection
                                                 const isSelected = localSelectedFields.some(f => f.path === path);
                                                 if (isSelected) {
                                                     setLocalSelectedFields(prev => prev.filter(f => f.path !== path));
+                                                    // Clear expanded state when removing field
+                                                    if (expandedFieldPath === path) {
+                                                        setExpandedFieldPath(null);
+                                                    }
                                                 } else {
                                                     setLocalSelectedFields(prev => [...prev, field]);
+
+                                                    // 🎯 AUTO-NAVIGATION: Automatically navigate to the newly selected field
+                                                    setTimeout(() => {
+                                                        // 1. Expand the field configuration panel
+                                                        setExpandedFieldPath(path);
+
+                                                        // 2. Scroll to the field in the selected fields panel
+                                                        const fieldElement = document.querySelector(`[data-field-path="${path}"]`);
+                                                        if (fieldElement && selectedFieldsScrollRef.current) {
+                                                            fieldElement.scrollIntoView({
+                                                                behavior: 'smooth',
+                                                                block: 'center'
+                                                            });
+                                                        }
+
+                                                        // 3. Briefly highlight the field for visual feedback
+                                                        setHighlightedFieldPath(path);
+                                                        setTimeout(() => setHighlightedFieldPath(null), 2000);
+                                                    }, 100); // Small delay to ensure DOM updates
                                                 }
                                             }}
+
                                             selectedPaths={new Set(localSelectedFields.map(f => f.path))}
                                             expandedPaths={expandedObjects}
                                             onToggleExpand={handleToggleExpand}
@@ -1716,7 +1766,7 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
                             </div>
                         </CardHeader>
                         <CardContent className="flex-1 min-h-0 overflow-hidden">
-                            <ScrollArea className="h-full">
+                            <ScrollArea className="h-full" ref={selectedFieldsScrollRef}>
                                 {localSelectedFields.length === 0 ? (
                                     <div className="text-center text-gray-500 mt-8">
                                         No fields selected yet.
@@ -1726,14 +1776,16 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
                                 ) : (
                                     <div className="space-y-2">
                                         {localSelectedFields.map((field, index) => (
-                                            <div key={field.path} className="border rounded-lg">
+                                            <div key={field.path}
+                                                className="border rounded-lg"
+                                                data-field-path={field.path}>
                                                 {/* Clickable Field Header - Toggle Configuration */}
                                                 <div
                                                     className={`p-3 cursor-pointer transition-all duration-300 ${expandedFieldPath === field.path
                                                         ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
                                                         : 'hover:bg-gray-50 dark:hover:bg-gray-800'
                                                         } ${highlightedFieldPath === field.path
-                                                            ? 'transform scale-105 shadow-lg'
+                                                            ? 'shadow-lg ring-2 ring-blue-400 ring-opacity-50 animate-pulse bg-blue-50 dark:bg-blue-900/30'
                                                             : ''
                                                         }`}
                                                     onClick={() => toggleFieldConfig(field.path)}
