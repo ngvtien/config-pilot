@@ -174,160 +174,86 @@ export function EnhancedPropertyEditor({ property, fieldPath, onStateChange }: E
     };
 
     /**
-     * Add a new object property with default values
+     * Add new object property (works for both regular objects and array-of-objects)
      */
     const handleAddObjectProperty = () => {
-        const name = `property${objectProperties.length + 1}`;
-        const newProperty = {
-            name,
-            type: 'string',
-            title: name,
-            description: ''
-        };
-
-        setObjectProperties(prev => [...prev, newProperty]);
-
-        // Update formData.properties to include the new property
-        setFormData(prev => {
-            const updatedProperties = {
-                ...prev.properties,
-                [name]: {
-                    type: 'string',
-                    title: name,
-                    description: '',
-                    default: getDefaultValueForType('string')
-                }
-            };
-
-            const updated = {
-                ...prev,
-                properties: updatedProperties
-            };
-
-            // Notify parent of the change
-            setTimeout(() => {
-                onStateChange(fieldPath, {
-                    ...property,
-                    type: updated.type,
-                    title: prev.title === '' ? undefined : prev.title,
-                    description: prev.description === '' ? undefined : prev.description,
-                    format: prev.format === '' ? undefined : prev.format,
-                    default: isDefaultValueCleared(prev.default, prev.type) ? undefined : prev.default,
-                    enum: updated.enum,
-                    items: updated.items,
-                    properties: updatedProperties
-                });
-            }, 0);
-
-            return updated;
-        });
+        const newProperty = { name: '', type: 'string' };
+        const updatedProperties = [...objectProperties, newProperty];
+        setObjectProperties(updatedProperties);
+        setTimeout(notifyStateChange, 0);
     };
 
     /**
-     * Remove an object property by index
+     * Remove object property (works for both regular objects and array-of-objects)
      */
     const handleRemoveObjectProperty = (index: number) => {
-        const propertyToRemove = objectProperties[index];
-        if (!propertyToRemove) return;
+        const updatedProperties = objectProperties.filter((_, i) => i !== index);
+        setObjectProperties(updatedProperties);
 
-        // Remove from objectProperties state
-        setObjectProperties(prev => prev.filter((_, i) => i !== index));
+        // Update formData based on context
+        if (formData.type === 'array' && formData.items?.type === 'object') {
+            // Update array items properties
+            const properties: Record<string, any> = {};
+            updatedProperties.forEach(prop => {
+                if (prop.name) {
+                    properties[prop.name] = { type: prop.type };
+                }
+            });
+            
+            handleFieldChange('items', {
+                ...formData.items,
+                properties
+            });
+        } else if (formData.type === 'object') {
+            // Update regular object properties
+            const properties: Record<string, any> = {};
+            updatedProperties.forEach(prop => {
+                if (prop.name) {
+                    properties[prop.name] = { type: prop.type };
+                }
+            });
+            
+            handleFieldChange('properties', properties);
+        }
 
-        // Remove from formData.properties
-        setFormData(prev => {
-            const updatedProperties = { ...prev.properties };
-            delete updatedProperties[propertyToRemove.name];
-
-            const updated = {
-                ...prev,
-                properties: Object.keys(updatedProperties).length > 0 ? updatedProperties : undefined
-            };
-
-            // Notify parent of the change
-            setTimeout(() => {
-                onStateChange(fieldPath, {
-                    ...property,
-                    type: updated.type,
-                    title: prev.title === '' ? undefined : prev.title,
-                    description: prev.description === '' ? undefined : prev.description,
-                    format: prev.format === '' ? undefined : prev.format,
-                    default: isDefaultValueCleared(prev.default, prev.type) ? undefined : prev.default,
-                    enum: updated.enum,
-                    items: updated.items,
-                    properties: updated.properties
-                });
-            }, 0);
-
-            return updated;
-        });
+        setTimeout(notifyStateChange, 0);
     };
 
     /**
-     * Update a specific field of an object property
+     * Handle object property changes (works for both regular objects and array-of-objects)
      */
-    const handleObjectPropertyChange = (index: number, field: string, value: string) => {
-        const oldProperty = objectProperties[index];
-        if (!oldProperty) return;
+    const handleObjectPropertyChange = (index: number, field: string, value: any) => {
+        const updatedProperties = [...objectProperties];
+        updatedProperties[index] = { ...updatedProperties[index], [field]: value };
+        setObjectProperties(updatedProperties);
 
-        // Update objectProperties state
-        setObjectProperties(prev =>
-            prev.map((prop, i) =>
-                i === index ? { ...prop, [field]: value } : prop
-            )
-        );
-
-        // Update formData.properties
-        setFormData(prev => {
-            const updatedProperties = { ...prev.properties };
-
-            // If changing the name, we need to rename the key
-            if (field === 'name') {
-                const oldName = oldProperty.name;
-                const newName = value;
-
-                // Remove old key and add new key
-                if (updatedProperties[oldName]) {
-                    updatedProperties[newName] = {
-                        ...updatedProperties[oldName],
-                        title: newName // Update title to match new name
-                    };
-                    delete updatedProperties[oldName];
+        // Update formData based on context
+        if (formData.type === 'array' && formData.items?.type === 'object') {
+            // Update array items properties
+            const properties: Record<string, any> = {};
+            updatedProperties.forEach(prop => {
+                if (prop.name) {
+                    properties[prop.name] = { type: prop.type };
                 }
-            } else {
-                // Update other fields (type, title, description)
-                const propertyName = oldProperty.name;
-                if (updatedProperties[propertyName]) {
-                    updatedProperties[propertyName] = {
-                        ...updatedProperties[propertyName],
-                        [field]: field === 'type' ? value : (value || undefined),
-                        // Reset default value when type changes
-                        ...(field === 'type' && { default: getDefaultValueForType(value) })
-                    };
+            });
+            
+            handleFieldChange('items', {
+                ...formData.items,
+                properties
+            });
+        } else if (formData.type === 'object') {
+            // Update regular object properties
+            const properties: Record<string, any> = {};
+            updatedProperties.forEach(prop => {
+                if (prop.name) {
+                    properties[prop.name] = { type: prop.type };
                 }
-            }
+            });
+            
+            handleFieldChange('properties', properties);
+        }
 
-            const updated = {
-                ...prev,
-                properties: updatedProperties
-            };
-
-            // Notify parent of the change
-            setTimeout(() => {
-                onStateChange(fieldPath, {
-                    ...property,
-                    type: updated.type,
-                    title: prev.title === '' ? undefined : prev.title,
-                    description: prev.description === '' ? undefined : prev.description,
-                    format: prev.format === '' ? undefined : prev.format,
-                    default: isDefaultValueCleared(prev.default, prev.type) ? undefined : prev.default,
-                    enum: updated.enum,
-                    items: updated.items,
-                    properties: updatedProperties
-                });
-            }, 0);
-
-            return updated;
-        });
+        setTimeout(notifyStateChange, 0);
     };
 
     /**
@@ -355,21 +281,47 @@ export function EnhancedPropertyEditor({ property, fieldPath, onStateChange }: E
     }, [formData.type]);
 
 
-    // Update the useEffect to handle both scenarios
+    // // Update the useEffect to handle both scenarios
+    // useEffect(() => {
+    //     if (formData.type === 'object') {
+    //         if (isKeyValueObject()) {
+    //             initializeKeyValuePairs();
+    //             setObjectProperties([]); // Clear structured properties
+    //         } else {
+    //             initializeObjectProperties();
+    //             setKeyValuePairs([]); // Clear key-value pairs
+    //         }
+    //     } else {
+    //         setObjectProperties([]);
+    //         setKeyValuePairs([]);
+    //     }
+    // }, [formData.type, formData.properties]);
+
+        // Sync object properties with formData.items.properties for arrays
     useEffect(() => {
-        if (formData.type === 'object') {
-            if (isKeyValueObject()) {
-                initializeKeyValuePairs();
-                setObjectProperties([]); // Clear structured properties
-            } else {
-                initializeObjectProperties();
-                setKeyValuePairs([]); // Clear key-value pairs
+        if (formData.type === 'array' && formData.items?.type === 'object') {
+            if (formData.items.properties && Object.keys(formData.items.properties).length > 0) {
+                // Initialize from existing properties
+                const props = Object.entries(formData.items.properties).map(([name, schema]: [string, any]) => ({
+                    name,
+                    type: schema.type || 'string'
+                }));
+                setObjectProperties(props);
             }
-        } else {
-            setObjectProperties([]);
-            setKeyValuePairs([]);
+        } else if (formData.type === 'object') {
+            // Handle regular object properties
+            if (formData.properties && Object.keys(formData.properties).length > 0) {
+                const props = Object.entries(formData.properties).map(([name, schema]: [string, any]) => ({
+                    name,
+                    type: schema.type || 'string'
+                }));
+                setObjectProperties(props);
+            } else {
+                // Initialize key-value pairs for objects without properties
+                initializeKeyValuePairs();
+            }
         }
-    }, [formData.type, formData.properties]);
+    }, [formData.type, formData.properties, formData.items]);
 
     /**
      * Get current state as SchemaProperty object
@@ -481,14 +433,6 @@ export function EnhancedPropertyEditor({ property, fieldPath, onStateChange }: E
         });
     };
 
-    // const handleClearDefault = () => {
-    //     const defaultValue = getDefaultValueForType(formData.type);
-    //     setFormData(prev => ({ ...prev, default: defaultValue }));
-    //     if (formData.type === 'array') {
-    //         setArrayItems([]);
-    //     }
-    //     setTimeout(notifyStateChange, 0);
-    // };
     const handleClearDefault = () => {
         setFormData(prev => {
             const typeDefault = getDefaultValueForType(prev.type);
@@ -628,15 +572,50 @@ export function EnhancedPropertyEditor({ property, fieldPath, onStateChange }: E
     };
 
     /**
-     * Add array item
+     * Add new array item with proper initialization
      */
     const addArrayItem = () => {
         const itemType = formData.items?.type || 'string';
-        const newItem = getDefaultValueForType(itemType);
-        const updatedItems = [...arrayItems, newItem];
-        setArrayItems(updatedItems);
-        setFormData(prev => ({ ...prev, default: updatedItems }));
-        setTimeout(notifyStateChange, 0);
+        let newItem: any;
+
+        switch (itemType) {
+            case 'string':
+                newItem = '';
+                break;
+            case 'number':
+            case 'integer':
+                newItem = 0;
+                break;
+            case 'boolean':
+                newItem = false;
+                break;
+            case 'object':
+                // For object types, create an empty object with the defined properties
+                if (formData.items?.properties) {
+                    newItem = {};
+                    Object.entries(formData.items.properties).forEach(([key, prop]: [string, any]) => {
+                        newItem[key] = prop.default !== undefined
+                            ? prop.default
+                            : prop.type === "string"
+                                ? ""
+                                : prop.type === "number" || prop.type === "integer"
+                                    ? 0
+                                    : prop.type === "boolean"
+                                        ? false
+                                        : prop.type === "array"
+                                            ? []
+                                            : {};
+                    });
+                } else {
+                    newItem = {};
+                }
+                break;
+            default:
+                newItem = '';
+        }
+
+        const currentDefault = Array.isArray(formData.default) ? [...formData.default] : [];
+        handleFieldChange('default', [...currentDefault, newItem]);
     };
 
     /**
@@ -725,29 +704,20 @@ export function EnhancedPropertyEditor({ property, fieldPath, onStateChange }: E
             case 'array':
                 return (
                     <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                            <Label>Array Items</Label>
-                            <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={addArrayItem}
-                            >
-                                <Plus className="h-4 w-4 mr-1" />
-                                Add Item
-                            </Button>
-                        </div>
-
-                        {/* Array item type selector */}
+                        {/* Array Item Type Selector */}
                         <div className="space-y-2">
-                            <Label>Item Type</Label>
+                            <Label>Array Item Type</Label>
                             <Select
                                 value={formData.items?.type || 'string'}
                                 onValueChange={(value) => {
-                                    setFormData(prev => ({
-                                        ...prev,
-                                        items: { ...prev.items, type: value }
-                                    }));
+                                    handleFieldChange('items', { 
+                                        ...formData.items, 
+                                        type: value,
+                                        // Clear properties when changing away from object type
+                                        ...(value !== 'object' ? { properties: undefined } : {})
+                                    });
+                                    // Reset array items when type changes
+                                    handleFieldChange('default', []);
                                     setArrayItems([]);
                                     setTimeout(notifyStateChange, 0);
                                 }}
@@ -765,22 +735,130 @@ export function EnhancedPropertyEditor({ property, fieldPath, onStateChange }: E
                             </Select>
                         </div>
 
-                        {/* Array items */}
-                        <div className="space-y-2 max-h-60 overflow-y-auto">
-                            {arrayItems.map((item, index) => (
-                                <div key={index} className="flex items-center space-x-2">
-                                    {renderArrayItemEditor(item, index)}
+                        {/* Object Properties Configuration (when array item type is object) */}
+                        {formData.items?.type === 'object' && (
+                            <div className="space-y-4 p-4 border rounded-md bg-muted/20">
+                                <div className="flex items-center justify-between">
+                                    <Label className="text-sm font-medium">Object Properties</Label>
                                     <Button
                                         type="button"
                                         variant="outline"
                                         size="sm"
-                                        onClick={() => removeArrayItem(index)}
+                                        onClick={handleAddObjectProperty}
                                     >
-                                        <Trash2 className="h-4 w-4" />
+                                        <Plus className="h-4 w-4 mr-1" />
+                                        Add Property
                                     </Button>
                                 </div>
-                            ))}
+
+                                {objectProperties.length > 0 ? (
+                                    <div className="space-y-3 max-h-40 overflow-y-auto">
+                                        {objectProperties.map((prop, index) => (
+                                            <div key={index} className="flex items-center gap-2 p-3 border rounded-md bg-background">
+                                                <Input
+                                                    value={prop.name}
+                                                    onChange={(e) => handleObjectPropertyChange(index, 'name', e.target.value)}
+                                                    placeholder="Property name"
+                                                    className="flex-1"
+                                                />
+                                                <Select
+                                                    value={prop.type}
+                                                    onValueChange={(value) => handleObjectPropertyChange(index, 'type', value)}
+                                                >
+                                                    <SelectTrigger className="w-24">
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="string">String</SelectItem>
+                                                        <SelectItem value="number">Number</SelectItem>
+                                                        <SelectItem value="integer">Integer</SelectItem>
+                                                        <SelectItem value="boolean">Boolean</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => handleRemoveObjectProperty(index)}
+                                                    className="text-destructive"
+                                                >
+                                                    <Trash2 className="h-4 w-4" />
+                                                </Button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-3 text-muted-foreground text-sm border-2 border-dashed rounded-md">
+                                        No properties defined. Click "Add Property" to start.
+                                    </div>
+                                )}
+
+                                {objectProperties.length > 0 && (
+                                    <div className="text-xs text-muted-foreground bg-muted/30 p-2 rounded-md">
+                                        <span className="font-medium">Properties:</span>{" "}
+                                        {objectProperties.map(prop => prop.name).join(", ")}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Add Array Item Button */}
+                        <div className="flex items-center justify-between">
+                            <Label>Array Items</Label>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={addArrayItem}
+                            >
+                                <Plus className="h-4 w-4 mr-1" />
+                                Add Item
+                            </Button>
                         </div>
+
+                        {/* Array Items Display */}
+                        {Array.isArray(formData.default) && formData.default.length > 0 ? (
+                            <ScrollArea className="h-48 rounded-md border">
+                                <div className="p-2 space-y-2">
+                                    {formData.default.map((item, index) => (
+                                        <div key={index} className="flex flex-col gap-2 bg-muted/30 p-3 rounded-md">
+                                            <div className="flex items-center justify-between">
+                                                <Badge variant="outline" className="text-xs">
+                                                    Item {index + 1}
+                                                </Badge>
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() => removeArrayItem(index)}
+                                                    className="h-6 w-6 p-0 text-destructive"
+                                                >
+                                                    <X className="h-3 w-3" />
+                                                </Button>
+                                            </div>
+                                            {renderArrayItemEditor(item, index)}
+                                        </div>
+                                    ))}
+                                </div>
+                            </ScrollArea>
+                        ) : (
+                            <div className="flex items-center justify-center h-20 rounded-md border border-dashed text-muted-foreground">
+                                No array items added
+                            </div>
+                        )}
+
+                        {/* Array Item Type Info */}
+                        {formData.items && (
+                            <div className="text-xs text-muted-foreground bg-muted/30 p-2 rounded-md">
+                                <span className="font-medium">Item Type:</span> {formData.items.type}
+                                {formData.items.type === "object" && formData.items.properties && (
+                                    <div className="mt-1">
+                                        <span className="font-medium">Properties:</span>{" "}
+                                        {Object.keys(formData.items.properties).join(", ")}
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 );
 
@@ -1017,176 +1095,64 @@ export function EnhancedPropertyEditor({ property, fieldPath, onStateChange }: E
                     </div>
                 );
 
-            // case 'object':
-            //     return (
-            //         <Textarea
-            //             data-testid="textarea"
-            //             value={JSON.stringify(item || {}, null, 2)}
-            //             onChange={(e) => {
-            //                 try {
-            //                     const parsed = JSON.parse(e.target.value);
-            //                     updateArrayItem(index, parsed);
-            //                 } catch {
-            //                     // Invalid JSON, keep for editing
-            //                 }
-            //             }}
-            //             placeholder="Enter JSON object"
-            //             rows={3}
-            //             className="flex-1 font-mono text-sm"
-            //         />
-            //     );
-
             case 'object':
-                if (isKeyValueObject()) {
-                    // 3.1. Object without properties - Key-Value Pairs
+                // Array-of-Objects: Handle objects with predefined properties
+                if (formData.items?.properties && Object.keys(formData.items.properties).length > 0) {
+                    // Object with defined properties - structured editor
                     return (
-                        <div className="space-y-4">
-                            <div className="flex items-center justify-between">
-                                <Label>Key-Value Pairs</Label>
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={handleAddKeyValuePair}
-                                >
-                                    <Plus className="h-4 w-4 mr-1" />
-                                    Add Pair
-                                </Button>
-                            </div>
+                        <div className="space-y-2 pl-2 border-l-2 border-slate-200 dark:border-slate-700">
+                            {Object.entries(formData.items.properties).map(([propKey, propSchema]: [string, any]) => (
+                                <div key={propKey} className="grid grid-cols-3 gap-2 items-center">
+                                    <Label className="text-xs">{propSchema.title || propKey}</Label>
+                                    {propSchema.type === "boolean" ? (
+                                        <Switch
+                                            checked={item[propKey] === true}
+                                            onCheckedChange={(checked) => {
+                                                const newDefault = Array.isArray(formData.default) ? [...formData.default] : [];
+                                                newDefault[index] = { ...newDefault[index], [propKey]: checked };
+                                                handleFieldChange('default', newDefault);
+                                            }}
+                                        />
+                                    ) : (
+                                        <Input
+                                            value={item[propKey] !== undefined ? String(item[propKey]) : ""}
+                                            onChange={(e) => {
+                                                let value = e.target.value;
 
-                            {keyValuePairs.length > 0 ? (
-                                <div className="space-y-3 max-h-60 overflow-y-auto">
-                                    {keyValuePairs.map((pair, index) => (
-                                        <div key={index} className="flex items-center gap-2 p-3 border rounded-md bg-muted/30">
-                                            {/* Key Input */}
-                                            <Input
-                                                value={pair.key}
-                                                onChange={(e) => handleKeyValuePairChange(index, 'key', e.target.value)}
-                                                placeholder="Key name"
-                                                className="flex-1"
-                                            />
+                                                // Convert value based on type
+                                                if (propSchema.type === "number" || propSchema.type === "integer") {
+                                                    value = value === "" ? "" : Number(value);
+                                                }
 
-                                            {/* Value Type Selector */}
-                                            <Select
-                                                value={pair.valueType}
-                                                onValueChange={(value) => handleKeyValuePairChange(index, 'valueType', value)}
-                                            >
-                                                <SelectTrigger className="w-24">
-                                                    <SelectValue />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="string">String</SelectItem>
-                                                    <SelectItem value="number">Number</SelectItem>
-                                                    <SelectItem value="integer">Integer</SelectItem>
-                                                    <SelectItem value="boolean">Boolean</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-
-                                            {/* Value Input */}
-                                            {pair.valueType === 'boolean' ? (
-                                                <div className="flex items-center space-x-2">
-                                                    <Switch
-                                                        checked={pair.value || false}
-                                                        onCheckedChange={(checked) => handleKeyValuePairChange(index, 'value', checked)}
-                                                    />
-                                                    <Label className="text-xs">{pair.value ? 'True' : 'False'}</Label>
-                                                </div>
-                                            ) : (
-                                                <Input
-                                                    type={pair.valueType === 'string' ? 'text' : 'number'}
-                                                    value={pair.value || ''}
-                                                    onChange={(e) => {
-                                                        const value = pair.valueType === 'string' ?
-                                                            e.target.value :
-                                                            pair.valueType === 'integer' ?
-                                                                parseInt(e.target.value) || 0 :
-                                                                parseFloat(e.target.value) || 0;
-                                                        handleKeyValuePairChange(index, 'value', value);
-                                                    }}
-                                                    placeholder="Value"
-                                                    className="flex-1"
-                                                />
-                                            )}
-
-                                            {/* Remove Button */}
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={() => handleRemoveKeyValuePair(index)}
-                                                className="text-destructive"
-                                            >
-                                                <Trash2 className="h-4 w-4" />
-                                            </Button>
-                                        </div>
-                                    ))}
+                                                const newDefault = Array.isArray(formData.default) ? [...formData.default] : [];
+                                                newDefault[index] = { ...newDefault[index], [propKey]: value };
+                                                handleFieldChange('default', newDefault);
+                                            }}
+                                            className="h-7 text-xs"
+                                        />
+                                    )}
                                 </div>
-                            ) : (
-                                <div className="text-center py-4 text-muted-foreground border-2 border-dashed rounded-md">
-                                    No key-value pairs added. Click "Add Pair" to start.
-                                </div>
-                            )}
+                            ))}
                         </div>
                     );
                 } else {
-                    // 3.2. Object with defined properties - Structured Properties
+                    // Object without properties - fallback to JSON editor
                     return (
-                        <div className="space-y-4">
-                            <div className="flex items-center justify-between">
-                                <Label>Object Properties</Label>
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={handleAddObjectProperty}
-                                >
-                                    <Plus className="h-4 w-4 mr-1" />
-                                    Add Property
-                                </Button>
-                            </div>
-
-                            {objectProperties.length > 0 ? (
-                                <div className="space-y-3 max-h-60 overflow-y-auto">
-                                    {objectProperties.map((prop, index) => (
-                                        <div key={index} className="flex items-center gap-2 p-3 border rounded-md bg-muted/30">
-                                            <Input
-                                                value={prop.name}
-                                                onChange={(e) => handleObjectPropertyChange(index, 'name', e.target.value)}
-                                                placeholder="Property name"
-                                                className="flex-1"
-                                            />
-                                            <Select
-                                                value={prop.type}
-                                                onValueChange={(value) => handleObjectPropertyChange(index, 'type', value)}
-                                            >
-                                                <SelectTrigger className="w-24">
-                                                    <SelectValue />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="string">String</SelectItem>
-                                                    <SelectItem value="number">Number</SelectItem>
-                                                    <SelectItem value="integer">Integer</SelectItem>
-                                                    <SelectItem value="boolean">Boolean</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={() => handleRemoveObjectProperty(index)}
-                                                className="text-destructive"
-                                            >
-                                                <Trash2 className="h-4 w-4" />
-                                            </Button>
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="text-center py-4 text-muted-foreground border-2 border-dashed rounded-md">
-                                    No properties defined. Click "Add Property" to start.
-                                </div>
-                            )}
-                        </div>
+                        <Textarea
+                            data-testid="textarea"
+                            value={JSON.stringify(item || {}, null, 2)}
+                            onChange={(e) => {
+                                try {
+                                    const parsed = JSON.parse(e.target.value);
+                                    updateArrayItem(index, parsed);
+                                } catch {
+                                    // Invalid JSON, keep for editing
+                                }
+                            }}
+                            placeholder="Enter JSON object"
+                            rows={3}
+                            className="flex-1 font-mono text-sm"
+                        />
                     );
                 }
 
@@ -1202,7 +1168,6 @@ export function EnhancedPropertyEditor({ property, fieldPath, onStateChange }: E
                 );
         }
     };
-
 
     return (
         <div className="w-full space-y-6">
