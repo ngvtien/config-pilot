@@ -1559,7 +1559,7 @@ const removeResource = (resourceToRemove: TemplateResource) => {
                           {resource.selectedFields.map((field, fieldIndex) => (
                             <div key={fieldIndex} className="flex items-center justify-between bg-white/60 rounded-lg p-2">
                               <span className="text-xs text-gray-700 truncate font-medium">
-                                {field.title || field.path}
+                                {field.name || field.path}
                               </span>
                               <Badge variant="secondary" className={`text-xs ml-2 ${scheme.badge} border-0`}>
                                 {field.type}
