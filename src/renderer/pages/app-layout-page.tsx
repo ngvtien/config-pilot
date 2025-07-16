@@ -23,6 +23,7 @@ import TemplateDesigner from "@/renderer/components/template-creator/TemplateDes
 import { SourceSpecificSearch } from "@/renderer/components/template-creator/SourceSpecificSearch"
 import { useWindowTitle } from '@/renderer/hooks/useWindowTitle'
 import { TemplateLibrary } from "@/renderer/components/template-library/TemplateLibrary"
+import { ProjectComposerPage } from "@/renderer/pages/project-composer-page"
 
 type UserRole = "developer" | "devops" | "operations"
 type ViewType =
@@ -40,6 +41,7 @@ type ViewType =
   | "git-repos"
   | "file-explorer"
   | "settings"
+  | "project-composer"
 
 interface AppLayoutPageProps {
   contextData?: ContextData
@@ -388,6 +390,9 @@ export default function AppLayoutPage({
         )
       case "k8s-dashboard":
         return <KubernetesDashboardPage />
+
+      case "project-composer":
+        return <ProjectComposerPage />
       default:
         return (
           <div className="flex flex-col items-center justify-center h-full text-center space-y-4">

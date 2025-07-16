@@ -375,42 +375,42 @@ export class TemplateService {
     /**
      * Import template from .cpt file
      */
-async importTemplate(importPath: string): Promise<EnhancedTemplate> {
-    const fileContent = await fs.readFile(importPath, 'utf-8')
-    const cptFile: CPTTemplateFile = JSON.parse(fileContent)
+    async importTemplate(importPath: string): Promise<EnhancedTemplate> {
+        const fileContent = await fs.readFile(importPath, 'utf-8')
+        const cptFile: CPTTemplateFile = JSON.parse(fileContent)
 
-    // Verify file format
-    if (cptFile.fileFormat.type !== 'config-pilot-template') {
-        throw new Error('Invalid template file format')
-    }
-
-    // TEMPORARILY DISABLE CHECKSUM VALIDATION
-    // if (cptFile.checksum) {
-    //     const calculatedChecksum = this.generateChecksum(cptFile.template)
-    //     if (calculatedChecksum !== cptFile.checksum) {
-    //         throw new Error('Template file integrity check failed')
-    //     }
-    // }
-
-    // Generate new ID to avoid conflicts
-    const importedTemplate: EnhancedTemplate = {
-        ...cptFile.template,
-        id: this.generateTemplateId(cptFile.template.name),
-        metadata: {
-            ...cptFile.template.metadata,
-            lastUpdated: new Date().toISOString()
+        // Verify file format
+        if (cptFile.fileFormat.type !== 'config-pilot-template') {
+            throw new Error('Invalid template file format')
         }
+
+        // TEMPORARILY DISABLE CHECKSUM VALIDATION
+        // if (cptFile.checksum) {
+        //     const calculatedChecksum = this.generateChecksum(cptFile.template)
+        //     if (calculatedChecksum !== cptFile.checksum) {
+        //         throw new Error('Template file integrity check failed')
+        //     }
+        // }
+
+        // Generate new ID to avoid conflicts
+        const importedTemplate: EnhancedTemplate = {
+            ...cptFile.template,
+            id: this.generateTemplateId(cptFile.template.name),
+            metadata: {
+                ...cptFile.template.metadata,
+                lastUpdated: new Date().toISOString()
+            }
+        }
+
+        // Save imported template
+        await this.saveTemplate(importedTemplate)
+
+        // Update cache
+        this.templateCache.set(importedTemplate.id, importedTemplate)
+
+        console.log(`✅ Template imported: ${importedTemplate.name}`)
+        return importedTemplate
     }
-
-    // Save imported template
-    await this.saveTemplate(importedTemplate)
-
-    // Update cache
-    this.templateCache.set(importedTemplate.id, importedTemplate)
-
-    console.log(`✅ Template imported: ${importedTemplate.name}`)
-    return importedTemplate
-}
 
     /**
      * Delete template
@@ -488,17 +488,46 @@ async importTemplate(importPath: string): Promise<EnhancedTemplate> {
         await fs.writeFile(this.categoriesPath, JSON.stringify(this.categories, null, 2), 'utf-8')
     }
 
+    // private async loadTemplatesIntoCache(): Promise<void> {
+    //     try {
+    //         const files = await fs.readdir(this.templatesPath)
+    //         const cptFiles = files.filter(file => file.endsWith('.cpt'))
+
+    //         for (const file of cptFiles) {
+    //             const templateId = path.basename(file, '.cpt')
+    //             await this.loadTemplate(templateId)
+    //         }
+
+    //         console.log(`✅ Loaded ${cptFiles.length} templates into cache`)
+    //     } catch (error) {
+    //         console.error('❌ Failed to load templates into cache:', error)
+    //     }
+    // }
+
     private async loadTemplatesIntoCache(): Promise<void> {
         try {
+            // Clear cache first to prevent duplicates
+            this.templateCache.clear()
+
             const files = await fs.readdir(this.templatesPath)
             const cptFiles = files.filter(file => file.endsWith('.cpt'))
 
+            // Use Set to track loaded template names and prevent duplicates
+            const loadedNames = new Set<string>()
+
             for (const file of cptFiles) {
                 const templateId = path.basename(file, '.cpt')
-                await this.loadTemplate(templateId)
+                const template = await this.loadTemplate(templateId)
+
+                if (template && !loadedNames.has(template.name)) {
+                    loadedNames.add(template.name)
+                    // Only cache if not already loaded
+                } else if (template && loadedNames.has(template.name)) {
+                    console.warn(`⚠️ Duplicate template name detected: ${template.name}, skipping...`)
+                }
             }
 
-            console.log(`✅ Loaded ${cptFiles.length} templates into cache`)
+            console.log(`✅ Loaded ${this.templateCache.size} unique templates into cache`)
         } catch (error) {
             console.error('❌ Failed to load templates into cache:', error)
         }

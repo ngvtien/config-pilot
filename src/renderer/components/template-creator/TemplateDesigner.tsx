@@ -23,6 +23,7 @@ import { generateHelmResourceTemplate, generateResourceYamlPreview } from '@/ren
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/renderer/components/ui/tooltip'
 import { YamlPreview } from './YamlPreview'
 import { generateYamlFromFilteredSchema } from '../../utils/schema-yaml-generator'
+import { TemplateValueEditor } from './TemplateValueEditor'
 
 interface TemplateDesignerProps {
   initialTemplate?: Template
@@ -60,7 +61,12 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
   })
 
   const [searchResults, setSearchResults] = useState<KubernetesResourceSchema[]>([])
+  
+  const [manualTemplate, setManualTemplate] = useState<string>('')
+  const [templateValues, setTemplateValues] = useState<Record<string, any>>({})
+  const [showManualTemplateEditor, setShowManualTemplateEditor] = useState(false)
 
+  const [isGenerating, setIsGenerating] = useState(false) 
   const [selectedFields, setSelectedFields] = useState<{
     [resourceKey: string]: TemplateField[]
   }>({})
@@ -152,6 +158,55 @@ export function TemplateDesigner({ initialTemplate, onTemplateChange, settingsDa
       console.warn('Failed to persist selected resources:', error)
     }
   }, [selectedResources])
+
+  /**
+   * Load manual template from file
+   */
+  const loadManualTemplate = async () => {
+    try {
+      const result = await window.electronAPI.selectFile({
+        filters: [{ name: 'YAML Files', extensions: ['yaml', 'yml'] }]
+      })
+      
+      if (result && !result.canceled && result.filePaths.length > 0) {
+        const content = await window.electronAPI.readFile(result.filePaths[0])
+        setManualTemplate(content)
+        setShowManualTemplateEditor(true)
+      }
+    } catch (error) {
+      console.error('Error loading manual template:', error)
+    }
+  }
+
+  /**
+   * Generate Helm and Kustomize from manual template
+   */
+  const generateFromManualTemplate = async (format: 'helm' | 'kustomize' | 'both') => {
+    try {
+      setIsGenerating(true)
+      
+      const result = await window.electronAPI.generateFromManualTemplate(
+        manualTemplate,
+        format,
+        {
+          templateName: template.name || 'manual-template',
+          namespace: 'default',
+          values: templateValues
+        }
+      )
+      
+      if (result.success) {
+        console.log('✅ Manual template generation completed!')
+        // Show success notification
+      } else {
+        console.error('❌ Manual template generation failed:', result.errors)
+      }
+    } catch (error) {
+      console.error('Error generating from manual template:', error)
+    } finally {
+      setIsGenerating(false)
+    }
+  }
 
   /**
    * Transform schema property for RJSF compatibility

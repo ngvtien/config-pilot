@@ -16,7 +16,8 @@ import {
   Settings,
   FolderOpen,
   Activity,
-  Library
+  Library,
+  FolderPlus
 } from "lucide-react"
 
 import {
@@ -113,6 +114,11 @@ const developerTools = [
     icon: Library,
     view: "template-library" as ViewType,
   },
+  {
+    title: "Project Composer",
+    icon: FolderPlus,
+    view: "project-composer" as ViewType,
+  },  
   {
     title: "OCI Registry",
     icon: Archive,

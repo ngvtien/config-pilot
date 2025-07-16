@@ -1,0 +1,192 @@
+{
+  "fileFormat": {
+    "version": "1.0.0",
+    "type": "config-pilot-template",
+    "generator": "config-pilot",
+    "generatedAt": "2024-01-15T10:30:00.000Z"
+  },
+  "template": {
+    "id": "web-application-template",
+    "name": "Complete Web Application",
+    "version": "1.0.0",
+    "description": "A complete web application template with deployment, service, configmap, and ingress",
+    "category": "web",
+    "resources": [
+      {
+        "id": "deployment",
+        "kind": "Deployment",
+        "apiVersion": "apps/v1",
+        "selectedFields": [
+          {
+            "name": "replicaCount",
+            "type": "number",
+            "default": 3,
+            "required": false,
+            "description": "Number of pod replicas",
+            "path": "spec.replicas"
+          },
+          {
+            "name": "image.repository",
+            "type": "string",
+            "default": "nginx",
+            "required": true,
+            "description": "Container image repository",
+            "path": "spec.template.spec.containers[0].image"
+          },
+          {
+            "name": "image.tag",
+            "type": "string",
+            "default": "1.21",
+            "required": false,
+            "description": "Container image tag",
+            "path": "spec.template.spec.containers[0].image"
+          },
+          {
+            "name": "resources.requests.cpu",
+            "type": "string",
+            "default": "100m",
+            "required": false,
+            "description": "CPU resource requests",
+            "path": "spec.template.spec.containers[0].resources.requests.cpu"
+          },
+          {
+            "name": "resources.requests.memory",
+            "type": "string",
+            "default": "128Mi",
+            "required": false,
+            "description": "Memory resource requests",
+            "path": "spec.template.spec.containers[0].resources.requests.memory"
+          }
+        ],
+        "templateType": "kubernetes"
+      },
+      {
+        "id": "service",
+        "kind": "Service",
+        "apiVersion": "v1",
+        "selectedFields": [
+          {
+            "name": "service.type",
+            "type": "string",
+            "default": "ClusterIP",
+            "required": false,
+            "description": "Service type",
+            "path": "spec.type",
+            "enum": ["ClusterIP", "NodePort", "LoadBalancer"]
+          },
+          {
+            "name": "service.port",
+            "type": "number",
+            "default": 80,
+            "required": false,
+            "description": "Service port",
+            "path": "spec.ports[0].port"
+          },
+          {
+            "name": "service.targetPort",
+            "type": "number",
+            "default": 8080,
+            "required": false,
+            "description": "Target port on the pod",
+            "path": "spec.ports[0].targetPort"
+          }
+        ],
+        "templateType": "kubernetes"
+      },
+      {
+        "id": "configmap",
+        "kind": "ConfigMap",
+        "apiVersion": "v1",
+        "selectedFields": [
+          {
+            "name": "config.appName",
+            "type": "string",
+            "default": "my-web-app",
+            "required": true,
+            "description": "Application name",
+            "path": "data.APP_NAME"
+          },
+          {
+            "name": "config.environment",
+            "type": "string",
+            "default": "production",
+            "required": false,
+            "description": "Environment name",
+            "path": "data.ENVIRONMENT",
+            "enum": ["development", "staging", "production"]
+          },
+          {
+            "name": "config.logLevel",
+            "type": "string",
+            "default": "info",
+            "required": false,
+            "description": "Logging level",
+            "path": "data.LOG_LEVEL",
+            "enum": ["debug", "info", "warn", "error"]
+          }
+        ],
+        "templateType": "kubernetes"
+      },
+      {
+        "id": "ingress",
+        "kind": "Ingress",
+        "apiVersion": "networking.k8s.io/v1",
+        "selectedFields": [
+          {
+            "name": "ingress.enabled",
+            "type": "boolean",
+            "default": true,
+            "required": false,
+            "description": "Enable ingress",
+            "path": "metadata.annotations['config-pilot/enabled']"
+          },
+          {
+            "name": "ingress.host",
+            "type": "string",
+            "default": "example.com",
+            "required": true,
+            "description": "Ingress hostname",
+            "path": "spec.rules[0].host"
+          },
+          {
+            "name": "ingress.path",
+            "type": "string",
+            "default": "/",
+            "required": false,
+            "description": "Ingress path",
+            "path": "spec.rules[0].http.paths[0].path"
+          },
+          {
+            "name": "ingress.tls.enabled",
+            "type": "boolean",
+            "default": false,
+            "required": false,
+            "description": "Enable TLS",
+            "path": "spec.tls[0].secretName"
+          }
+        ],
+        "templateType": "kubernetes"
+      }
+    ],
+    "metadata": {
+      "createdAt": "2024-01-15T10:30:00.000Z",
+      "lastUpdated": "2024-01-15T10:30:00.000Z",
+      "updatedBy": "config-pilot",
+      "tags": ["web", "nginx", "multi-resource", "production-ready"]
+    },
+    "compatibility": {
+      "kubernetesVersions": ["1.20+"],
+      "helmVersions": ["3.0+"]
+    }
+  },
+  "checksum": "sha256:a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456",
+  "exportMetadata": {
+    "exportedBy": "config-pilot-v3",
+    "exportedAt": "2024-01-15T10:30:00.000Z",
+    "exportSettings": {
+      "includeExamples": true,
+      "includeDocumentation": true,
+      "minifyOutput": false
+    }
+  }
+}
