@@ -3,13 +3,13 @@ import { Button } from '@/renderer/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/renderer/components/ui/card'
 import { Badge } from '@/renderer/components/ui/badge'
 import { Separator } from '@/renderer/components/ui/separator'
-import { 
-  Download, 
-  Upload, 
-  Save, 
-  FileText, 
-  Package, 
-  Eye, 
+import {
+  Download,
+  Upload,
+  Save,
+  FileText,
+  Package,
+  Eye,
   Share2,
   Copy,
   RefreshCw
@@ -22,22 +22,22 @@ interface TemplateActionsProps {
   isValid: boolean
   onSave: () => void
   onLoad: (template: Template) => void
-  onExport: (format: 'yaml' | 'json' | 'helm') => void
+  onExport: (format: 'yaml' | 'json' | 'helm' | 'kustomize') => void
 }
 
-export function TemplateActions({ 
-  template, 
-  isValid, 
-  onSave, 
-  onLoad, 
-  onExport 
+export function TemplateActions({
+  template,
+  isValid,
+  onSave,
+  onLoad,
+  onExport
 }: TemplateActionsProps) {
   const [isGenerating, setIsGenerating] = useState(false)
   const [lastGenerated, setLastGenerated] = useState<Date | null>(null)
 
   const handleGenerateHelm = async () => {
     if (!isValid) return
-    
+
     setIsGenerating(true)
     try {
       await generateHelmChart(template)
@@ -45,6 +45,32 @@ export function TemplateActions({
       onExport('helm')
     } catch (error) {
       console.error('Failed to generate Helm chart:', error)
+    } finally {
+      setIsGenerating(false)
+    }
+  }
+
+  const handleGenerateTemplate = async (format: 'helm' | 'kustomize' | 'yaml') => {
+    if (!isValid) return
+
+    setIsGenerating(true)
+    try {
+      // Use the new backend API
+      const result = await window.electronAPI.template.generate({
+        templateId: template.id || 'temp-template',
+        context: {}, // Add context from form data
+        outputPath: './output', // Let user choose
+        format
+      })
+
+      if (result.success) {
+        setLastGenerated(new Date())
+        onExport(format)
+      } else {
+        console.error('Generation failed:', result.errors)
+      }
+    } catch (error) {
+      console.error(`Failed to generate ${format}:`, error)
     } finally {
       setIsGenerating(false)
     }
@@ -60,11 +86,11 @@ export function TemplateActions({
           generator: 'ConfigPilot Template Designer'
         }
       }
-      
-      const content = format === 'yaml' 
+
+      const content = format === 'yaml'
         ? yaml.dump(templateData)
         : JSON.stringify(templateData, null, 2)
-      
+
       const blob = new Blob([content], { type: `application/${format}` })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -106,7 +132,7 @@ export function TemplateActions({
             )}
             {isGenerating ? 'Generating...' : 'Generate Helm Chart'}
           </Button>
-          
+
           <Button
             variant="outline"
             onClick={() => onExport('yaml')}
@@ -130,7 +156,7 @@ export function TemplateActions({
             <Save className="h-4 w-4" />
             Save
           </Button>
-          
+
           <Button
             variant="outline"
             size="sm"
@@ -140,7 +166,7 @@ export function TemplateActions({
             <Download className="h-4 w-4" />
             Export JSON
           </Button>
-          
+
           <Button
             variant="outline"
             size="sm"
@@ -150,6 +176,20 @@ export function TemplateActions({
             <FileText className="h-4 w-4" />
             Export YAML
           </Button>
+
+          <Button
+            onClick={() => handleGenerateTemplate('kustomize')}
+            disabled={!isValid || isGenerating}
+            className="flex items-center gap-2 bg-green-600 hover:bg-green-700"
+          >
+            {isGenerating ? (
+              <RefreshCw className="h-4 w-4 animate-spin" />
+            ) : (
+              <Package className="h-4 w-4" />
+            )}
+            {isGenerating ? 'Generating...' : 'Generate Kustomize'}
+          </Button>
+
         </div>
 
         {/* Template Statistics */}

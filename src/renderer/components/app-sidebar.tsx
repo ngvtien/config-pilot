@@ -16,6 +16,7 @@ import {
   Settings,
   FolderOpen,
   Activity,
+  Library
 } from "lucide-react"
 
 import {
@@ -43,6 +44,7 @@ type ViewType =
   | "secrets"
   | "chart-builder"
   | "template-editor"
+  | "template-library"
   | "oci-registry"
   | "kubernetes"
   | "argocd"
@@ -105,6 +107,11 @@ const developerTools = [
     title: "Template Editor",
     icon: FileText,
     view: "template-editor" as ViewType,
+  },
+  {
+    title: "Template Library",
+    icon: Library,
+    view: "template-library" as ViewType,
   },
   {
     title: "OCI Registry",

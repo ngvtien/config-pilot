@@ -22,6 +22,7 @@ import { KubernetesDashboardPage } from './kubernetes-dashboard-page'
 import TemplateDesigner from "@/renderer/components/template-creator/TemplateDesigner"
 import { SourceSpecificSearch } from "@/renderer/components/template-creator/SourceSpecificSearch"
 import { useWindowTitle } from '@/renderer/hooks/useWindowTitle'
+import { TemplateLibrary } from "@/renderer/components/template-library/TemplateLibrary"
 
 type UserRole = "developer" | "devops" | "operations"
 type ViewType =
@@ -30,10 +31,11 @@ type ViewType =
   | "secrets"
   | "chart-builder"
   | "template-editor"
+  | "template-library"
   | "oci-registry"
   | "kubernetes"
   | "k8s-resources"
-  | "k8s-dashboard" 
+  | "k8s-dashboard"
   | "argocd"
   | "git-repos"
   | "file-explorer"
@@ -151,9 +153,11 @@ export default function AppLayoutPage({
   // Use controlled or uncontrolled mode
   const context = useMemo(() => propContextData || localContext, [propContextData, localContext])
   const settings = useMemo(() => propSettingsData || localSettings, [propSettingsData, localSettings])
-  
- // Update window title when settings change
- useWindowTitle(settings)
+
+  const [selectedTemplate, setSelectedTemplate] = useState(null)
+
+  // Update window title when settings change
+  useWindowTitle(settings)
 
   // Load from localStorage only if not controlled
   useEffect(() => {
@@ -265,6 +269,8 @@ export default function AppLayoutPage({
         return "Chart Builder"
       case "template-editor":
         return "Template Editor"
+      case "template-library":
+        return "Template Library"
       case "oci-registry":
         return "OCI Registry"
       case "git-repos":
@@ -283,26 +289,26 @@ export default function AppLayoutPage({
   const renderContent = () => {
     switch (view) {
       case "schema":
-        return <SchemaEditor context={context} baseDirectory= {settings.baseDirectory} />
+        return <SchemaEditor context={context} baseDirectory={settings.baseDirectory} />
       case "secrets":
-        return ( 
+        return (
           <SecretsEditor
             context={context}
             schemaPath="/src/mock/schema/secrets.schema.json"
-            baseDirectory= {settings.baseDirectory}
+            baseDirectory={settings.baseDirectory}
             onChange={(value: string) => {
               // Save changes to localStorage for persistence
               localStorage.setItem(`secrets_editor_${context.environment}`, value)
               console.log(`Secrets updated for ${context.environment}:`, value)
             }}
-          />        
-      )
+          />
+        )
       case "values":
         return (
           <ValueEditor
             context={context}
             schemaPath="/src/mock/schema/values.schema.json"
-            baseDirectory= {settings.baseDirectory}
+            baseDirectory={settings.baseDirectory}
             onChange={(value: string) => {
               // Save changes to localStorage for persistence
               localStorage.setItem(`value_editor_${context.environment}`, value)
@@ -315,8 +321,24 @@ export default function AppLayoutPage({
           <TemplateDesigner
             contextData={context}
             settingsData={settings}
+            initialTemplate={selectedTemplate} 
           />
           // <SourceSpecificSearch />
+        )
+
+      case "template-library":
+        return (
+          <TemplateLibrary
+            onTemplateSelect={(template: any) => {
+              // Store the selected template
+              setSelectedTemplate(template)
+              // Switch to template editor with selected template
+              setView("template-editor")
+            }}
+            onTemplateImport={(template: any) => {
+              console.log('Template imported:', template)
+            }}
+          />
         )
       // case "kubernetes":
       //   return (
@@ -333,15 +355,15 @@ export default function AppLayoutPage({
       //       </div>
       //     </div>
       //   )
-        case "k8s-resources": {
-          // Replace the context assignment around line 146 with:
-          return (
-            <KubernetesResourcePage
-              context={memoizedContext}
-              settings={settings || localSettings}
-            />
-          )
-        }        
+      case "k8s-resources": {
+        // Replace the context assignment around line 146 with:
+        return (
+          <KubernetesResourcePage
+            context={memoizedContext}
+            settings={settings || localSettings}
+          />
+        )
+      }
       case "file-explorer":
         return (
           <FileExplorerPage
@@ -365,7 +387,7 @@ export default function AppLayoutPage({
           />
         )
       case "k8s-dashboard":
-          return <KubernetesDashboardPage /> 
+        return <KubernetesDashboardPage />
       default:
         return (
           <div className="flex flex-col items-center justify-center h-full text-center space-y-4">
