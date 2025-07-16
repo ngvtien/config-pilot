@@ -42,6 +42,10 @@ export interface YamlEditorProps {
   onChange?: (content: string) => void
   /** Custom title for the editor */
   title?: string
+  /** Hide the header and action buttons */
+  hideHeader?: boolean
+  /** Custom action buttons to display in header */
+  customActions?: React.ReactNode
 }
 
 // Custom JSON theme with purple/pink accent colors (consistent with other editors)
@@ -165,6 +169,8 @@ const YamlEditor: React.FC<YamlEditorProps> = ({
   initialContent = "",
   onChange,
   title,
+  hideHeader = false,
+  customActions,
 }) => {
   const [yamlContent, setYamlContent] = useState(initialContent)
   const [formData, setFormData] = useState<any>({})
@@ -175,15 +181,24 @@ const YamlEditor: React.FC<YamlEditorProps> = ({
   const [schema, setSchema] = useState<any>(null)
 
   // Layout state management
-  const [leftPanelWidth, setLeftPanelWidth] = useState(100) // Percentage
+  const [leftPanelWidth, setLeftPanelWidth] = useState(65) // Percentage
   const [verticalSplitRatio, setVerticalSplitRatio] = useState(60) // Percentage for form vs yaml
   const [isDraggingVertical, setIsDraggingVertical] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const leftColumnRef = useRef<HTMLDivElement>(null)
+  const [isDraggingHorizontal, setIsDraggingHorizontal] = useState(false)
 
   // Generate storage keys based on context and filename
   const getStorageKey = (suffix: string) => {
     return `yaml_editor_${context.environment}_${context.product}_${targetYamlFilename}_${suffix}`
+  }
+
+  /**
+ * Handle horizontal splitter mouse down event for side-by-side layout
+ */
+  const handleHorizontalMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault()
+    setIsDraggingHorizontal(true)
   }
 
   // Load schema when component mounts
@@ -196,6 +211,41 @@ const YamlEditor: React.FC<YamlEditorProps> = ({
     loadYamlContent()
   }, [context, targetYamlFilename])
 
+  useEffect(() => {
+    /**
+     * Handle mouse move events for both horizontal and vertical splitters
+     */
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isDraggingHorizontal && containerRef.current) {
+        const containerRect = containerRef.current.getBoundingClientRect()
+        const newLeftWidth = ((e.clientX - containerRect.left) / containerRect.width) * 100
+        setLeftPanelWidth(Math.max(20, Math.min(80, newLeftWidth)))
+      }
+
+      if (isDraggingVertical && leftColumnRef.current) {
+        const containerRect = leftColumnRef.current.getBoundingClientRect()
+        const newRatio = ((e.clientY - containerRect.top) / containerRect.height) * 100
+        setVerticalSplitRatio(Math.max(20, Math.min(80, newRatio)))
+      }
+    }
+
+    /**
+     * Handle mouse up events to stop dragging
+     */
+    const handleMouseUp = () => {
+      setIsDraggingHorizontal(false)
+      setIsDraggingVertical(false)
+    }
+
+    if (isDraggingHorizontal || isDraggingVertical) {
+      document.addEventListener('mousemove', handleMouseMove)
+      document.addEventListener('mouseup', handleMouseUp)
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove)
+        document.removeEventListener('mouseup', handleMouseUp)
+      }
+    }
+  }, [isDraggingHorizontal, isDraggingVertical])
   // Load schema from file or localStorage
   const loadSchema = async () => {
     try {
@@ -358,17 +408,21 @@ data:
     if (onChange) {
       onChange(yamlContent)
     }
-  }, [yamlContent, onChange])
+  }, [yamlContent])
 
+  // const showNotification = (message: string, type: "success" | "error" = "success") => {
+  //   // Simple toast notification - you could replace with a proper toast library
+  //   const toast = document.createElement("div")
+  //   toast.textContent = message
+  //   toast.className = `fixed top-4 right-4 px-4 py-2 rounded-md text-white z-50 ${
+  //     type === "success" ? "bg-green-500" : "bg-red-500"
+  //   }`
+  //   document.body.appendChild(toast)
+  //   setTimeout(() => document.body.removeChild(toast), 2000)
+  // }
   const showNotification = (message: string, type: "success" | "error" = "success") => {
-    // Simple toast notification - you could replace with a proper toast library
-    const toast = document.createElement("div")
-    toast.textContent = message
-    toast.className = `fixed top-4 right-4 px-4 py-2 rounded-md text-white z-50 ${
-      type === "success" ? "bg-green-500" : "bg-red-500"
-    }`
-    document.body.appendChild(toast)
-    setTimeout(() => document.body.removeChild(toast), 2000)
+    // Silent mode - do nothing
+    console.log(`[${type.toUpperCase()}] ${message}`) // Optional: log to console instead
   }
 
   const handleYamlChange = (value: string | undefined) => {
@@ -794,30 +848,31 @@ data:
     })
   }
 
-  // Render layout based on configuration
+  /**
+   * Renders the layout based on the selected layout mode
+   * For side-by-side: Form editor on left, YAML editor on right with 50:50 default split
+   * When showYamlEditor is false, form editor takes full width
+   */
   const renderLayout = () => {
-    // Use flex-1 to take all available space instead of fixed height calculation
     if (layout === "side-by-side") {
-      // Side-by-side layout (horizontal split)
+      // True side-by-side layout (horizontal split)
       return (
         <div className="flex gap-3 flex-1 min-h-0" ref={containerRef}>
-          {/* Left Panel - Form and YAML Editors */}
+          {/* Left Panel - Form Editor */}
           <div
-            className="flex flex-col min-w-0 overflow-hidden flex-1"
-            style={{ width: `${leftPanelWidth}%` }}
+            className="flex flex-col min-w-0 overflow-hidden"
+            style={{
+              width: showYamlEditor ? `${leftPanelWidth}%` : '100%'
+            }}
             ref={leftColumnRef}
           >
-            {/* Form Editor */}
-            <Card
-              className="flex flex-col m-4 mr-2 mb-2 overflow-hidden"
-              style={{
-                height: showYamlEditor ? `${verticalSplitRatio}%` : `calc(100% - 32px)`,
-              }}
-            >
-              <CardHeader className="pb-3 flex-shrink-0">
-                <CardTitle className="text-lg">Form Editor</CardTitle>
-              </CardHeader>
-              <CardContent className="flex-1 overflow-hidden p-0">
+            <Card className="flex flex-col m-4 mr-2 overflow-hidden h-full">
+              {!hideHeader && (
+                <CardHeader className="pb-3 flex-shrink-0">
+                  <CardTitle className="text-lg">Form Editor</CardTitle>
+                </CardHeader>
+              )}
+              <CardContent className={`flex-1 overflow-hidden p-0 ${hideHeader ? 'pt-4' : ''}`}>
                 {isLoading ? (
                   <div className="flex items-center justify-center h-full text-muted-foreground">Loading...</div>
                 ) : (
@@ -827,46 +882,49 @@ data:
                 )}
               </CardContent>
             </Card>
+          </div>
 
-            {/* Vertical Splitter - Hidden by default, shows on hover */}
-            {showYamlEditor && (
-              <div className="relative mx-4 group">
-                <div
-                  className="h-0.5 bg-transparent hover:bg-primary/20 cursor-row-resize flex-shrink-0 transition-all duration-200 group-hover:h-1 group-hover:bg-border"
-                  onMouseDown={handleVerticalMouseDown}
-                  style={{
-                    backgroundColor: isDraggingVertical ? "hsl(var(--primary))" : undefined,
-                    height: isDraggingVertical ? "4px" : undefined,
-                  }}
-                />
-                {/* Invisible hover area for easier targeting */}
-                <div
-                  className="absolute inset-0 -top-2 -bottom-2 cursor-row-resize"
-                  onMouseDown={handleVerticalMouseDown}
-                />
-              </div>
-            )}
+          {/* Horizontal Splitter - Only show when YAML editor is visible */}
+          {showYamlEditor && (
+            <div className="relative group">
+              <div
+                className="w-0.5 bg-transparent hover:bg-primary/20 cursor-col-resize flex-shrink-0 transition-all duration-200 group-hover:w-1 group-hover:bg-border"
+                onMouseDown={handleHorizontalMouseDown}
+                role="separator"
+                aria-label="Resize panels"
+                style={{
+                  backgroundColor: isDraggingHorizontal ? "hsl(var(--primary))" : undefined,
+                  width: isDraggingHorizontal ? "4px" : undefined,
+                }}
+              />
+              {/* Invisible hover area for easier targeting */}
+              <div className="absolute inset-0 -left-2 -right-2 cursor-col-resize" onMouseDown={handleHorizontalMouseDown} />
+            </div>
+          )}
 
-            {/* YAML Editor */}
-            {showYamlEditor && (
-              <Card
-                className="flex flex-col overflow-hidden m-4 mr-2 mt-0"
-                style={{ height: `${100 - verticalSplitRatio}%` }}
-              >
-                <CardHeader className="pb-2 flex-shrink-0">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-lg">YAML Editor</CardTitle>
-                    <div className="flex items-center space-x-2">
-                      <Button variant="ghost" size="sm" onClick={copyEditorContent}>
-                        <Copy className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => setIsYamlExpanded(!isYamlExpanded)}>
-                        {isYamlExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-                      </Button>
+          {/* Right Panel - YAML Editor */}
+          {showYamlEditor && (
+            <div
+              className="flex flex-col min-w-0 overflow-hidden"
+              style={{ width: `${100 - leftPanelWidth}%` }}
+            >
+              <Card className="flex flex-col m-4 ml-2 overflow-hidden h-full">
+                {!hideHeader && (
+                  <CardHeader className="pb-2 flex-shrink-0">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-lg">YAML Editor</CardTitle>
+                      <div className="flex items-center space-x-2">
+                        <Button variant="ghost" size="sm" onClick={copyEditorContent}>
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => setIsYamlExpanded(!isYamlExpanded)}>
+                          {isYamlExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-0 flex-1 overflow-hidden">
+                  </CardHeader>
+                )}
+                <CardContent className={`p-0 flex-1 overflow-hidden ${hideHeader ? 'pt-4' : ''}`}>
                   <div className="h-full border rounded-b-lg overflow-hidden">
                     <CodeMirror
                       value={yamlContent}
@@ -875,16 +933,9 @@ data:
                       extensions={[
                         yamlLanguage(),
                         EditorView.theme({
-                          "&": {
-                            height: "100%",
-                          },
-                          ".cm-editor": {
-                            height: "100%",
-                          },
-                          ".cm-scroller": {
-                            overflow: "auto",
-                            maxHeight: "100%",
-                          },
+                          "&": { height: "100%" },
+                          ".cm-editor": { height: "100%" },
+                          ".cm-scroller": { overflow: "auto", maxHeight: "100%" },
                         }),
                       ]}
                       onChange={(value) => handleYamlChange(value)}
@@ -904,8 +955,8 @@ data:
                   </div>
                 </CardContent>
               </Card>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       )
     } else {
@@ -1013,32 +1064,37 @@ data:
   // Main Content
   return (
     <div className="flex flex-col h-screen bg-background overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b bg-card flex-shrink-0">
-        <h1 className="text-2xl font-bold text-foreground">{title || `${targetYamlFilename} Editor`}</h1>
-        <div className="flex items-center space-x-2">
-          <Button variant="outline" size="sm" onClick={triggerFileInput}>
-            <Upload className="h-4 w-4 mr-2" />
-            Load File
-          </Button>
-          <input type="file" ref={fileInputRef} className="hidden" accept=".yaml,.yml" onChange={handleFileUpload} />
-          <Button variant="outline" size="sm" onClick={() => setShowYamlEditor(!showYamlEditor)}>
-            {showYamlEditor ? <EyeOff className="h-4 w-4 mr-2" /> : <Eye className="h-4 w-4 mr-2" />}
-            {showYamlEditor ? "Hide YAML" : "Show YAML"}
-          </Button>
-          <Button variant="outline" size="sm" onClick={downloadYaml}>
-            <Download className="h-4 w-4 mr-2" />
-            Download
-          </Button>
-          <Button variant="outline" size="sm" onClick={refreshSchema}>
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh Schema
-          </Button>
+      {/* Conditional Header */}
+      {!hideHeader && (
+        <div className="flex items-center justify-between p-4 border-b bg-card flex-shrink-0">
+          <h1 className="text-2xl font-bold text-foreground">{title || `${targetYamlFilename} Editor`}</h1>
+          <div className="flex items-center space-x-2">
+            {customActions}
+            <Button variant="outline" size="sm" onClick={triggerFileInput}>
+              <Upload className="h-4 w-4 mr-2" />
+              Load File
+            </Button>
+            <input type="file" ref={fileInputRef} className="hidden" accept=".yaml,.yml" onChange={handleFileUpload} />
+            <Button variant="outline" size="sm" onClick={() => setShowYamlEditor(!showYamlEditor)}>
+              {showYamlEditor ? <EyeOff className="h-4 w-4 mr-2" /> : <Eye className="h-4 w-4 mr-2" />}
+              {showYamlEditor ? "Hide YAML" : "Show YAML"}
+            </Button>
+            <Button variant="outline" size="sm" onClick={downloadYaml}>
+              <Download className="h-4 w-4 mr-2" />
+              Download
+            </Button>
+            <Button variant="outline" size="sm" onClick={refreshSchema}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refresh Schema
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Main Content */}
-      {renderLayout()}
+      <div className={hideHeader ? "h-full" : "flex-1"}>
+        {renderLayout()}
+      </div>
     </div>
   )
 }

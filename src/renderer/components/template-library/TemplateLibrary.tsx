@@ -194,6 +194,26 @@ export function TemplateLibrary({ onTemplateSelect, onTemplateImport }: Template
     return template.templateType === filterType
   })
 
+  /**
+   * Handle template usage - select template and close modal
+   */
+  const handleUseTemplate = (template: any) => {
+    onTemplateSelect?.(template)
+    setShowPreview(false)
+    setShowCustomizer(false)
+  }
+
+  /**
+   * Handle template save - refresh list and close modal
+   */
+  const handleSaveTemplate = (template: any) => {
+    loadTemplates() // Refresh list after saving
+    setShowCustomizer(false)
+    setShowPreview(false)
+    alert('✅ Template saved successfully!')
+  }
+  
+  
   return (
     <TooltipProvider>
       <div className="space-y-6">
@@ -456,6 +476,7 @@ export function TemplateLibrary({ onTemplateSelect, onTemplateImport }: Template
             onDryRun={handleDryRun}
           />
         )} */}
+
         {/* Unified Template View Modal */}
         {(showPreview || showCustomizer) && previewTemplate && (
           <UnifiedTemplateView
@@ -478,7 +499,24 @@ export function TemplateLibrary({ onTemplateSelect, onTemplateImport }: Template
             }}
             onDryRun={handleDryRun}
           />
-        )}        
+        )}
+
+        {/* YAML-Enabled Template View Modal */}
+{/* {(showPreview || showCustomizer) && previewTemplate && (
+  <YamlEnabledTemplateView
+    template={previewTemplate}
+    isOpen={showPreview || showCustomizer}
+    onClose={() => {
+      setShowPreview(false)
+      setShowCustomizer(false)
+      setPreviewTemplate(null)
+    }}
+    onUse={handleUseTemplate}
+    onSave={handleSaveTemplate}
+    onDryRun={handleDryRun}
+    mode={showCustomizer ? 'edit' : 'preview'}
+  />
+)} */}
 
         {/* Template Customizer Modal */}
         {showCustomizer && previewTemplate && (
