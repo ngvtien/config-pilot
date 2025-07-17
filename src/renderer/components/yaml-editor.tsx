@@ -18,6 +18,7 @@ import { EditorView } from "@codemirror/view"
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language"
 import { tags as t } from "@lezer/highlight"
 import type { ContextData } from "@/shared/types/context-data"
+import { useEditorTheme } from '@/renderer/hooks/useEditorTheme'
 
 // Layout options for the editor
 export type YamlEditorLayout = "stacked" | "side-by-side"
@@ -187,6 +188,8 @@ const YamlEditor: React.FC<YamlEditorProps> = ({
   const containerRef = useRef<HTMLDivElement>(null)
   const leftColumnRef = useRef<HTMLDivElement>(null)
   const [isDraggingHorizontal, setIsDraggingHorizontal] = useState(false)
+
+  const { codeMirrorTheme, yamlExtensions } = useEditorTheme()
 
   // Generate storage keys based on context and filename
   const getStorageKey = (suffix: string) => {
@@ -929,9 +932,10 @@ data:
                     <CodeMirror
                       value={yamlContent}
                       height="100%"
-                      theme={oneDark}
+                      theme={codeMirrorTheme}
                       extensions={[
                         yamlLanguage(),
+                        ...yamlExtensions,
                         EditorView.theme({
                           "&": { height: "100%" },
                           ".cm-editor": { height: "100%" },

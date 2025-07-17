@@ -115,6 +115,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
       'template:generateForProject',
       'template:validateForProject',
       'template:getUsageStats',
+      'template:save',
+      'template:update',
+      'template:duplicate',
+      'template:getPreview',
     ]
     if (validChannels.includes(channel)) {
       return ipcRenderer.invoke(channel, ...args)
@@ -281,6 +285,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke('template:create', templateData),
     load: (templateId: string) =>
       ipcRenderer.invoke('template:load', templateId),
+    save: (template: any) =>
+      ipcRenderer.invoke('template:save', template),
     getAll: () =>
       ipcRenderer.invoke('template:getAll'),
     search: (query: string) =>

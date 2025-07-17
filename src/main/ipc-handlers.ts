@@ -981,4 +981,20 @@ export function setupIpcHandlers(): void {
   ipcMain.handle('template:getUsageStats', async (_, project) => {
     return await templateManager.getTemplateUsageStats(project)
   })
+
+  ipcMain.handle('template:save', async (_, template) => {
+    return await templateService.saveTemplate(template)
+  })
+
+  // ipcMain.handle('template:update', async (_, templateId: string, updates: any) => {
+  //   return await templateService.updateTemplate(templateId, updates)
+  // })
+
+  // ipcMain.handle('template:duplicate', async (_, templateId: string) => {
+  //   return await templateService.duplicateTemplate(templateId)
+  // })
+
+  // ipcMain.handle('template:getPreview', async (_, templateId: string, context: any) => {
+  //   return await templateService.generatePreview(templateId, context)
+  // })
 }
