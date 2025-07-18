@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/renderer/components/ui/card'
 import { Button } from '@/renderer/components/ui/button'
 import { Input } from '@/renderer/components/ui/input'
@@ -12,12 +12,14 @@ import {
   Eye, Download, Package, Settings, Play, FileText, Layers,
   Edit3, Save, X, Plus, Trash2, ChevronDown, ChevronRight,
   Code, Zap, Package2, AlertCircle, CheckCircle,
-  ChevronLeft
+  ChevronLeft,
+  Search
 } from 'lucide-react'
 import { Template, TemplateResource, TemplateField } from '@/shared/types/template'
 import { cn } from "@/lib/utils"
 import yaml from 'js-yaml'
 import YamlEditor from '@/renderer/components/yaml-editor'
+import { kubernetesSchemaIndexer } from '@/renderer/services/kubernetes-schema-indexer'
 
 interface UnifiedTemplateViewProps {
   template: Template
@@ -51,17 +53,269 @@ export function UnifiedTemplateView({
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [editingResourceIndex, setEditingResourceIndex] = useState<number | null>(null)
 
+  const [showAddResourceModal, setShowAddResourceModal] = useState(false)
+  const [availableKinds, setAvailableKinds] = useState<any[]>([])
+  const [searchTerm, setSearchTerm] = useState('')
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
   useEffect(() => {
     if (currentMode === 'preview') {
       generatePreviews()
     }
   }, [currentMode, editedTemplate])
 
-  // useEffect(() => {
-  //   if (currentMode === 'preview') {
-  //     generatePreviews()
-  //   }
-  // }, [currentMode])
+  // Load available Kubernetes kinds on component mount
+  useEffect(() => {
+    loadAvailableKinds()
+  }, [])
+
+  /**
+   * Load available Kubernetes kinds including CRDs
+   */
+  const loadAvailableKinds = async () => {
+    try {
+      // Use the correct API that includes CRDs
+      const kinds = await kubernetesSchemaIndexer.getAvailableKindsWithCRDs()
+      setAvailableKinds(kinds.map(kind => ({ kind, apiVersion: 'v1', group: 'core' })) || [])
+    } catch (error) {
+      console.error('Failed to load available kinds with CRDs:', error)
+      setAvailableKinds([])
+    }
+  }
+
+  /**
+   * Handle adding a new resource to the template
+   */
+  const handleAddNewResource = async (selectedKind: any) => {
+    try {
+      // Check for duplicates
+      const exists = editedTemplate.resources.some(r => r.kind === selectedKind.kind)
+      if (exists) {
+        alert(`Resource ${selectedKind.kind} already exists in this template`)
+        return
+      }
+
+      // Create new resource with proper apiVersion handling
+      const newResource: TemplateResource = {
+        kind: selectedKind.kind,
+        apiVersion: selectedKind.apiVersion || 'v1',
+        selectedFields: []
+      }
+
+      // Add to template
+      const updatedTemplate = {
+        ...editedTemplate,
+        resources: [...editedTemplate.resources, newResource]
+      }
+      
+      setEditedTemplate(updatedTemplate)
+      setHasUnsavedChanges(true)
+      setShowAddResourceModal(false)
+      
+      console.log(`Added ${selectedKind.kind} to template`)
+    } catch (error) {
+      console.error('Failed to add resource:', error)
+    }
+  }
+
+  /**
+   * Handle saving the template
+   */
+  const handleSaveTemplate = async () => {
+    try {
+      if (onSave) {
+        await onSave(editedTemplate)
+        setHasUnsavedChanges(false)
+      }
+    } catch (error) {
+      console.error('Failed to save template:', error)
+    }
+  }
+
+  /**
+   * Filter available kinds based on search term
+   */
+  const filteredKinds = useMemo(() => {
+    if (!searchTerm.trim()) return []
+
+    return availableKinds.filter(kind =>
+      kind.kind.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (kind.group && kind.group.toLowerCase().includes(searchTerm.toLowerCase()))
+    ).slice(0, 10) // Limit results for performance
+  }, [availableKinds, searchTerm])
+
+  /**
+   * Render Add Resource Modal
+   */
+  const renderAddResourceModal = () => {
+    if (!showAddResourceModal) return null
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <Card className="w-[500px] max-h-[600px] flex flex-col">
+          <CardHeader className="border-b">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Add New Resource</CardTitle>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Search and select a Kubernetes resource to add to this template
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setShowAddResourceModal(false)
+                  setSearchTerm('')
+                  setIsDropdownOpen(false)
+                }}
+                className="h-8 w-8 p-0"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </CardHeader>
+
+          <CardContent className="flex-1 overflow-hidden p-6">
+            <div className="space-y-4">
+              <div className="relative" ref={dropdownRef}>
+                <Label htmlFor="resource-search">Search Resource Kind:</Label>
+                <div className="relative mt-2">
+                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="resource-search"
+                    placeholder="Search for Kubernetes kinds (e.g., Pod, Deployment, Service)..."
+                    value={searchTerm}
+                    onChange={(e) => {
+                      setSearchTerm(e.target.value)
+                      setIsDropdownOpen(e.target.value.trim().length > 0)
+                    }}
+                    onFocus={() => {
+                      if (searchTerm.trim()) {
+                        setIsDropdownOpen(true)
+                      }
+                    }}
+                    className="pl-10"
+                  />
+                </div>
+
+                {/* Search Results Dropdown */}
+                {isDropdownOpen && filteredKinds.length > 0 && (
+                  <div className="absolute z-10 w-full mt-1 bg-background border border-border rounded-md shadow-lg max-h-60 overflow-auto">
+                    {filteredKinds.map((resource, index) => {
+                      const displayResource = {
+                        ...resource,
+                        apiVersion: resource.apiVersion || (resource.group === 'core' ? resource.version : `${resource.group}/${resource.version}`)
+                      }
+                      return (
+                        <div
+                          key={`${resource.group || 'core'}-${resource.version || 'v1'}-${resource.kind}-${index}`}
+                          className="px-3 py-2 hover:bg-accent hover:text-accent-foreground cursor-pointer border-b border-border last:border-b-0"
+                          onClick={() => handleAddNewResource(displayResource)}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium">{resource.kind}</span>
+                            <div className="flex gap-1">
+                              <Badge variant="secondary" className="text-xs">
+                                {displayResource.apiVersion}
+                              </Badge>
+                              {resource.source && (
+                                <Badge variant="outline" className="text-xs">
+                                  {resource.source}
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                          {resource.description && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {resource.description}
+                            </p>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {/* No results message */}
+                {isDropdownOpen && searchTerm.trim() && filteredKinds.length === 0 && (
+                  <div className="absolute z-10 w-full mt-1 bg-background border border-border rounded-md shadow-lg p-3">
+                    <p className="text-sm text-muted-foreground text-center">
+                      No resources found matching "{searchTerm}"
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Quick Add Common Resources */}
+              <div className="space-y-2">
+                <Label>Quick Add Common Resources:</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { kind: 'Deployment', apiVersion: 'apps/v1' },
+                    { kind: 'Service', apiVersion: 'v1' },
+                    { kind: 'ConfigMap', apiVersion: 'v1' },
+                    { kind: 'Secret', apiVersion: 'v1' },
+                    { kind: 'Ingress', apiVersion: 'networking.k8s.io/v1' },
+                    { kind: 'PersistentVolumeClaim', apiVersion: 'v1' }
+                  ].map((resource) => {
+                    const isAlreadyAdded = editedTemplate.resources.some(r =>
+                      r.kind === resource.kind && r.apiVersion === resource.apiVersion
+                    )
+                    return (
+                      <Button
+                        key={resource.kind}
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleAddNewResource(resource)}
+                        disabled={isAlreadyAdded}
+                        className="justify-start text-xs"
+                      >
+                        <Plus className="h-3 w-3 mr-1" />
+                        {resource.kind}
+                        {isAlreadyAdded && <span className="ml-1 text-muted-foreground">(added)</span>}
+                      </Button>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+  /**
+   * Handle resource removal with confirmation
+   */
+  const handleRemoveResource = (resourceIndex: number) => {
+    const resource = editedTemplate.resources[resourceIndex]
+    const confirmed = confirm(
+      `Are you sure you want to remove "${resource.kind}" (${resource.apiVersion})?\n\nThis action cannot be undone.`
+    )
+
+    if (confirmed) {
+      const updatedResources = editedTemplate.resources.filter((_, index) => index !== resourceIndex)
+      setEditedTemplate({
+        ...editedTemplate,
+        resources: updatedResources
+      })
+      setHasUnsavedChanges(true)
+
+      // If we were editing the removed resource, exit edit mode
+      if (editingResourceIndex === resourceIndex) {
+        setEditingResourceIndex(null)
+        setCurrentMode('preview')
+      }
+      // If we were editing a resource after the removed one, adjust the index
+      else if (editingResourceIndex !== null && editingResourceIndex > resourceIndex) {
+        setEditingResourceIndex(editingResourceIndex - 1)
+      }
+
+      console.log(`🗑️ Removed resource: ${resource.kind} (${resource.apiVersion})`)
+    }
+  }
 
   /**
    * Generate preview content for different formats
@@ -324,6 +578,21 @@ export function UnifiedTemplateView({
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>Edit this resource</TooltipContent>
+                </Tooltip>
+
+                {/* Add remove button */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleRemoveResource(index)}
+                      className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Remove this resource</TooltipContent>
                 </Tooltip>
               </div>
             </div>
@@ -634,61 +903,23 @@ export function UnifiedTemplateView({
               </div>
 
               <div className="flex items-center gap-2">
-                {/* Mode Toggle - only show if not editing individual resource */}
-                {/* {editingResourceIndex === null && (
-                  <div className="flex bg-gray-800 dark:bg-gray-200 rounded-lg p-1 border border-gray-600 dark:border-gray-400">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => handleModeSwitch('preview')}
-                      className={cn(
-                        "flex items-center gap-2 transition-all font-medium",
-                        currentMode === 'preview' 
-                          ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-md border border-gray-300 dark:border-gray-600" 
-                          : "bg-transparent text-gray-300 dark:text-gray-700 hover:bg-gray-700 dark:hover:bg-gray-300 hover:text-white dark:hover:text-gray-900"
-                      )}
-                    >
-                      <Eye className="h-4 w-4" />
-                      Preview
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => handleModeSwitch('edit')}
-                      className={cn(
-                        "flex items-center gap-2 transition-all font-medium",
-                        currentMode === 'edit' 
-                          ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-md border border-gray-300 dark:border-gray-600" 
-                          : "bg-transparent text-gray-300 dark:text-gray-700 hover:bg-gray-700 dark:hover:bg-gray-300 hover:text-white dark:hover:text-gray-900"
-                      )}
-                    >
-                      <Edit3 className="h-4 w-4" />
-                      Edit All
-                      {hasUnsavedChanges && <div className="w-2 h-2 bg-orange-500 rounded-full" />}
-                    </Button>
-                  </div>
-                )} */}
-
-                {/* Back button when editing individual resource */}
-                {/* {editingResourceIndex !== null && (
+                {/* Save Template Button */}
+                {hasUnsavedChanges && (
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Button 
-                        size="sm" 
-                        variant="outline" 
-                        onClick={exitResourceEdit}
-                        className="flex items-center gap-2"
+                      <Button
+                        size="sm"
+                        variant="default"
+                        onClick={handleSaveTemplate}
+                        className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white"
                       >
-                        <ChevronLeft className="h-4 w-4" />
-                        Back
+                        <Save className="h-4 w-4" />
+                        Save Template
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent side="bottom">
-                      <p className="text-sm font-medium">Back to All Resources</p>
-                      <p className="text-xs text-slate-400 mt-1">Return to template overview</p>
-                    </TooltipContent>
+                    <TooltipContent>Save template changes</TooltipContent>
                   </Tooltip>
-                )} */}
+                )}
 
                 {/* Close button with tooltip */}
                 <Tooltip>
@@ -708,7 +939,6 @@ export function UnifiedTemplateView({
                   </TooltipContent>
                 </Tooltip>
               </div>
-
             </div>
           </CardHeader>
 
@@ -738,16 +968,54 @@ export function UnifiedTemplateView({
                 <div className="flex-1 overflow-auto p-6">
                   <TabsContent value="resources" className="mt-0">
                     <div className="space-y-4">
-                      <div className="flex items-center justify-between mb-6">
-                        <h3 className="text-lg font-semibold">Template Resources</h3>
+                      {/* Improved header with better button positioning */}
+                      <div className="flex items-center justify-between mb-6 bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
+                        <div className="flex items-center gap-4">
+                          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Template Resources</h3>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setShowAddResourceModal(true)
+                              loadAvailableKinds()
+                            }}
+                            className="flex items-center gap-2 text-blue-600 border-blue-200 hover:bg-blue-50 hover:border-blue-300 dark:text-blue-400 dark:border-blue-600 dark:hover:bg-blue-900/20"
+                          >
+                            <Plus className="h-4 w-4" />
+                            Add Resource
+                          </Button>
+                        </div>
                         <div className="flex gap-2">
-                          <Badge variant="outline">{editedTemplate.resources.length} resources</Badge>
-                          <Badge variant="outline">
+                          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                            {editedTemplate.resources.length} resources
+                          </Badge>
+                          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
                             {editedTemplate.resources.reduce((acc, r) => acc + r.selectedFields.length, 0)} total fields
                           </Badge>
                         </div>
                       </div>
-                      {editedTemplate.resources.map((resource, index) => renderResourceSummary(resource, index))}
+                      
+                      {editedTemplate.resources.length === 0 ? (
+                        <div className="text-center py-12 bg-gradient-to-br from-gray-50 to-blue-50 dark:from-gray-800 dark:to-blue-900/20 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600">
+                          <Layers className="h-16 w-16 text-gray-400 dark:text-gray-500 mx-auto mb-4" />
+                          <h4 className="text-xl font-medium text-gray-700 dark:text-gray-300 mb-2">No resources yet</h4>
+                          <p className="text-gray-500 dark:text-gray-400 mb-6 max-w-md mx-auto">
+                            Start building your template by adding Kubernetes resources including CRDs
+                          </p>
+                          <Button
+                            onClick={() => {
+                              setShowAddResourceModal(true)
+                              loadAvailableKinds()
+                            }}
+                            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700"
+                          >
+                            <Plus className="h-4 w-4" />
+                            Add Your First Resource
+                          </Button>
+                        </div>
+                      ) : (
+                        editedTemplate.resources.map((resource, index) => renderResourceSummary(resource, index))
+                      )}
                     </div>
                   </TabsContent>
 
@@ -805,6 +1073,91 @@ export function UnifiedTemplateView({
           </CardContent>
         </Card>
       </div>
+
+      {/* Add Resource Modal */}
+          {showAddResourceModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <Card className="w-[600px] max-h-[80vh] flex flex-col">
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="flex items-center gap-2">
+                      <Plus className="h-5 w-5" />
+                      Add Kubernetes Resource
+                    </CardTitle>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowAddResourceModal(false)}
+                      className="h-8 w-8 p-0"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="flex-1 overflow-auto">
+                  <div className="space-y-4">
+                    {/* Search Input */}
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                      <Input
+                        placeholder="Search Kubernetes resources and CRDs..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+
+                    {/* Quick Add Common Resources */}
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Quick Add</h4>
+                      <div className="flex flex-wrap gap-2">
+                        {['Deployment', 'Service', 'ConfigMap', 'Secret', 'Ingress', 'PersistentVolumeClaim'].map(kind => (
+                          <Button
+                            key={kind}
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleAddNewResource({ kind, apiVersion: 'v1' })}
+                            className="text-xs"
+                          >
+                            {kind}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Filtered Results */}
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Available Resources {searchTerm && `(${filteredKinds.length} found)`}
+                      </h4>
+                      <div className="max-h-64 overflow-auto space-y-1">
+                        {filteredKinds.length === 0 ? (
+                          <p className="text-sm text-gray-500 text-center py-4">
+                            {searchTerm ? 'No resources found matching your search' : 'Loading resources...'}
+                          </p>
+                        ) : (
+                          filteredKinds.map((kind, index) => (
+                            <div
+                              key={index}
+                              className="flex items-center justify-between p-2 hover:bg-gray-50 dark:hover:bg-gray-700 rounded cursor-pointer"
+                              onClick={() => handleAddNewResource(kind)}
+                            >
+                              <div>
+                                <span className="font-medium">{kind.kind}</span>
+                                <span className="text-sm text-gray-500 ml-2">{kind.apiVersion}</span>
+                              </div>
+                              <Plus className="h-4 w-4 text-gray-400" />
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+          
     </TooltipProvider>
   )
 }
