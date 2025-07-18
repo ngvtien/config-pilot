@@ -76,9 +76,9 @@ export function TemplateLibrary({ onTemplateSelect, onTemplateImport }: Template
   const handleImportTemplate = async () => {
     try {
       const filePath = await window.electronAPI.openFile({
-        filters: [{ name: 'Config Pilot Templates', extensions: ['cpt'] }] 
+        filters: [{ name: 'Config Pilot Templates', extensions: ['cpt'] }]
       })
-      
+
       if (filePath) {
         const importedTemplate = await window.electronAPI.template.import(filePath)
         onTemplateImport?.(importedTemplate)
@@ -100,7 +100,7 @@ export function TemplateLibrary({ onTemplateSelect, onTemplateImport }: Template
         defaultPath: `${template.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.cpt`,
         filters: [{ name: 'Config Pilot Templates', extensions: ['cpt'] }]
       })
-      
+
       if (!result.canceled && result.filePath) {
         await window.electronAPI.template.export({ templateId: template.id, exportPath: result.filePath })
         alert('✅ Template exported successfully!')
@@ -139,11 +139,11 @@ export function TemplateLibrary({ onTemplateSelect, onTemplateImport }: Template
   /**
    * Handle template customization
    */
-  const handleCustomizeTemplate = (template: any) => {
-    setPreviewTemplate(template)
-    setShowCustomizer(true)
-    setShowPreview(false)
-  }
+  // const handleCustomizeTemplate = (template: any) => {
+  //   setPreviewTemplate(template)
+  //   setShowCustomizer(true)
+  //   setShowPreview(false)
+  // }
 
   /**
    * Handle dry run validation
@@ -155,7 +155,7 @@ export function TemplateLibrary({ onTemplateSelect, onTemplateImport }: Template
         context: {},
         dryRun: true
       })
-      
+
       if (result.valid) {
         alert('✅ Template validation successful! All resources are valid.')
       } else {
@@ -178,7 +178,7 @@ export function TemplateLibrary({ onTemplateSelect, onTemplateImport }: Template
         repository: `templates/${template.name.toLowerCase()}`,
         tag: template.metadata?.version || '1.0.0'
       })
-      
+
       alert(`📦 Template packaged successfully!\nOCI Reference: ${result.reference}`)
     } catch (error) {
       console.error('OCI packaging failed:', error)
@@ -197,23 +197,31 @@ export function TemplateLibrary({ onTemplateSelect, onTemplateImport }: Template
   /**
    * Handle template usage - select template and close modal
    */
-  const handleUseTemplate = (template: any) => {
-    onTemplateSelect?.(template)
-    setShowPreview(false)
-    setShowCustomizer(false)
-  }
+  // const handleUseTemplate = (template: any) => {
+  //   onTemplateSelect?.(template)
+  //   setShowPreview(false)
+  //   setShowCustomizer(false)
+  // }
 
-  /**
-   * Handle template save - refresh list and close modal
-   */
-  const handleSaveTemplate = (template: any) => {
-    loadTemplates() // Refresh list after saving
-    setShowCustomizer(false)
-    setShowPreview(false)
-    alert('✅ Template saved successfully!')
+/**
+ * Handle template save with immediate refresh
+ */
+const handleSaveTemplate = async (template: any) => {
+  try {
+    // Save the template
+    await window.electronAPI.template.save(template)
+    
+    // Immediately refresh the template list
+    await loadTemplates()
+    
+    console.log('✅ Template saved and list refreshed')
+  } catch (error) {
+    console.error('Failed to save template:', error)
+    alert('❌ Failed to save template. Check console for details.')
   }
-  
-  
+}
+
+
   return (
     <TooltipProvider>
       <div className="space-y-6">
@@ -225,7 +233,7 @@ export function TemplateLibrary({ onTemplateSelect, onTemplateImport }: Template
               Manage and deploy your infrastructure templates
             </p>
           </div>
-          
+
           <div className="flex items-center gap-2">
             <Tooltip>
               <TooltipTrigger asChild>
@@ -237,12 +245,12 @@ export function TemplateLibrary({ onTemplateSelect, onTemplateImport }: Template
                 <p>Refresh template list</p>
               </TooltipContent>
             </Tooltip>
-            
+
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button 
-                  onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')} 
-                  variant="outline" 
+                <Button
+                  onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
+                  variant="outline"
                   size="sm"
                 >
                   {viewMode === 'grid' ? <List className="h-4 w-4" /> : <Grid className="h-4 w-4" />}
@@ -252,7 +260,7 @@ export function TemplateLibrary({ onTemplateSelect, onTemplateImport }: Template
                 <p>Switch to {viewMode === 'grid' ? 'list' : 'grid'} view</p>
               </TooltipContent>
             </Tooltip>
-            
+
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button onClick={handleImportTemplate} className="flex items-center gap-2">
@@ -278,7 +286,7 @@ export function TemplateLibrary({ onTemplateSelect, onTemplateImport }: Template
               className="pl-10"
             />
           </div>
-          
+
           <div className="flex items-center gap-2">
             <Filter className="h-4 w-4 text-gray-500" />
             <select
@@ -296,8 +304,8 @@ export function TemplateLibrary({ onTemplateSelect, onTemplateImport }: Template
         </div>
 
         {/* Template Grid/List */}
-        <div className={viewMode === 'grid' 
-          ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" 
+        <div className={viewMode === 'grid'
+          ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
           : "space-y-4"
         }>
           {filteredTemplates.map((template: any) => (
@@ -310,14 +318,14 @@ export function TemplateLibrary({ onTemplateSelect, onTemplateImport }: Template
                   </Badge>
                 </CardTitle>
               </CardHeader>
-              
+
               <CardContent className="space-y-4">
                 <p className="text-sm text-gray-600 line-clamp-2 min-h-[2.5rem]">
                   {template.description || 'No description available'}
                 </p>
-                
+
                 {/* Enhanced Resource Summary - Now Clickable */}
-                <div 
+                <div
                   className="grid grid-cols-2 gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors"
                   onClick={() => handlePreviewTemplate(template)}
                 >
@@ -329,7 +337,7 @@ export function TemplateLibrary({ onTemplateSelect, onTemplateImport }: Template
                   </div>
                   <div className="text-center">
                     <div className="text-lg font-semibold text-green-600">
-                      {template.resources?.reduce((sum: number, r: any) => 
+                      {template.resources?.reduce((sum: number, r: any) =>
                         sum + (r.selectedFields?.filter((f: any) => f.required)?.length || 0), 0) || 0}
                     </div>
                     <div className="text-xs text-gray-500">Required Fields</div>
@@ -350,8 +358,8 @@ export function TemplateLibrary({ onTemplateSelect, onTemplateImport }: Template
 
                 {/* Primary Actions */}
                 {/* Secondary Actions */}
-                <div className="grid grid-cols-4 gap-1">
-                  <Tooltip>
+                <div className="grid grid-cols-3 gap-1">
+                  {/* <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
                         size="sm"
@@ -365,8 +373,8 @@ export function TemplateLibrary({ onTemplateSelect, onTemplateImport }: Template
                     <TooltipContent>
                       <p>Customize template fields and properties</p>
                     </TooltipContent>
-                  </Tooltip>
-                  
+                  </Tooltip> */}
+
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
@@ -382,7 +390,7 @@ export function TemplateLibrary({ onTemplateSelect, onTemplateImport }: Template
                       <p>Package template as Helm chart and push to OCI registry</p>
                     </TooltipContent>
                   </Tooltip>
-                  
+
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
@@ -398,7 +406,7 @@ export function TemplateLibrary({ onTemplateSelect, onTemplateImport }: Template
                       <p>Export template as .cpt file</p>
                     </TooltipContent>
                   </Tooltip>
-                  
+
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
@@ -437,7 +445,7 @@ export function TemplateLibrary({ onTemplateSelect, onTemplateImport }: Template
               {searchQuery || filterType !== 'all' ? 'No matching templates' : 'No templates found'}
             </h3>
             <p className="text-gray-600 mb-6 max-w-md mx-auto">
-              {searchQuery || filterType !== 'all' 
+              {searchQuery || filterType !== 'all'
                 ? 'Try adjusting your search or filter criteria'
                 : 'Get started by importing your first template or creating a new one'
               }
@@ -448,8 +456,8 @@ export function TemplateLibrary({ onTemplateSelect, onTemplateImport }: Template
                 Import Template
               </Button>
               {(searchQuery || filterType !== 'all') && (
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   onClick={() => {
                     setSearchQuery('')
                     setFilterType('all')
@@ -491,18 +499,13 @@ export function TemplateLibrary({ onTemplateSelect, onTemplateImport }: Template
               setShowPreview(false)
               setShowCustomizer(false)
             }}
-            onSave={(template) => {
-              loadTemplates() // Refresh list after saving
-              setShowCustomizer(false)
-              setShowPreview(false)
-              alert('✅ Template saved successfully!')
-            }}
+            onSave={handleSaveTemplate} // Use the updated handler
             onDryRun={handleDryRun}
           />
         )}
 
         {/* YAML-Enabled Template View Modal */}
-{/* {(showPreview || showCustomizer) && previewTemplate && (
+        {/* {(showPreview || showCustomizer) && previewTemplate && (
   <YamlEnabledTemplateView
     template={previewTemplate}
     isOpen={showPreview || showCustomizer}

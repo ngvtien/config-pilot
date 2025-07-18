@@ -114,9 +114,11 @@ export class TemplateService {
         const templatePath = path.join(this.templatesPath, `${template.id}.cpt`)
         await fs.writeFile(templatePath, JSON.stringify(cptFile, null, 2), 'utf-8')
 
+        // Update the cache with the latest template data
+        this.templateCache.set(template.id, cptFile.template)
+
         console.log(`✅ Template saved: ${templatePath}`)
     }
-
     /**
      * Load template from .cpt file
      */

@@ -45,7 +45,7 @@ export function UnifiedTemplateView({
   const [currentMode, setCurrentMode] = useState<'preview' | 'edit'>(initialMode)
   const [editedTemplate, setEditedTemplate] = useState<Template>({
     ...template,
-    resources: template.resources.map(r => ({ ...r, selectedFields: [...r.selectedFields] }))
+    resources: template.resources.map((r: { selectedFields: any }) => ({ ...r, selectedFields: [...r.selectedFields] }))
   })
   const [preview, setPreview] = useState({ yaml: '', helm: '', kustomize: '' })
   const [loading, setLoading] = useState(false)
@@ -58,7 +58,7 @@ export function UnifiedTemplateView({
   const [searchTerm, setSearchTerm] = useState('')
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
-
+  
   useEffect(() => {
     if (currentMode === 'preview') {
       generatePreviews()
@@ -77,7 +77,7 @@ export function UnifiedTemplateView({
     try {
       // Use the correct API that includes CRDs
       const kinds = await kubernetesSchemaIndexer.getAvailableKindsWithCRDs()
-      setAvailableKinds(kinds.map(kind => ({ kind, apiVersion: 'v1', group: 'core' })) || [])
+      setAvailableKinds(kinds.map((kind: any) => ({ kind, apiVersion: 'v1', group: 'core' })) || [])
     } catch (error) {
       console.error('Failed to load available kinds with CRDs:', error)
       setAvailableKinds([])
@@ -85,39 +85,49 @@ export function UnifiedTemplateView({
   }
 
   /**
-   * Handle adding a new resource to the template
+   * Handle adding a new resource to the template with auto-save
    */
-  const handleAddNewResource = async (selectedKind: any) => {
-    try {
-      // Check for duplicates
-      const exists = editedTemplate.resources.some(r => r.kind === selectedKind.kind)
-      if (exists) {
-        alert(`Resource ${selectedKind.kind} already exists in this template`)
-        return
-      }
+const handleAddNewResource = async (selectedKind: any) => {
+  try {
+    // Check for duplicates
+    const isDuplicate = editedTemplate.resources.some(
+      (resource: { kind: any; apiVersion: any }) => resource.kind === selectedKind.kind && resource.apiVersion === selectedKind.apiVersion
+    )
 
-      // Create new resource with proper apiVersion handling
-      const newResource: TemplateResource = {
-        kind: selectedKind.kind,
-        apiVersion: selectedKind.apiVersion || 'v1',
-        selectedFields: []
-      }
-
-      // Add to template
-      const updatedTemplate = {
-        ...editedTemplate,
-        resources: [...editedTemplate.resources, newResource]
-      }
-      
-      setEditedTemplate(updatedTemplate)
-      setHasUnsavedChanges(true)
-      setShowAddResourceModal(false)
-      
-      console.log(`Added ${selectedKind.kind} to template`)
-    } catch (error) {
-      console.error('Failed to add resource:', error)
+    if (isDuplicate) {
+      alert(`${selectedKind.kind} (${selectedKind.apiVersion}) is already in this template.`)
+      return
     }
+
+    // Create new resource with proper templateType field
+    const newResource: TemplateResource = {
+      kind: selectedKind.kind,
+      apiVersion: selectedKind.apiVersion || 'v1',
+      selectedFields: [],
+      templateType: 'kubernetes' // Add this required field
+    }
+
+    // Add to template
+    const updatedTemplate = {
+      ...editedTemplate,
+      resources: [...editedTemplate.resources, newResource]
+    }
+    
+    setEditedTemplate(updatedTemplate)
+    setHasUnsavedChanges(true)
+    setShowAddResourceModal(false)
+    
+    // Auto-save the template
+    if (onSave) {
+      await onSave(updatedTemplate)
+      setHasUnsavedChanges(false)
+    }
+    
+    console.log(`Added ${selectedKind.kind} to template and auto-saved`)
+  } catch (error) {
+    console.error('Failed to add resource:', error)
   }
+}
 
   /**
    * Handle saving the template
@@ -139,10 +149,25 @@ export function UnifiedTemplateView({
   const filteredKinds = useMemo(() => {
     if (!searchTerm.trim()) return []
 
-    return availableKinds.filter(kind =>
+    // Group resources by category
+    const results = availableKinds.filter(kind =>
       kind.kind.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (kind.group && kind.group.toLowerCase().includes(searchTerm.toLowerCase()))
-    ).slice(0, 10) // Limit results for performance
+    ).slice(0, 20) // Increased limit for better search results
+
+    // Group by category
+    const grouped = results.reduce((acc: any, kind) => {
+      const category = kind.group || 'core'
+      if (!acc[category]) acc[category] = []
+      acc[category].push(kind)
+      return acc
+    }, {})
+
+    // Convert to array format for rendering
+    return Object.entries(grouped).map(([category, kinds]) => ({
+      category,
+      kinds
+    }))
   }, [availableKinds, searchTerm])
 
   /**
@@ -187,7 +212,7 @@ export function UnifiedTemplateView({
                     id="resource-search"
                     placeholder="Search for Kubernetes kinds (e.g., Pod, Deployment, Service)..."
                     value={searchTerm}
-                    onChange={(e) => {
+                    onChange={(e: { target: { value: React.SetStateAction<string> } }) => {
                       setSearchTerm(e.target.value)
                       setIsDropdownOpen(e.target.value.trim().length > 0)
                     }}
@@ -260,7 +285,7 @@ export function UnifiedTemplateView({
                     { kind: 'Ingress', apiVersion: 'networking.k8s.io/v1' },
                     { kind: 'PersistentVolumeClaim', apiVersion: 'v1' }
                   ].map((resource) => {
-                    const isAlreadyAdded = editedTemplate.resources.some(r =>
+                    const isAlreadyAdded = editedTemplate.resources.some((r: { kind: string; apiVersion: string }) =>
                       r.kind === resource.kind && r.apiVersion === resource.apiVersion
                     )
                     return (
@@ -289,31 +314,25 @@ export function UnifiedTemplateView({
   /**
    * Handle resource removal with confirmation
    */
-  const handleRemoveResource = (resourceIndex: number) => {
-    const resource = editedTemplate.resources[resourceIndex]
-    const confirmed = confirm(
-      `Are you sure you want to remove "${resource.kind}" (${resource.apiVersion})?\n\nThis action cannot be undone.`
-    )
-
-    if (confirmed) {
-      const updatedResources = editedTemplate.resources.filter((_, index) => index !== resourceIndex)
-      setEditedTemplate({
+  const handleRemoveResource = async (resourceIndex: number) => {
+    try {
+      const updatedTemplate = {
         ...editedTemplate,
-        resources: updatedResources
-      })
+        resources: editedTemplate.resources.filter((_, index) => index !== resourceIndex)
+      }
+
+      setEditedTemplate(updatedTemplate)
       setHasUnsavedChanges(true)
 
-      // If we were editing the removed resource, exit edit mode
-      if (editingResourceIndex === resourceIndex) {
-        setEditingResourceIndex(null)
-        setCurrentMode('preview')
-      }
-      // If we were editing a resource after the removed one, adjust the index
-      else if (editingResourceIndex !== null && editingResourceIndex > resourceIndex) {
-        setEditingResourceIndex(editingResourceIndex - 1)
+      // Auto-save the template
+      if (onSave) {
+        await onSave(updatedTemplate)
+        setHasUnsavedChanges(false)
       }
 
-      console.log(`🗑️ Removed resource: ${resource.kind} (${resource.apiVersion})`)
+      console.log(`Removed resource at index ${resourceIndex} and auto-saved`)
+    } catch (error) {
+      console.error('Failed to remove resource:', error)
     }
   }
 
@@ -372,7 +391,7 @@ export function UnifiedTemplateView({
    * Handle template metadata changes
    */
   const handleMetadataChange = (field: string, value: string) => {
-    setEditedTemplate(prev => ({ ...prev, [field]: value }))
+    setEditedTemplate((prev: any) => ({ ...prev, [field]: value }))
     setHasUnsavedChanges(true)
   }
 
@@ -380,7 +399,7 @@ export function UnifiedTemplateView({
    * Handle resource field modifications
    */
   const handleFieldChange = (resourceIndex: number, fieldIndex: number, field: string, value: any) => {
-    setEditedTemplate(prev => {
+    setEditedTemplate((prev: { resources: { selectedFields: any[] }[] }) => {
       const newTemplate = { ...prev }
       newTemplate.resources = [...prev.resources]
       newTemplate.resources[resourceIndex] = { ...prev.resources[resourceIndex] }
@@ -407,19 +426,37 @@ export function UnifiedTemplateView({
     setExpandedResources(newExpanded)
   }
 
-  /**
-   * Save changes
-   */
-  const handleSave = async () => {
-    try {
-      await window.electronAPI.template.save(editedTemplate)
-      onSave(editedTemplate)
-      setHasUnsavedChanges(false)
-    } catch (error) {
-      console.error('Failed to save template:', error)
-      alert('Failed to save template. Check console for details.')
+/**
+ * Save changes with error handling and feedback
+ */
+const handleSave = async () => {
+  try {
+    setLoading(true)
+    // First validate the template structure
+    const validationResult = await window.electronAPI.template.validate(editedTemplate)
+    
+    if (!validationResult.valid) {
+      const errorMessages = validationResult.errors?.map(e => e.message).join('\n')
+      alert(`Template validation failed:\n${errorMessages}`)
+      return
     }
+    
+    // Then save if valid
+    await window.electronAPI.template.save(editedTemplate)
+    onSave(editedTemplate)
+    setHasUnsavedChanges(false)
+    
+    // Provide success feedback
+    // Replace with toast notification
+    console.log('Template saved successfully')
+  } catch (error) {
+    console.error('Failed to save template:', error)
+    alert('Failed to save template. Check console for details.')
+  } finally {
+    setLoading(false)
   }
+}
+
 
   /**
    * Handle resource-level dry run
@@ -468,7 +505,7 @@ export function UnifiedTemplateView({
     }
 
     // Add selected fields to spec
-    resource.selectedFields.forEach(field => {
+    resource.selectedFields.forEach((field: { name: string | number; type: string }) => {
       if (field.name && field.type) {
         resourceData.spec[field.name] = getDefaultValueForType(field.type)
       }
@@ -537,7 +574,7 @@ export function UnifiedTemplateView({
    */
   const renderResourceSummary = (resource: TemplateResource, index: number) => {
     const isExpanded = expandedResources.has(index)
-    const requiredFields = resource.selectedFields.filter(f => f.required).length
+    const requiredFields = resource.selectedFields.filter((f: { required: any }) => f.required).length
     const totalFields = resource.selectedFields.length
     const isEven = index % 2 === 0
 
@@ -602,7 +639,7 @@ export function UnifiedTemplateView({
         {isExpanded && (
           <CardContent className="bg-background">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {resource.selectedFields.map((field, fieldIndex) => (
+              {resource.selectedFields.map((field: { name: string | number | bigint | boolean | React.ReactElement<unknown, string | React.JSXElementConstructor<any>> | Iterable<React.ReactNode> | React.ReactPortal | Promise<string | number | bigint | boolean | React.ReactPortal | React.ReactElement<unknown, string | React.JSXElementConstructor<any>> | Iterable<React.ReactNode> | null | undefined> | null | undefined; required: any; description: string | number | bigint | boolean | React.ReactElement<unknown, string | React.JSXElementConstructor<any>> | Iterable<React.ReactNode> | React.ReactPortal | Promise<string | number | bigint | boolean | React.ReactPortal | React.ReactElement<unknown, string | React.JSXElementConstructor<any>> | Iterable<React.ReactNode> | null | undefined> | null | undefined; type: any; defaultValue: any }, fieldIndex: React.Key | null | undefined) => (
                 <div key={fieldIndex} className="p-3 border rounded-lg bg-card shadow-sm">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="font-medium text-sm">{field.name}</span>
@@ -740,7 +777,7 @@ export function UnifiedTemplateView({
             }}
             layout="side-by-side"
             initialContent={generateResourceYaml(resource)}
-            onChange={(content) => handleResourceYamlChange(index, content)}
+            onChange={(content: string) => handleResourceYamlChange(index, content)}
             title={`Editing: ${resource.kind} - ${resource.apiVersion}`}
             hideHeader={false}
             customActions={
@@ -842,7 +879,7 @@ export function UnifiedTemplateView({
               Fields: {resource.selectedFields.length}
             </div>
             <div className="flex flex-wrap gap-2">
-              {resource.selectedFields.slice(0, 5).map((field, fieldIndex) => (
+              {resource.selectedFields.slice(0, 5).map((field: { name: any; type: any }, fieldIndex: any) => (
                 <Badge key={fieldIndex} variant="secondary">
                   {field.name} ({field.type})
                 </Badge>
@@ -874,7 +911,7 @@ export function UnifiedTemplateView({
                     <Input
                       id="header-name"
                       value={editedTemplate.name}
-                      onChange={(e) => handleMetadataChange('name', e.target.value)}
+                      onChange={(e: { target: { value: string } }) => handleMetadataChange('name', e.target.value)}
                       className="text-xl font-bold text-slate-900 dark:text-slate-100 border-0 px-0 bg-transparent focus:ring-0 focus:border-b-2 focus:border-blue-500 shadow-none"
                       placeholder="Template name"
                     />
@@ -884,7 +921,7 @@ export function UnifiedTemplateView({
                     <Input
                       id="header-version"
                       value={editedTemplate.version || ''}
-                      onChange={(e) => handleMetadataChange('version', e.target.value)}
+                      onChange={(e: { target: { value: string } }) => handleMetadataChange('version', e.target.value)}
                       className="text-lg font-semibold text-blue-600 dark:text-blue-400 border-0 px-0 bg-transparent focus:ring-0 focus:border-b-2 focus:border-blue-500 shadow-none"
                       placeholder="1.0.0"
                     />
@@ -894,7 +931,7 @@ export function UnifiedTemplateView({
                     <Input
                       id="header-description"
                       value={editedTemplate.description || ''}
-                      onChange={(e) => handleMetadataChange('description', e.target.value)}
+                      onChange={(e: { target: { value: string } }) => handleMetadataChange('description', e.target.value)}
                       className="text-base font-medium text-slate-700 dark:text-slate-300 border-0 px-0 bg-transparent focus:ring-0 focus:border-b-2 focus:border-blue-500 shadow-none"
                       placeholder="Template description"
                     />
@@ -990,11 +1027,11 @@ export function UnifiedTemplateView({
                             {editedTemplate.resources.length} resources
                           </Badge>
                           <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                            {editedTemplate.resources.reduce((acc, r) => acc + r.selectedFields.length, 0)} total fields
+                            {editedTemplate.resources.reduce((acc: any, r: { selectedFields: string | any[] }) => acc + r.selectedFields.length, 0)} total fields
                           </Badge>
                         </div>
                       </div>
-                      
+
                       {editedTemplate.resources.length === 0 ? (
                         <div className="text-center py-12 bg-gradient-to-br from-gray-50 to-blue-50 dark:from-gray-800 dark:to-blue-900/20 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600">
                           <Layers className="h-16 w-16 text-gray-400 dark:text-gray-500 mx-auto mb-4" />
@@ -1014,7 +1051,7 @@ export function UnifiedTemplateView({
                           </Button>
                         </div>
                       ) : (
-                        editedTemplate.resources.map((resource, index) => renderResourceSummary(resource, index))
+                        editedTemplate.resources.map((resource: any, index: number) => renderResourceSummary(resource, index))
                       )}
                     </div>
                   </TabsContent>
@@ -1064,7 +1101,7 @@ export function UnifiedTemplateView({
                     /* Show all resources when not editing individual resource */
                     <div>
                       <h3 className="text-lg font-semibold mb-4">All Resources</h3>
-                      {editedTemplate.resources.map((resource, index) => renderResourceEditor(resource, index))}
+                      {editedTemplate.resources.map((resource: any, index: number) => renderResourceEditor(resource, index))}
                     </div>
                   )}
                 </div>
@@ -1075,68 +1112,71 @@ export function UnifiedTemplateView({
       </div>
 
       {/* Add Resource Modal */}
-          {showAddResourceModal && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-              <Card className="w-[600px] max-h-[80vh] flex flex-col">
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="flex items-center gap-2">
-                      <Plus className="h-5 w-5" />
-                      Add Kubernetes Resource
-                    </CardTitle>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setShowAddResourceModal(false)}
-                      className="h-8 w-8 p-0"
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
+      {showAddResourceModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <Card className="w-[600px] max-h-[80vh] flex flex-col">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <Plus className="h-5 w-5" />
+                  Add Kubernetes Resource
+                </CardTitle>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowAddResourceModal(false)}
+                  className="h-8 w-8 p-0"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="flex-1 overflow-auto">
+              <div className="space-y-4">
+                {/* Search Input */}
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                  <Input
+                    placeholder="Search Kubernetes resources and CRDs..."
+                    value={searchTerm}
+                    onChange={(e: { target: { value: React.SetStateAction<string> } }) => setSearchTerm(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+
+                {/* Quick Add Common Resources */}
+                <div>
+                  <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Quick Add</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {['Deployment', 'Service', 'ConfigMap', 'Secret', 'Ingress', 'PersistentVolumeClaim'].map(kind => (
+                      <Button
+                        key={kind}
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleAddNewResource({ kind, apiVersion: 'v1' })}
+                        className="text-xs"
+                      >
+                        {kind}
+                      </Button>
+                    ))}
                   </div>
-                </CardHeader>
-                <CardContent className="flex-1 overflow-auto">
-                  <div className="space-y-4">
-                    {/* Search Input */}
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                      <Input
-                        placeholder="Search Kubernetes resources and CRDs..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="pl-10"
-                      />
-                    </div>
+                </div>
 
-                    {/* Quick Add Common Resources */}
-                    <div>
-                      <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Quick Add</h4>
-                      <div className="flex flex-wrap gap-2">
-                        {['Deployment', 'Service', 'ConfigMap', 'Secret', 'Ingress', 'PersistentVolumeClaim'].map(kind => (
-                          <Button
-                            key={kind}
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleAddNewResource({ kind, apiVersion: 'v1' })}
-                            className="text-xs"
-                          >
-                            {kind}
-                          </Button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Filtered Results */}
-                    <div>
-                      <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Available Resources {searchTerm && `(${filteredKinds.length} found)`}
-                      </h4>
-                      <div className="max-h-64 overflow-auto space-y-1">
-                        {filteredKinds.length === 0 ? (
-                          <p className="text-sm text-gray-500 text-center py-4">
-                            {searchTerm ? 'No resources found matching your search' : 'Loading resources...'}
-                          </p>
-                        ) : (
-                          filteredKinds.map((kind, index) => (
+                {/* Filtered Results */}
+                <div>
+                  <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Available Resources {searchTerm && `(${filteredKinds.reduce((acc, group) => acc + (group.kinds as any[]).length, 0)} found)`}
+                  </h4>
+                  <div className="max-h-64 overflow-auto space-y-3">
+                    {filteredKinds.length === 0 ? (
+                      <p className="text-sm text-gray-500 text-center py-4">
+                        {searchTerm ? 'No resources found matching your search' : 'Loading resources...'}
+                      </p>
+                    ) : (
+                      filteredKinds.map((group, groupIndex) => (
+                        <div key={groupIndex} className="space-y-1">
+                          <h5 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{group.category}</h5>
+                          {(group.kinds as any[]).map((kind, index) => (
                             <div
                               key={index}
                               className="flex items-center justify-between p-2 hover:bg-gray-50 dark:hover:bg-gray-700 rounded cursor-pointer"
@@ -1148,16 +1188,18 @@ export function UnifiedTemplateView({
                               </div>
                               <Plus className="h-4 w-4 text-gray-400" />
                             </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
+                          ))}
+                        </div>
+                      ))
+                    )}
                   </div>
-                </CardContent>
-              </Card>
-            </div>
-          )}
-          
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
     </TooltipProvider>
   )
 }
