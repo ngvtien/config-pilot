@@ -255,7 +255,7 @@ export class TemplateService {
         }
 
         if (!template.resources || template.resources.length === 0) {
-            errors.push({ field: 'resources', message: 'At least one resource is required', severity: 'error' })
+            warnings.push('Template has no resources - add resources to make it functional')
         }
 
         // Validate resources

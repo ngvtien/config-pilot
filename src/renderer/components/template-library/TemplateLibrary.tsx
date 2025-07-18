@@ -4,10 +4,15 @@ import { Input } from '@/renderer/components/ui/input'
 import { Button } from '@/renderer/components/ui/button'
 import { Badge } from '@/renderer/components/ui/badge'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/renderer/components/ui/tooltip'
-import { Settings, Play, Search, Download, Upload, Trash2, Eye, Package, RefreshCw, Filter, Grid, List } from 'lucide-react'
+import { Settings, Play, Search, Download, Upload, Trash2, Eye, Package, RefreshCw, Filter, Grid, List, Plus } from 'lucide-react'
 import { EnhancedTemplatePreview } from './EnhancedTemplatePreview'
-import { TemplateCustomizer } from './TemplateCustomizer'
+//import { TemplateCustomizer } from './TemplateCustomizer'
 import { UnifiedTemplateView } from './UnifiedTemplateView'
+import { TemplateCreator } from './TemplateCreator'
+import { toast } from '@/renderer/hooks/use-toast'
+import { useDialog } from '../../hooks/useDialog';
+import { Alert, ModalAlert } from '../ui/Alert';
+import { Confirm } from '../ui/Confirm';
 
 interface TemplateLibraryProps {
   onTemplateSelect?: (template: any) => void
@@ -22,17 +27,29 @@ interface TemplateLibraryProps {
  * - Improved action grouping
  * - Enhanced loading and empty states
  * - Better responsive design
+ * - Create new template functionality
  */
 export function TemplateLibrary({ onTemplateSelect, onTemplateImport }: TemplateLibraryProps) {
   const [templates, setTemplates] = useState([])
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(false)
-  const [selectedTemplate, setSelectedTemplate] = useState(null)
   const [showPreview, setShowPreview] = useState(false)
-  const [showCustomizer, setShowCustomizer] = useState(false)
+  //const [showCustomizer, setShowCustomizer] = useState(false)
   const [previewTemplate, setPreviewTemplate] = useState(null)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [filterType, setFilterType] = useState<string>('all')
+  const [showCreateModal, setShowCreateModal] = useState(false)
+
+    // Add the dialog hook here
+  const {
+    alertState,
+    showAlert,
+    closeAlert,
+    confirmState,
+    showConfirm,
+    closeConfirm,
+    handleConfirm
+  } = useDialog();
 
   useEffect(() => {
     loadTemplates()
@@ -48,6 +65,11 @@ export function TemplateLibrary({ onTemplateSelect, onTemplateImport }: Template
       setTemplates(allTemplates)
     } catch (error) {
       console.error('Failed to load templates:', error)
+      toast({
+        variant: 'destructive',
+        title: 'Loading Failed',
+        description: 'Failed to load templates. Please try again.'
+      })
     } finally {
       setLoading(false)
     }
@@ -64,6 +86,11 @@ export function TemplateLibrary({ onTemplateSelect, onTemplateImport }: Template
         setTemplates(results)
       } catch (error) {
         console.error('Search failed:', error)
+        toast({
+          variant: 'destructive',
+          title: 'Search Failed',
+          description: 'Failed to search templates. Please try again.'
+        })
       }
     } else {
       loadTemplates()
@@ -83,11 +110,18 @@ export function TemplateLibrary({ onTemplateSelect, onTemplateImport }: Template
         const importedTemplate = await window.electronAPI.template.import(filePath)
         onTemplateImport?.(importedTemplate)
         loadTemplates() // Refresh list
-        alert('✅ Template imported successfully!')
+        toast({
+          title: 'Import Successful',
+          description: 'Template imported successfully!'
+        })
       }
     } catch (error) {
       console.error('Import failed:', error)
-      alert('❌ Failed to import template. Check console for details.')
+      toast({
+        variant: 'destructive',
+        title: 'Import Failed',
+        description: 'Failed to import template. Please check the file format.'
+      })
     }
   }
 
@@ -103,29 +137,52 @@ export function TemplateLibrary({ onTemplateSelect, onTemplateImport }: Template
 
       if (!result.canceled && result.filePath) {
         await window.electronAPI.template.export({ templateId: template.id, exportPath: result.filePath })
-        alert('✅ Template exported successfully!')
+        toast({
+          title: 'Export Successful',
+          description: 'Template exported successfully!'
+        })
       }
     } catch (error) {
       console.error('Export failed:', error)
-      alert('❌ Failed to export template. Check console for details.')
+      toast({
+        variant: 'destructive',
+        title: 'Export Failed',
+        description: 'Failed to export template. Please try again.'
+      })
     }
   }
 
   /**
-   * Handle template deletion with confirmation
+   * Handle template deletion with confirmation using React dialog
    */
   const handleDeleteTemplate = async (template: any) => {
-    const confirmed = confirm(`Are you sure you want to delete "${template.name}"?\n\nThis action cannot be undone.`)
-    if (confirmed) {
-      try {
-        await window.electronAPI.template.delete(template.id)
-        loadTemplates() // Refresh list
-        alert('✅ Template deleted successfully!')
-      } catch (error) {
-        console.error('Delete failed:', error)
-        alert('❌ Failed to delete template. Check console for details.')
+    showConfirm({
+      title: 'Delete Template',
+      message: `Are you sure you want to delete "${template.name}"?\n\nThis action cannot be undone.`,
+      variant: 'destructive',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      onConfirm: async () => {
+        try {
+          await window.electronAPI.template.delete(template.id);
+          
+          // Reset all modal-related state after successful deletion
+          setShowPreview(false);
+          setPreviewTemplate(null);
+          setShowCreateModal(false);
+          setSearchQuery('');
+          setFilterType('all');          
+          await loadTemplates(); // Refresh list
+        } catch (error) {
+          console.error('Delete failed:', error);
+          showAlert({
+            title: 'Error',
+            message: 'Failed to delete template. Please try again.',
+            variant: 'error'
+          });
+        }
       }
-    }
+    })
   }
 
   /**
@@ -135,15 +192,6 @@ export function TemplateLibrary({ onTemplateSelect, onTemplateImport }: Template
     setPreviewTemplate(template)
     setShowPreview(true)
   }
-
-  /**
-   * Handle template customization
-   */
-  // const handleCustomizeTemplate = (template: any) => {
-  //   setPreviewTemplate(template)
-  //   setShowCustomizer(true)
-  //   setShowPreview(false)
-  // }
 
   /**
    * Handle dry run validation
@@ -157,13 +205,24 @@ export function TemplateLibrary({ onTemplateSelect, onTemplateImport }: Template
       })
 
       if (result.valid) {
-        alert('✅ Template validation successful! All resources are valid.')
+        toast({
+          title: 'Validation Successful',
+          description: 'Template validation successful! All resources are valid.'
+        })
       } else {
-        alert(`❌ Template validation failed:\n${result.errors.join('\n')}`)
+        toast({
+          variant: 'destructive',
+          title: 'Validation Failed',
+          description: `Template validation failed: ${result.errors.join(', ')}`
+        })
       }
     } catch (error) {
       console.error('Dry run failed:', error)
-      alert('❌ Dry run failed. Check console for details.')
+      toast({
+        variant: 'destructive',
+        title: 'Validation Failed',
+        description: 'Dry run failed. Please try again.'
+      })
     }
   }
 
@@ -179,11 +238,29 @@ export function TemplateLibrary({ onTemplateSelect, onTemplateImport }: Template
         tag: template.metadata?.version || '1.0.0'
       })
 
-      alert(`📦 Template packaged successfully!\nOCI Reference: ${result.reference}`)
+      toast({
+        title: 'Package Successful',
+        description: `Template packaged successfully! OCI Reference: ${result.reference}`
+      })
     } catch (error) {
       console.error('OCI packaging failed:', error)
-      alert('❌ OCI packaging failed. Check console for details.')
+      toast({
+        variant: 'destructive',
+        title: 'Package Failed',
+        description: 'OCI packaging failed. Please try again.'
+      })
     }
+  }
+
+  /**
+   * Handle new template creation
+   */
+  const handleCreateTemplate = (newTemplate: any) => {
+    // After creating, open it in edit mode
+    setPreviewTemplate(newTemplate)
+    //setShowCustomizer(false)
+    setShowPreview(true)
+    loadTemplates() // Refresh the list
   }
 
   /**
@@ -195,32 +272,29 @@ export function TemplateLibrary({ onTemplateSelect, onTemplateImport }: Template
   })
 
   /**
-   * Handle template usage - select template and close modal
+   * Handle template save with immediate refresh
    */
-  // const handleUseTemplate = (template: any) => {
-  //   onTemplateSelect?.(template)
-  //   setShowPreview(false)
-  //   setShowCustomizer(false)
-  // }
-
-/**
- * Handle template save with immediate refresh
- */
-const handleSaveTemplate = async (template: any) => {
-  try {
-    // Save the template
-    await window.electronAPI.template.save(template)
-    
-    // Immediately refresh the template list
-    await loadTemplates()
-    
-    console.log('✅ Template saved and list refreshed')
-  } catch (error) {
-    console.error('Failed to save template:', error)
-    alert('❌ Failed to save template. Check console for details.')
+  const handleSaveTemplate = async (template: any) => {
+    try {
+      // Save the template
+      await window.electronAPI.template.save(template)
+      
+      // Immediately refresh the template list
+      await loadTemplates()
+      
+      toast({
+        title: 'Template Saved',
+        description: 'Template saved successfully!'
+      })
+    } catch (error) {
+      console.error('Failed to save template:', error)
+      toast({
+        variant: 'destructive',
+        title: 'Save Failed',
+        description: 'Failed to save template. Please try again.'
+      })
+    }
   }
-}
-
 
   return (
     <TooltipProvider>
@@ -263,9 +337,21 @@ const handleSaveTemplate = async (template: any) => {
 
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button onClick={handleImportTemplate} className="flex items-center gap-2">
+                <Button onClick={() => setShowCreateModal(true)} className="flex items-center gap-2">
+                  <Plus className="h-4 w-4" />
+                  Create Template
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Create a new template from scratch</p>
+              </TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button onClick={handleImportTemplate} variant="outline" className="flex items-center gap-2">
                   <Upload className="h-4 w-4" />
-                  Import Template
+                  Import
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
@@ -305,7 +391,7 @@ const handleSaveTemplate = async (template: any) => {
 
         {/* Template Grid/List */}
         <div className={viewMode === 'grid'
-          ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+          ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"
           : "space-y-4"
         }>
           {filteredTemplates.map((template: any) => (
@@ -320,7 +406,7 @@ const handleSaveTemplate = async (template: any) => {
               </CardHeader>
 
               <CardContent className="space-y-4">
-                <p className="text-sm text-gray-600 line-clamp-2 min-h-[2.5rem]">
+                <p className="text-sm text-gray-600 dark:text-gray-300 line-clamp-2 min-h-[2.5rem]">
                   {template.description || 'No description available'}
                 </p>
 
@@ -356,25 +442,8 @@ const handleSaveTemplate = async (template: any) => {
                   </div>
                 </div>
 
-                {/* Primary Actions */}
                 {/* Secondary Actions */}
                 <div className="grid grid-cols-3 gap-1">
-                  {/* <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleCustomizeTemplate(template)}
-                        className="text-xs"
-                      >
-                        <Settings className="h-3 w-3" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Customize template fields and properties</p>
-                    </TooltipContent>
-                  </Tooltip> */}
-
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
@@ -447,11 +516,15 @@ const handleSaveTemplate = async (template: any) => {
             <p className="text-gray-600 mb-6 max-w-md mx-auto">
               {searchQuery || filterType !== 'all'
                 ? 'Try adjusting your search or filter criteria'
-                : 'Get started by importing your first template or creating a new one'
+                : 'Get started by creating your first template or importing an existing one'
               }
             </p>
             <div className="flex justify-center gap-3">
-              <Button onClick={handleImportTemplate} className="flex items-center gap-2">
+              <Button onClick={() => setShowCreateModal(true)} className="flex items-center gap-2">
+                <Plus className="h-4 w-4" />
+                Create Template
+              </Button>
+              <Button onClick={handleImportTemplate} variant="outline" className="flex items-center gap-2">
                 <Upload className="h-4 w-4" />
                 Import Template
               </Button>
@@ -471,68 +544,49 @@ const handleSaveTemplate = async (template: any) => {
           </div>
         )}
 
-        {/* Enhanced Template Preview Modal */}
-        {/* {showPreview && previewTemplate && (
-          <EnhancedTemplatePreview
-            template={previewTemplate}
-            onClose={() => setShowPreview(false)}
-            onUse={(template) => {
-              onTemplateSelect?.(template)
-              setShowPreview(false)
-            }}
-            onCustomize={handleCustomizeTemplate}
-            onDryRun={handleDryRun}
-          />
-        )} */}
+        {/* Template Creator Modal */}
+        <TemplateCreator
+          isOpen={showCreateModal}
+          onClose={() => setShowCreateModal(false)}
+          onSave={handleCreateTemplate}
+        />
 
         {/* Unified Template View Modal */}
-        {(showPreview || showCustomizer) && previewTemplate && (
+        {(showPreview) && previewTemplate && (
           <UnifiedTemplateView
             template={previewTemplate}
-            mode={showCustomizer ? 'edit' : 'preview'}
+            mode={'preview'}
             onClose={() => {
               setShowPreview(false)
-              setShowCustomizer(false)
             }}
             onUse={(template) => {
               onTemplateSelect?.(template)
               setShowPreview(false)
-              setShowCustomizer(false)
             }}
-            onSave={handleSaveTemplate} // Use the updated handler
+            onSave={handleSaveTemplate}
             onDryRun={handleDryRun}
           />
         )}
 
-        {/* YAML-Enabled Template View Modal */}
-        {/* {(showPreview || showCustomizer) && previewTemplate && (
-  <YamlEnabledTemplateView
-    template={previewTemplate}
-    isOpen={showPreview || showCustomizer}
-    onClose={() => {
-      setShowPreview(false)
-      setShowCustomizer(false)
-      setPreviewTemplate(null)
-    }}
-    onUse={handleUseTemplate}
-    onSave={handleSaveTemplate}
-    onDryRun={handleDryRun}
-    mode={showCustomizer ? 'edit' : 'preview'}
-  />
-)} */}
+        <ModalAlert
+          isOpen={alertState.isOpen}
+          title={alertState.title}
+          message={alertState.message}
+          variant={alertState.variant}
+          onClose={closeAlert}
+        />
 
-        {/* Template Customizer Modal */}
-        {showCustomizer && previewTemplate && (
-          <TemplateCustomizer
-            template={previewTemplate}
-            onClose={() => setShowCustomizer(false)}
-            onSave={(customizedTemplate) => {
-              loadTemplates() // Refresh list after saving
-              setShowCustomizer(false)
-              alert('✅ Customized template saved successfully!')
-            }}
-          />
-        )}
+        <Confirm
+          isOpen={confirmState.isOpen}
+          title={confirmState.title}
+          message={confirmState.message}
+          variant={confirmState.variant}
+          confirmText={confirmState.confirmText}
+          cancelText={confirmState.cancelText}
+          onConfirm={handleConfirm}
+          onCancel={closeConfirm}
+        />
+
       </div>
     </TooltipProvider>
   )

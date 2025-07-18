@@ -53,12 +53,18 @@ export function UnifiedTemplateView({
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [editingResourceIndex, setEditingResourceIndex] = useState<number | null>(null)
 
+  const [tagInput, setTagInput] = useState('')
   const [showAddResourceModal, setShowAddResourceModal] = useState(false)
   const [availableKinds, setAvailableKinds] = useState<any[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
-  
+
+  const [originalTemplate, setOriginalTemplate] = useState<Template>({
+    ...template,
+    resources: template.resources.map((r: { selectedFields: any }) => ({ ...r, selectedFields: [...r.selectedFields] }))
+  })
+
   useEffect(() => {
     if (currentMode === 'preview') {
       generatePreviews()
@@ -85,61 +91,108 @@ export function UnifiedTemplateView({
   }
 
   /**
-   * Handle adding a new resource to the template with auto-save
-   */
-const handleAddNewResource = async (selectedKind: any) => {
-  try {
-    // Check for duplicates
-    const isDuplicate = editedTemplate.resources.some(
-      (resource: { kind: any; apiVersion: any }) => resource.kind === selectedKind.kind && resource.apiVersion === selectedKind.apiVersion
-    )
-
-    if (isDuplicate) {
-      alert(`${selectedKind.kind} (${selectedKind.apiVersion}) is already in this template.`)
-      return
+ * Handle adding tags (following TemplateCreator.tsx pattern)
+ */
+  const handleAddTag = () => {
+    if (tagInput.trim() && !editedTemplate.tags?.includes(tagInput.trim())) {
+      const updatedTemplate = {
+        ...editedTemplate,
+        tags: [...(editedTemplate.tags || []), tagInput.trim()]
+      }
+      setEditedTemplate(updatedTemplate)
+      setHasUnsavedChanges(true)
+      setTagInput('')
     }
-
-    // Create new resource with proper templateType field
-    const newResource: TemplateResource = {
-      kind: selectedKind.kind,
-      apiVersion: selectedKind.apiVersion || 'v1',
-      selectedFields: [],
-      templateType: 'kubernetes' // Add this required field
-    }
-
-    // Add to template
-    const updatedTemplate = {
-      ...editedTemplate,
-      resources: [...editedTemplate.resources, newResource]
-    }
-    
-    setEditedTemplate(updatedTemplate)
-    setHasUnsavedChanges(true)
-    setShowAddResourceModal(false)
-    
-    // Auto-save the template
-    if (onSave) {
-      await onSave(updatedTemplate)
-      setHasUnsavedChanges(false)
-    }
-    
-    console.log(`Added ${selectedKind.kind} to template and auto-saved`)
-  } catch (error) {
-    console.error('Failed to add resource:', error)
   }
-}
 
   /**
-   * Handle saving the template
+   * Handle removing tags (following TemplateCreator.tsx pattern)
    */
-  const handleSaveTemplate = async () => {
+  const handleRemoveTag = (tagToRemove: string) => {
+    const updatedTemplate = {
+      ...editedTemplate,
+      tags: editedTemplate.tags?.filter(tag => tag !== tagToRemove) || []
+    }
+    setEditedTemplate(updatedTemplate)
+    setHasUnsavedChanges(true)
+  }
+
+  /**
+   * Handle adding a new resource to the template with auto-save
+   */
+  const handleAddNewResource = async (selectedKind: any) => {
     try {
+      // Check for duplicates
+      const isDuplicate = editedTemplate.resources.some(
+        (resource: { kind: any; apiVersion: any }) => resource.kind === selectedKind.kind && resource.apiVersion === selectedKind.apiVersion
+      )
+
+      if (isDuplicate) {
+        alert(`${selectedKind.kind} (${selectedKind.apiVersion}) is already in this template.`)
+        return
+      }
+
+      // Create new resource with proper templateType field
+      const newResource: TemplateResource = {
+        kind: selectedKind.kind,
+        apiVersion: selectedKind.apiVersion || 'v1',
+        selectedFields: [],
+        templateType: 'kubernetes' // Add this required field
+      }
+
+      // Add to template
+      const updatedTemplate = {
+        ...editedTemplate,
+        resources: [...editedTemplate.resources, newResource]
+      }
+
+      setEditedTemplate(updatedTemplate)
+      setHasUnsavedChanges(true)
+      setShowAddResourceModal(false)
+
+      // Auto-save the template
       if (onSave) {
+        await onSave(updatedTemplate)
+        setHasUnsavedChanges(false)
+      }
+
+      console.log(`Added ${selectedKind.kind} to template and auto-saved`)
+    } catch (error) {
+      console.error('Failed to add resource:', error)
+    }
+  }
+
+  /**
+   * Check if template metadata has changed
+   */
+  const hasMetadataChanged = () => {
+    const originalTags = originalTemplate.tags || []
+    const editedTags = editedTemplate.tags || []
+
+    return (
+      editedTemplate.name !== originalTemplate.name ||
+      editedTemplate.version !== originalTemplate.version ||
+      editedTemplate.description !== originalTemplate.description ||
+      JSON.stringify(originalTags.sort()) !== JSON.stringify(editedTags.sort())
+    )
+  }
+
+  /**
+   * Handle modal close with auto-save for metadata changes
+   */
+  const handleClose = async () => {
+    try {
+      // Check if metadata fields have changed
+      if (hasMetadataChanged()) {
+        console.log('Template metadata changed, auto-saving before close...')
         await onSave(editedTemplate)
         setHasUnsavedChanges(false)
       }
+      onClose()
     } catch (error) {
-      console.error('Failed to save template:', error)
+      console.error('Failed to auto-save template on close:', error)
+      // Still close the modal even if save fails
+      onClose()
     }
   }
 
@@ -377,39 +430,10 @@ const handleAddNewResource = async (selectedKind: any) => {
   }
 
   /**
-   * Handle mode switching with unsaved changes warning
-   */
-  const handleModeSwitch = (newMode: 'preview' | 'edit') => {
-    if (hasUnsavedChanges && newMode === 'preview') {
-      const confirmed = confirm('You have unsaved changes. Switch to preview mode anyway?')
-      if (!confirmed) return
-    }
-    setCurrentMode(newMode)
-  }
-
-  /**
    * Handle template metadata changes
    */
   const handleMetadataChange = (field: string, value: string) => {
     setEditedTemplate((prev: any) => ({ ...prev, [field]: value }))
-    setHasUnsavedChanges(true)
-  }
-
-  /**
-   * Handle resource field modifications
-   */
-  const handleFieldChange = (resourceIndex: number, fieldIndex: number, field: string, value: any) => {
-    setEditedTemplate((prev: { resources: { selectedFields: any[] }[] }) => {
-      const newTemplate = { ...prev }
-      newTemplate.resources = [...prev.resources]
-      newTemplate.resources[resourceIndex] = { ...prev.resources[resourceIndex] }
-      newTemplate.resources[resourceIndex].selectedFields = [...prev.resources[resourceIndex].selectedFields]
-      newTemplate.resources[resourceIndex].selectedFields[fieldIndex] = {
-        ...prev.resources[resourceIndex].selectedFields[fieldIndex],
-        [field]: value
-      }
-      return newTemplate
-    })
     setHasUnsavedChanges(true)
   }
 
@@ -426,36 +450,36 @@ const handleAddNewResource = async (selectedKind: any) => {
     setExpandedResources(newExpanded)
   }
 
-/**
- * Save changes with error handling and feedback
- */
-const handleSave = async () => {
-  try {
-    setLoading(true)
-    // First validate the template structure
-    const validationResult = await window.electronAPI.template.validate(editedTemplate)
-    
-    if (!validationResult.valid) {
-      const errorMessages = validationResult.errors?.map(e => e.message).join('\n')
-      alert(`Template validation failed:\n${errorMessages}`)
-      return
+  /**
+   * Save changes with error handling and feedback
+   */
+  const handleSave = async () => {
+    try {
+      setLoading(true)
+      // First validate the template structure
+      const validationResult = await window.electronAPI.template.validate(editedTemplate)
+
+      if (!validationResult.valid) {
+        const errorMessages = validationResult.errors?.map(e => e.message).join('\n')
+        alert(`Template validation failed:\n${errorMessages}`)
+        return
+      }
+
+      // Then save if valid
+      await window.electronAPI.template.save(editedTemplate)
+      onSave(editedTemplate)
+      setHasUnsavedChanges(false)
+
+      // Provide success feedback
+      // Replace with toast notification
+      console.log('Template saved successfully')
+    } catch (error) {
+      console.error('Failed to save template:', error)
+      alert('Failed to save template. Check console for details.')
+    } finally {
+      setLoading(false)
     }
-    
-    // Then save if valid
-    await window.electronAPI.template.save(editedTemplate)
-    onSave(editedTemplate)
-    setHasUnsavedChanges(false)
-    
-    // Provide success feedback
-    // Replace with toast notification
-    console.log('Template saved successfully')
-  } catch (error) {
-    console.error('Failed to save template:', error)
-    alert('Failed to save template. Check console for details.')
-  } finally {
-    setLoading(false)
   }
-}
 
 
   /**
@@ -901,84 +925,125 @@ const handleSave = async () => {
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
         <Card className="w-[95vw] h-[95vh] flex flex-col">
           {/* Header */}
-          <CardHeader className="border-b">
-            <div className="flex items-center justify-between">
-              <div className="flex-1 mr-4">
-                {/* Always editable metadata */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-gradient-to-r from-slate-50 to-gray-50 dark:from-slate-800 dark:to-gray-800 p-4 rounded-lg border border-slate-200 dark:border-slate-700">
-                  <div>
-                    <Label htmlFor="header-name" className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide">Template Name</Label>
-                    <Input
-                      id="header-name"
-                      value={editedTemplate.name}
-                      onChange={(e: { target: { value: string } }) => handleMetadataChange('name', e.target.value)}
-                      className="text-xl font-bold text-slate-900 dark:text-slate-100 border-0 px-0 bg-transparent focus:ring-0 focus:border-b-2 focus:border-blue-500 shadow-none"
-                      placeholder="Template name"
-                    />
+          {/* Header */}
+          {/* Header - Compact 2-row layout */}
+          <CardHeader className="border-b relative py-3">
+            {/* Close button - properly sized */}
+            <div className="absolute top-2 right-2 z-10">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleClose}
+                    className="h-8 w-8 p-0 text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 hover:bg-transparent"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="bg-slate-900 text-white border-slate-700">
+                  <div className="text-center">
+                    <p className="text-sm font-medium">Close Template</p>
+                    <p className="text-xs text-slate-300 mt-1">ESC • Auto-saves metadata changes</p>
                   </div>
-                  <div>
-                    <Label htmlFor="header-version" className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide">Version</Label>
-                    <Input
-                      id="header-version"
-                      value={editedTemplate.version || ''}
-                      onChange={(e: { target: { value: string } }) => handleMetadataChange('version', e.target.value)}
-                      className="text-lg font-semibold text-blue-600 dark:text-blue-400 border-0 px-0 bg-transparent focus:ring-0 focus:border-b-2 focus:border-blue-500 shadow-none"
-                      placeholder="1.0.0"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="header-description" className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide">Description</Label>
-                    <Input
-                      id="header-description"
-                      value={editedTemplate.description || ''}
-                      onChange={(e: { target: { value: string } }) => handleMetadataChange('description', e.target.value)}
-                      className="text-base font-medium text-slate-700 dark:text-slate-300 border-0 px-0 bg-transparent focus:ring-0 focus:border-b-2 focus:border-blue-500 shadow-none"
-                      placeholder="Template description"
-                    />
+                </TooltipContent>
+              </Tooltip>
+            </div>
+
+            {/* Main content - 2 rows only */}
+            <div className="pr-10 space-y-3">
+              {/* Row 1: Template Name (prominent) */}
+              <div>
+                <Label htmlFor="header-name" className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1 block">
+                  Template Name
+                </Label>
+                <Input
+                  id="header-name"
+                  value={editedTemplate.name}
+                  onChange={(e) => handleMetadataChange('name', e.target.value)}
+                  className="text-xl font-bold text-slate-900 dark:text-slate-100 border-0 px-0 bg-transparent focus:ring-0 focus:border-b-2 focus:border-slate-500 shadow-none placeholder:text-slate-400"
+                  placeholder="Enter template name"
+                />
+              </div>
+
+              {/* Row 2: Version, Description, and Tags in a single row */}
+              <div className="grid grid-cols-12 gap-4 items-end">
+                {/* Version - compact */}
+                <div className="col-span-2">
+                  <Label htmlFor="header-version" className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide mb-1 block">
+                    Version
+                  </Label>
+                  <Input
+                    id="header-version"
+                    value={editedTemplate.version || ''}
+                    onChange={(e) => handleMetadataChange('version', e.target.value)}
+                    className="text-sm font-semibold text-slate-700 dark:text-slate-300 border-0 px-0 bg-transparent focus:ring-0 focus:border-b-2 focus:border-slate-500 shadow-none placeholder:text-slate-400"
+                    placeholder="1.0.0"
+                  />
+                </div>
+
+                {/* Description - takes more space */}
+                <div className="col-span-6">
+                  <Label htmlFor="header-description" className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide mb-1 block">
+                    Description
+                  </Label>
+                  <Input
+                    id="header-description"
+                    value={editedTemplate.description || ''}
+                    onChange={(e) => handleMetadataChange('description', e.target.value)}
+                    className="text-sm font-medium text-slate-800 dark:text-slate-200 border-0 px-0 bg-transparent focus:ring-0 focus:border-b-2 focus:border-slate-500 shadow-none placeholder:text-slate-400"
+                    placeholder="Describe your template"
+                  />
+                </div>
+
+                {/* Tags - compact inline */}
+                <div className="col-span-4">
+                  <Label className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide mb-1 block">
+                    Tags
+                  </Label>
+                  <div className="flex items-center gap-1">
+                    {/* Show existing tags compactly */}
+                    {(editedTemplate.tags || []).slice(0, 2).map((tag, index) => (
+                      <Badge key={index} variant="secondary" className="text-xs bg-slate-100 text-slate-800 dark:bg-slate-900/30 dark:text-slate-200 border-slate-200 dark:border-slate-700 px-1 py-0">
+                        {tag}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-auto p-0 ml-1 hover:bg-transparent"
+                          onClick={() => handleRemoveTag(tag)}
+                        >
+                          <X className="h-2 w-2 hover:text-red-500" />
+                        </Button>
+                      </Badge>
+                    ))}
+                    {(editedTemplate.tags || []).length > 2 && (
+                      <span className="text-xs text-slate-600">+{(editedTemplate.tags || []).length - 2}</span>
+                    )}
+
+                    {/* Quick add input */}
+                    <div className="flex items-center ml-1">
+                      <Input
+                        placeholder="add"
+                        value={tagInput}
+                        onChange={(e) => setTagInput(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && handleAddTag()}
+                        className="w-12 text-xs border-0 bg-transparent focus:ring-0 focus:border-b-1 focus:border-slate-500 shadow-none placeholder:text-slate-400 px-0"
+                      />
+                      <Button
+                        type="button"
+                        onClick={handleAddTag}
+                        size="sm"
+                        variant="ghost"
+                        className="h-4 w-4 p-0 ml-1 text-slate-600 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300 hover:bg-transparent"
+                      >
+                        <Plus className="h-3 w-3" />
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </div>
-
-              <div className="flex items-center gap-2">
-                {/* Save Template Button */}
-                {hasUnsavedChanges && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        size="sm"
-                        variant="default"
-                        onClick={handleSaveTemplate}
-                        className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white"
-                      >
-                        <Save className="h-4 w-4" />
-                        Save Template
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Save template changes</TooltipContent>
-                  </Tooltip>
-                )}
-
-                {/* Close button with tooltip */}
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={onClose}
-                      className="h-8 w-8 p-0 rounded-full hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400 transition-all duration-200 group border border-transparent hover:border-red-200 dark:hover:border-red-800"
-                    >
-                      <X className="h-4 w-4 group-hover:scale-110 transition-transform duration-200" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="bg-slate-900 text-white border-slate-700">
-                    <p className="text-sm font-medium">Close template preview</p>
-                    <p className="text-xs text-slate-400 mt-1">ESC</p>
-                  </TooltipContent>
-                </Tooltip>
-              </div>
             </div>
           </CardHeader>
-
           {/* Content */}
           <CardContent className="flex-1 overflow-hidden p-0">
             {currentMode === 'preview' ? (
@@ -1039,16 +1104,18 @@ const handleSave = async () => {
                           <p className="text-gray-500 dark:text-gray-400 mb-6 max-w-md mx-auto">
                             Start building your template by adding Kubernetes resources including CRDs
                           </p>
-                          <Button
-                            onClick={() => {
-                              setShowAddResourceModal(true)
-                              loadAvailableKinds()
-                            }}
-                            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700"
-                          >
-                            <Plus className="h-4 w-4" />
-                            Add Your First Resource
-                          </Button>
+                          <div className="flex justify-center">
+                            <Button
+                              onClick={() => {
+                                setShowAddResourceModal(true)
+                                loadAvailableKinds()
+                              }}
+                              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700"
+                            >
+                              <Plus className="h-4 w-4" />
+                              Add Your First Resource
+                            </Button>
+                          </div>
                         </div>
                       ) : (
                         editedTemplate.resources.map((resource: any, index: number) => renderResourceSummary(resource, index))

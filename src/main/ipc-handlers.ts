@@ -933,6 +933,16 @@ export function setupIpcHandlers(): void {
     return await templateManager.createTemplateFromDesigner(templateData)
   })
 
+  // ipcMain.handle('template:create', async (event, templateData) => {
+  //   try {
+  //     const createdTemplate = await templateService.createTemplate(templateData)
+  //     return createdTemplate
+  //   } catch (error) {
+  //     console.error('Failed to create template:', error)
+  //     throw error
+  //   }
+  // })
+
   ipcMain.handle('template:load', async (_, templateId: string) => {
     return await templateService.loadTemplate(templateId)
   })
