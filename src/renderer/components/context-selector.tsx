@@ -18,20 +18,32 @@ import {
 } from "@/renderer/components/ui/select"
 
 import type { ContextData } from "@/shared/types/context-data"
+import type { Customer } from "@/shared/types/customer"
+import type { Product } from '@/shared/types/product'
 
 interface ContextSelectorProps {
   context: ContextData
   onContextChange: (context: ContextData) => void
+  onNavigateToCustomerManagement?: () => void
+  onNavigateToProductManagement?: () => void
 }
 
-export function ContextSelector({ context, onContextChange }: ContextSelectorProps) {
+export function ContextSelector({ 
+  context, onContextChange, 
+  onNavigateToCustomerManagement, 
+  onNavigateToProductManagement }
+  : ContextSelectorProps) {
+
   const [isEditing, setIsEditing] = useState(false)
-  // Use lazy initial state to prevent re-initialization on re-renders
   const [formData, setFormData] = useState<ContextData>(() => context)
+  const [customers, setCustomers] = useState<Customer[]>([])
+  const [isLoadingCustomers, setIsLoadingCustomers] = useState(false)
   const mountTimeRef = useRef(Date.now())
   const lastContextRef = useRef<ContextData>(context)
   const formDataInitializedRef = useRef(false)
-   const isEditingRef = useRef(false)
+  const isEditingRef = useRef(false)  
+  const [products, setProducts] = useState<Product[]>([])
+  const [isLoadingProducts, setIsLoadingProducts] = useState(false)
 
   // Debug: Log when component mounts
   useEffect(() => {
@@ -66,6 +78,48 @@ export function ContextSelector({ context, onContextChange }: ContextSelectorPro
   useEffect(() => {
     console.log("📝 FormData changed:", formData)
   }, [formData])
+
+
+  // Load customers when component mounts or when editing starts
+  useEffect(() => {
+    const loadCustomers = async () => {
+      if (!isEditing) return
+      
+      setIsLoadingCustomers(true)
+      try {
+        const response = await window.electronAPI?.customer?.getAllCustomers()
+        if (response?.customers) {
+          setCustomers(response.customers)
+        }
+      } catch (error) {
+        console.error('Failed to load customers:', error)
+      } finally {
+        setIsLoadingCustomers(false)
+      }
+    }
+
+    loadCustomers()
+  }, [isEditing])
+
+  useEffect(() => {
+    const loadProducts = async () => {
+      if (!isEditing) return
+      
+      setIsLoadingProducts(true)
+      try {
+        const response = await window.electronAPI?.product?.getAllProducts()
+        if (response?.products) {
+          setProducts(response.products)
+        }
+      } catch (error) {
+        console.error('Failed to load products:', error)
+      } finally {
+        setIsLoadingProducts(false)
+      }
+    }
+
+    loadProducts()
+  }, [isEditing])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -116,6 +170,22 @@ export function ContextSelector({ context, onContextChange }: ContextSelectorPro
   }
     
   const handleFieldChange = (field: keyof ContextData, value: string | number) => {
+    // Handle customer management navigation
+    if (field === 'customer' && value === '__manage__') {
+      if (onNavigateToCustomerManagement) {
+        onNavigateToCustomerManagement()
+      }
+      return
+    }
+    
+    // Handle product management navigation
+    if (field === 'product' && value === '__manage__') {
+      if (onNavigateToProductManagement) {
+        onNavigateToProductManagement()
+      }
+      return
+    }
+        
     const oldValue = formData[field]
     console.log(`🔧 Field '${field}' changed:`, { from: oldValue, to: value })
 
@@ -143,9 +213,10 @@ export function ContextSelector({ context, onContextChange }: ContextSelectorPro
     }
   }
 
-  if (isEditing) {
+    if (isEditing) {
     return (
       <form onSubmit={handleSubmit} className="flex items-center gap-3">
+        {/* Environment Select */}
         <div className="flex items-center gap-2">
           <Label htmlFor="env" className="text-xs font-medium">
             Environment:
@@ -163,6 +234,7 @@ export function ContextSelector({ context, onContextChange }: ContextSelectorPro
           </Select>
         </div>
 
+        {/* Instance Select */}
         <div className="flex items-center gap-2">
           <Label htmlFor="instance" className="text-xs font-medium">
             Instance:
@@ -181,9 +253,7 @@ export function ContextSelector({ context, onContextChange }: ContextSelectorPro
                   <span>Single</span>
                 </div>
               </SelectItem>
-
               <SelectSeparator />
-
               <SelectGroup>
                 <SelectLabel>Multiple</SelectLabel>
                 <SelectItem value="1">
@@ -215,32 +285,89 @@ export function ContextSelector({ context, onContextChange }: ContextSelectorPro
           </Select>
         </div>
 
+        {/* Product Input */}
+        {/* Product Select - Updated to use dropdown */}
         <div className="flex items-center gap-2">
           <Label htmlFor="product" className="text-xs font-medium">
             Product:
           </Label>
-          <Input
-            id="product"
-            type="text"
-            value={formData.product}
-            onChange={(e: { target: { value: string | number } }) => handleFieldChange("product", e.target.value)}
-            className="h-8 w-20"
-          />
+          <Select 
+            value={formData.product} 
+            onValueChange={(value: string) => handleFieldChange("product", value)}
+            disabled={isLoadingProducts}
+          >
+            <SelectTrigger id="product" className="h-8 w-32">
+              <SelectValue placeholder={isLoadingProducts ? "Loading..." : "Select product"} />
+            </SelectTrigger>
+            <SelectContent>
+              {products.length === 0 && !isLoadingProducts && (
+                <SelectItem value="" disabled>
+                  No products available
+                </SelectItem>
+              )}
+              {products.map((product) => (
+                <SelectItem key={product.id} value={product.name}>
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${
+                      product.metadata?.category === 'frontend' ? 'bg-blue-500' :
+                      product.metadata?.category === 'backend' ? 'bg-green-500' :
+                      product.metadata?.category === 'database' ? 'bg-purple-500' :
+                      product.metadata?.category === 'infrastructure' ? 'bg-orange-500' : 'bg-gray-500'
+                    }`}></div>
+                    <span>{product.displayName || product.name}</span>
+                  </div>
+                </SelectItem>
+              ))}
+              <SelectSeparator />
+              <SelectItem value="__manage__" className="text-blue-600">
+                <div className="flex items-center gap-2">
+                  <span>+ Manage Products</span>
+                </div>
+              </SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-
+        {/* Customer Select - Updated to use dropdown */}
         <div className="flex items-center gap-2">
           <Label htmlFor="customer" className="text-xs font-medium">
             Customer:
           </Label>
-          <Input
-            id="customer"
-            type="text"
-            value={formData.customer}
-            onChange={(e: { target: { value: string | number } }) => handleFieldChange("customer", e.target.value)}
-            className="h-8 w-20"
-          />
+          <Select 
+            value={formData.customer} 
+            onValueChange={(value: string) => handleFieldChange("customer", value)}
+            disabled={isLoadingCustomers}
+          >
+            <SelectTrigger id="customer" className="h-8 w-32">
+              <SelectValue placeholder={isLoadingCustomers ? "Loading..." : "Select customer"} />
+            </SelectTrigger>
+            <SelectContent>
+              {customers.length === 0 && !isLoadingCustomers && (
+                <SelectItem value="" disabled>
+                  No customers available
+                </SelectItem>
+              )}
+              {customers.map((customer) => (
+                <SelectItem key={customer.id} value={customer.name}>
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${
+                      customer.metadata?.tier === 'enterprise' ? 'bg-purple-500' :
+                      customer.metadata?.tier === 'premium' ? 'bg-gold-500' : 'bg-gray-500'
+                    }`}></div>
+                    <span>{customer.displayName || customer.name}</span>
+                  </div>
+                </SelectItem>
+              ))}
+              <SelectSeparator />
+              <SelectItem value="__manage__" className="text-blue-600">
+                <div className="flex items-center gap-2">
+                  <span>+ Manage Customers</span>
+                </div>
+              </SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
+        {/* Version Input */}
         <div className="flex items-center gap-2">
           <Label htmlFor="version" className="text-xs font-medium">
             Version:

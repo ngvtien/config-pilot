@@ -24,6 +24,8 @@ import { SourceSpecificSearch } from "@/renderer/components/template-creator/Sou
 import { useWindowTitle } from '@/renderer/hooks/useWindowTitle'
 import { TemplateLibrary } from "@/renderer/components/template-library/TemplateLibrary"
 import { ProjectComposerPage } from "@/renderer/pages/project-composer-page"
+import { CustomerManagementPage } from "@/renderer/pages/customer-management-page"
+import { ProductManagementPage } from '@/renderer/pages/product-management-page'
 
 type UserRole = "developer" | "devops" | "operations"
 type ViewType =
@@ -42,6 +44,8 @@ type ViewType =
   | "file-explorer"
   | "settings"
   | "project-composer"
+  | "customer-management"
+  | "product-management"
 
 interface AppLayoutPageProps {
   contextData?: ContextData
@@ -279,6 +283,10 @@ export default function AppLayoutPage({
         return "Git Repositories"
       case "file-explorer":
         return "File Explorer"
+      case "customer-management":
+        return "Customer Management"
+      case "product-management":
+        return "Product Management"
       default:
         return viewType.charAt(0).toUpperCase() + viewType.slice(1)
     }
@@ -323,7 +331,7 @@ export default function AppLayoutPage({
           <TemplateDesigner
             contextData={context}
             settingsData={settings}
-            initialTemplate={selectedTemplate} 
+            initialTemplate={selectedTemplate}
           />
           // <SourceSpecificSearch />
         )
@@ -393,6 +401,21 @@ export default function AppLayoutPage({
 
       case "project-composer":
         return <ProjectComposerPage />
+
+      case "customer-management":
+        return (
+          <CustomerManagementPage
+            onNavigateBack={() => setView("settings")}
+          />
+        )
+
+    case "product-management":
+      return (
+        <ProductManagementPage 
+          onNavigateBack={() => setView("schema")} 
+        />
+      )
+
       default:
         return (
           <div className="flex flex-col items-center justify-center h-full text-center space-y-4">
@@ -438,7 +461,11 @@ export default function AppLayoutPage({
 
             {/* Right side - Context Selector */}
             <div className="ml-auto">
-              <ContextSelector context={context} onContextChange={handleContextChange} />
+              <ContextSelector
+                context={context}
+                onContextChange={handleContextChange}
+                onNavigateToCustomerManagement={() => setView("customer-management")}
+                onNavigateToProductManagement={() => setView("product-management")} />
             </div>
           </div>
         </header>

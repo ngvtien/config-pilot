@@ -184,6 +184,19 @@ export interface ElectronAPI {
         validate: (crdDefinition: any) => Promise<any>
     }
 
+    product: {
+        initialize: () => Promise<{ success: boolean; error?: string }>
+        getAllProducts: () => Promise<{ products: any[]; total: number }>
+        getProductById: (id: string) => Promise<any | null>
+        createProduct: (product: any) => Promise<any>
+        updateProduct: (id: string, updates: any) => Promise<any>
+        deleteProduct: (id: string) => Promise<{ success: boolean }>
+        exportProducts: (filePath: string) => Promise<{ success: boolean }>
+        importProducts: (filePath: string, mergeMode: 'replace' | 'merge') => Promise<{ success: boolean }>
+        showSaveDialog: () => Promise<string | null>
+        showOpenDialog: () => Promise<string | null>
+    },
+
     // Configuration management
     getAvailableConfigs?: () => Promise<any>
     getActiveConfigPath?: () => Promise<string>

@@ -5,6 +5,8 @@ import { initializeSchemaHandlers, setupIpcHandlers } from './ipc-handlers';
 import waitOn from 'wait-on';
 import { initK8sService } from './k8s-service-client';
 import { templateManager } from './template-manager';
+import { CustomerService } from './services/customer-service';
+import { ProductService } from './services/product-service'
 
 interface WindowState {
   width: number;
@@ -135,8 +137,14 @@ app.whenReady().then(async () => {
   setupIpcHandlers();
   initializeSchemaHandlers();
 
-  // Add template service initialization
+  // template service initialization
   await templateManager.initialize();
+
+  // customer service initialization
+  await CustomerService.initialize();
+
+  // product service initializatoin
+  await ProductService.initialize();
 
   // Add window control handlers
   ipcMain.on('window:minimize', () => {

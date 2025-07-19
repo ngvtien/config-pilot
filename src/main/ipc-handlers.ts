@@ -21,10 +21,112 @@ import { CRDImportRequest, CRDSchema } from "@/shared/types/kubernetes"
 import { schemaService } from './services/schema-service';
 import { templateManager } from "./template-manager";
 import { templateService } from "./services/template-service";
+import { CustomerService } from './services/customer-service'
+import { ProductService } from './services/product-service'
 
 const execPromise = util.promisify(exec)
 
 let platformDetectionService: PlatformDetectionService | null = null
+
+export function registerProductHandlers() {
+  // Initialize product service
+  ipcMain.handle('product:initialize', async () => {
+    try {
+      await ProductService.initialize()
+      return { success: true }
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  })
+
+  // Get all products
+  ipcMain.handle('product:getAllProducts', async () => {
+    try {
+      return await ProductService.getAllProducts()
+    } catch (error: any) {
+      throw new Error(`Failed to get products: ${error.message}`)
+    }
+  })
+
+  // Get product by ID
+  ipcMain.handle('product:getProductById', async (_, id: string) => {
+    try {
+      return await ProductService.getProductById(id)
+    } catch (error: any) {
+      throw new Error(`Failed to get product: ${error.message}`)
+    }
+  })
+
+  // Create product
+  ipcMain.handle('product:createProduct', async (_, product: any) => {
+    try {
+      return await ProductService.createProduct(product)
+    } catch (error: any) {
+      throw new Error(`Failed to create product: ${error.message}`)
+    }
+  })
+
+  // Update product
+  ipcMain.handle('product:updateProduct', async (_, id: string, updates: any) => {
+    try {
+      return await ProductService.updateProduct(id, updates)
+    } catch (error: any) {
+      throw new Error(`Failed to update product: ${error.message}`)
+    }
+  })
+
+  // Delete product
+  ipcMain.handle('product:deleteProduct', async (_, id: string) => {
+    try {
+      await ProductService.deleteProduct(id)
+      return { success: true }
+    } catch (error: any) {
+      throw new Error(`Failed to delete product: ${error.message}`)
+    }
+  })
+
+  // Export products
+  ipcMain.handle('product:exportProducts', async (_, filePath: string) => {
+    try {
+      await ProductService.exportProducts(filePath)
+      return { success: true }
+    } catch (error: any) {
+      throw new Error(`Failed to export products: ${error.message}`)
+    }
+  })
+
+  // Import products
+  ipcMain.handle('product:importProducts', async (_, filePath: string, mergeMode: 'replace' | 'merge') => {
+    try {
+      await ProductService.importProducts(filePath, mergeMode)
+      return { success: true }
+    } catch (error: any) {
+      throw new Error(`Failed to import products: ${error.message}`)
+    }
+  })
+
+  // Show save dialog for export
+  ipcMain.handle('product:showSaveDialog', async () => {
+    const { dialog } = require('electron')
+    const result = await dialog.showSaveDialog({
+      title: 'Export Products',
+      defaultPath: 'products.json',
+      filters: [{ name: 'JSON Files', extensions: ['json'] }]
+    })
+    return result.canceled ? null : result.filePath
+  })
+
+  // Show open dialog for import
+  ipcMain.handle('product:showOpenDialog', async () => {
+    const { dialog } = require('electron')
+    const result = await dialog.showOpenDialog({
+      title: 'Import Products',
+      filters: [{ name: 'JSON Files', extensions: ['json'] }],
+      properties: ['openFile']
+    })
+    return result.canceled ? null : result.filePaths[0]
+  })
+}
 
 /**
  * Initialize schema service handlers
@@ -1007,4 +1109,117 @@ export function setupIpcHandlers(): void {
   // ipcMain.handle('template:getPreview', async (_, templateId: string, context: any) => {
   //   return await templateService.generatePreview(templateId, context)
   // })
+ 
+  // Register customer handlers
+  registerCustomerHandlers()  
+
+  // Register product handlers
+  registerProductHandlers()
+}
+
+/**
+ * Customer management IPC handlers
+ */
+export function registerCustomerHandlers() {
+  // Initialize customer service
+  ipcMain.handle('customer:initialize', async () => {
+    try {
+      await CustomerService.initialize()
+      return { success: true }
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  })
+
+  // Get all customers
+  ipcMain.handle('customer:getAllCustomers', async () => {
+    try {
+      return await CustomerService.getAllCustomers()
+    } catch (error: any) {
+      throw new Error(error.message)
+    }
+  })
+
+  // Get customer by ID
+  ipcMain.handle('customer:getCustomerById', async (_, id: string) => {
+    try {
+      return await CustomerService.getCustomerById(id)
+    } catch (error: any) {
+      throw new Error(error.message)
+    }
+  })
+
+  // Create customer
+  ipcMain.handle('customer:createCustomer', async (_, customer) => {
+    try {
+      return await CustomerService.createCustomer(customer)
+    } catch (error: any) {
+      throw new Error(error.message)
+    }
+  })
+
+  // Update customer
+  ipcMain.handle('customer:updateCustomer', async (_, id: string, updates) => {
+    try {
+      return await CustomerService.updateCustomer(id, updates)
+    } catch (error: any) {
+      throw new Error(error.message)
+    }
+  })
+
+  // Delete customer
+  ipcMain.handle('customer:deleteCustomer', async (_, id: string) => {
+    try {
+      await CustomerService.deleteCustomer(id)
+      return { success: true }
+    } catch (error: any) {
+      throw new Error(error.message)
+    }
+  })
+
+  // Export customers
+  ipcMain.handle('customer:exportCustomers', async (_, filePath: string) => {
+    try {
+      await CustomerService.exportCustomers(filePath)
+      return { success: true }
+    } catch (error: any) {
+      throw new Error(error.message)
+    }
+  })
+
+  // Import customers
+  ipcMain.handle('customer:importCustomers', async (_, filePath: string, mergeMode: 'replace' | 'merge') => {
+    try {
+      await CustomerService.importCustomers(filePath, mergeMode)
+      return { success: true }
+    } catch (error: any) {
+      throw new Error(error.message)
+    }
+  })
+
+  // Show save dialog for export
+  ipcMain.handle('customer:showSaveDialog', async () => {
+    const result = await dialog.showSaveDialog({
+      title: 'Export Customers',
+      defaultPath: 'customers.json',
+      filters: [
+        { name: 'JSON Files', extensions: ['json'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    })
+    return result.canceled ? null : result.filePath
+  })
+
+  // Show open dialog for import
+  ipcMain.handle('customer:showOpenDialog', async () => {
+    const result = await dialog.showOpenDialog({
+      title: 'Import Customers',
+      filters: [
+        { name: 'JSON Files', extensions: ['json'] },
+        { name: 'All Files', extensions: ['*'] }
+      ],
+      properties: ['openFile']
+    })
+    return result.canceled ? null : result.filePaths[0]
+  })
 }

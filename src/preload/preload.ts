@@ -24,7 +24,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       'dialog:saveFile',
       'dialog:showOpenDialog',
       'dialog:showSaveDialog',
-      'dialog:selectDirectory',      
+      'dialog:selectDirectory',
       'file:read',
       //'file:write',
       'fs:writeFile',
@@ -86,7 +86,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       'project:enable-auto-save',
       'project:disable-auto-save',
       'project:export',
-      
+
       'schema:initialize',
       'schema:searchInSource',
       'schema:getResourcesFromSource',
@@ -119,6 +119,31 @@ contextBridge.exposeInMainWorld("electronAPI", {
       'template:update',
       'template:duplicate',
       'template:getPreview',
+
+      // Customer management
+      'customer:initialize',
+      'customer:getAllCustomers',
+      'customer:getCustomerById',
+      'customer:createCustomer',
+      'customer:updateCustomer',
+      'customer:deleteCustomer',
+      'customer:exportCustomers',
+      'customer:importCustomers',
+      'customer:showSaveDialog',
+      'customer:showOpenDialog',
+
+      // Produc management      
+      'product:initialize',
+      'product:getAllProducts',
+      'product:getProductById',
+      'product:createProduct',
+      'product:updateProduct',
+      'product:deleteProduct',
+      'product:exportProducts',
+      'product:importProducts',
+      'product:showSaveDialog',
+      'product:showOpenDialog',
+
     ]
     if (validChannels.includes(channel)) {
       return ipcRenderer.invoke(channel, ...args)
@@ -142,7 +167,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   saveFile: (data: string) => ipcRenderer.invoke("dialog:saveFile", data),
   readFile: (filePath: string) => ipcRenderer.invoke("file:read", filePath),
   showOpenDialog: (options?: any) => ipcRenderer.invoke("dialog:showOpenDialog", options),
-  showSaveDialog: (options?: any) => ipcRenderer.invoke("dialog:showSaveDialog", options),  
+  showSaveDialog: (options?: any) => ipcRenderer.invoke("dialog:showSaveDialog", options),
   //writeFile: (filePath: string, data: string) => ipcRenderer.invoke("file:write", { filePath, data }),
   writeFile: (filePath: string, content: string) => ipcRenderer.invoke('fs:writeFile', filePath, content),
   fileExists: (path: string) => ipcRenderer.invoke("file:exists", { path }),
@@ -236,7 +261,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke('project:save-as'),
     close: () =>
       ipcRenderer.invoke('project:close'),
-    getCurrent: () => 
+    getCurrent: () =>
       ipcRenderer.invoke('project:get-current'),
     getRecent: () =>
       ipcRenderer.invoke('project:get-recent'),
@@ -270,7 +295,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     discover: () => ipcRenderer.invoke('crd:discover'),
     validate: (crdDefinition: any) => ipcRenderer.invoke('crd:validate', crdDefinition)
   },
-    
+
   // Secure credential operations
   storeSecureCredentials: (key: string, data: string) =>
     ipcRenderer.invoke('credentials:store', key, data),
@@ -311,4 +336,29 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke('template:getUsageStats', project)
   },
 
+  customer: {
+    initialize: () => ipcRenderer.invoke('customer:initialize'),
+    getAllCustomers: () => ipcRenderer.invoke('customer:getAllCustomers'),
+    getCustomerById: (id: string) => ipcRenderer.invoke('customer:getCustomerById', id),
+    createCustomer: (customer: any) => ipcRenderer.invoke('customer:createCustomer', customer),
+    updateCustomer: (id: string, updates: any) => ipcRenderer.invoke('customer:updateCustomer', id, updates),
+    deleteCustomer: (id: string) => ipcRenderer.invoke('customer:deleteCustomer', id),
+    exportCustomers: (filePath: string) => ipcRenderer.invoke('customer:exportCustomers', filePath),
+    importCustomers: (filePath: string, mergeMode: 'replace' | 'merge') => ipcRenderer.invoke('customer:importCustomers', filePath, mergeMode),
+    showSaveDialog: () => ipcRenderer.invoke('customer:showSaveDialog'),
+    showOpenDialog: () => ipcRenderer.invoke('customer:showOpenDialog')
+  },
+
+  product: {
+    initialize: () => ipcRenderer.invoke('product:initialize'),
+    getAllProducts: () => ipcRenderer.invoke('product:getAllProducts'),
+    getProductById: (id: string) => ipcRenderer.invoke('product:getProductById', id),
+    createProduct: (product: any) => ipcRenderer.invoke('product:createProduct', product),
+    updateProduct: (id: string, updates: any) => ipcRenderer.invoke('product:updateProduct', id, updates),
+    deleteProduct: (id: string) => ipcRenderer.invoke('product:deleteProduct', id),
+    exportProducts: (filePath: string) => ipcRenderer.invoke('product:exportProducts', filePath),
+    importProducts: (filePath: string, mergeMode: 'replace' | 'merge') => ipcRenderer.invoke('product:importProducts', filePath, mergeMode),
+    showSaveDialog: () => ipcRenderer.invoke('product:showSaveDialog'),
+    showOpenDialog: () => ipcRenderer.invoke('product:showOpenDialog')
+  },
 })

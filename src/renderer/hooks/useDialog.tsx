@@ -1,4 +1,6 @@
 import { useState, useCallback } from 'react';
+import { ModalAlert } from '@/renderer/components/ui/alert';
+import { Confirm } from '@/renderer/components/ui/Confirm';
 
 interface AlertState {
   isOpen: boolean;
@@ -32,7 +34,9 @@ export const useDialog = () => {
     message: ''
   });
 
-  // Show alert dialog
+  /**
+   * Show alert dialog with specified configuration
+   */
   const showAlert = useCallback(({
     title,
     message,
@@ -50,13 +54,15 @@ export const useDialog = () => {
     });
   }, []);
 
-  // Show confirm dialog
+  /**
+   * Show confirm dialog with specified configuration
+   */
   const showConfirm = useCallback(({
     title,
     message,
     variant = 'default',
-    confirmText,
-    cancelText,
+    confirmText = 'Confirm',
+    cancelText = 'Cancel',
     onConfirm
   }: {
     title?: string;
@@ -64,7 +70,7 @@ export const useDialog = () => {
     variant?: 'default' | 'destructive';
     confirmText?: string;
     cancelText?: string;
-    onConfirm: () => void;
+    onConfirm?: () => void;
   }) => {
     setConfirmState({
       isOpen: true,
@@ -77,17 +83,23 @@ export const useDialog = () => {
     });
   }, []);
 
-  // Close alert
+  /**
+   * Close alert dialog
+   */
   const closeAlert = useCallback(() => {
     setAlertState(prev => ({ ...prev, isOpen: false }));
   }, []);
 
-  // Close confirm
+  /**
+   * Close confirm dialog
+   */
   const closeConfirm = useCallback(() => {
     setConfirmState(prev => ({ ...prev, isOpen: false }));
   }, []);
 
-  // Handle confirm action
+  /**
+   * Handle confirm action - executes callback and closes dialog
+   */
   const handleConfirm = useCallback(() => {
     if (confirmState.onConfirm) {
       confirmState.onConfirm();
@@ -95,16 +107,49 @@ export const useDialog = () => {
     closeConfirm();
   }, [confirmState.onConfirm, closeConfirm]);
 
+  /**
+   * Alert Dialog Component
+   */
+  const AlertDialog = useCallback(() => (
+    <ModalAlert 
+      isOpen={alertState.isOpen}
+      title={alertState.title}
+      message={alertState.message}
+      variant={alertState.variant}
+      onClose={closeAlert}
+    />
+  ), [alertState, closeAlert]);
+
+  /**
+   * Confirm Dialog Component
+   */
+  const ConfirmDialog = useCallback(() => (
+    <Confirm 
+      isOpen={confirmState.isOpen}
+      title={confirmState.title}
+      message={confirmState.message}
+      variant={confirmState.variant}
+      confirmText={confirmState.confirmText}
+      cancelText={confirmState.cancelText}
+      onConfirm={handleConfirm}
+      onCancel={closeConfirm}
+    />
+  ), [confirmState, handleConfirm, closeConfirm]);
+
   return {
-    // Alert
+    // Alert functionality
     alertState,
     showAlert,
     closeAlert,
     
-    // Confirm
+    // Confirm functionality
     confirmState,
     showConfirm,
     closeConfirm,
-    handleConfirm
+    handleConfirm,
+    
+    // Dialog Components
+    AlertDialog,
+    ConfirmDialog
   };
 };
