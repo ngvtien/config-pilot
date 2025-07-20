@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils"
 import yaml from 'js-yaml'
 import YamlEditor from '@/renderer/components/yaml-editor'
 import { kubernetesSchemaIndexer } from '@/renderer/services/kubernetes-schema-indexer'
+import { useDialog } from '@/renderer/hooks/useDialog';
 
 interface UnifiedTemplateViewProps {
   template: Template
@@ -64,6 +65,12 @@ export function UnifiedTemplateView({
     ...template,
     resources: template.resources.map((r: { selectedFields: any }) => ({ ...r, selectedFields: [...r.selectedFields] }))
   })
+
+  const {
+    showAlert,
+    showErrorToast,
+    AlertDialog
+  } = useDialog();
 
   useEffect(() => {
     if (currentMode === 'preview') {
@@ -128,7 +135,10 @@ export function UnifiedTemplateView({
       )
 
       if (isDuplicate) {
-        alert(`${selectedKind.kind} (${selectedKind.apiVersion}) is already in this template.`)
+        showErrorToast(
+          `${selectedKind.kind} (${selectedKind.apiVersion}) is already in this template.`,
+          'Duplicate Resource'
+        )        
         return
       }
 
@@ -461,7 +471,11 @@ export function UnifiedTemplateView({
 
       if (!validationResult.valid) {
         const errorMessages = validationResult.errors?.map(e => e.message).join('\n')
-        alert(`Template validation failed:\n${errorMessages}`)
+        showAlert({
+          title: 'Template Validation Failed',
+          message: `Template validation failed:\n${errorMessages}`,
+          variant: 'error'
+        })
         return
       }
 
@@ -475,7 +489,11 @@ export function UnifiedTemplateView({
       console.log('Template saved successfully')
     } catch (error) {
       console.error('Failed to save template:', error)
-      alert('Failed to save template. Check console for details.')
+      showAlert({
+        title: 'Save Failed',
+        message: 'Failed to save template. Check console for details.',
+        variant: 'error'
+      })
     } finally {
       setLoading(false)
     }
@@ -1267,6 +1285,7 @@ export function UnifiedTemplateView({
         </div>
       )}
 
+      <AlertDialog />
     </TooltipProvider>
   )
 }

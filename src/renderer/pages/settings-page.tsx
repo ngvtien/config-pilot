@@ -37,6 +37,7 @@ import { HelmOCIConfigurationSection } from "@/renderer/components/helm-oci-conf
 import { PlatformService } from '@/renderer/services/platform.service'
 import type { PlatformInfo } from '@/main/services/platform-detection-service'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@radix-ui/react-select"
+import { useDialog } from '@/renderer/hooks/useDialog';
 
 interface SettingsPageProps {
   context: ContextData
@@ -128,6 +129,12 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
 
   // Replace the local zoom state with the global zoom hook
   const { zoomLevel, setZoomLevel, increaseZoom, decreaseZoom, resetZoom } = useZoom()
+
+  const {
+    showAlert,
+    showErrorToast,
+    AlertDialog
+  } = useDialog();
 
   // Add platform detection function
   const handleDetectPlatform = async () => {
@@ -350,66 +357,6 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
     }
   }
 
-  // Replace your Kubernetes settings section with:
-
-  // const handleKubeConfigSelect = async () => {
-  //   try {
-  //     let selectedPath: string | null = null
-
-  //     if (window.electronAPI?.openFile) {
-  //       selectedPath = await window.electronAPI.openFile({
-  //         filters: [{ name: 'Kubernetes Config', extensions: ['yaml', 'yml', 'json', 'config'] }]
-  //       })
-  //     } else {
-  //       // Web fallback
-  //       const input = document.createElement('input')
-  //       input.type = 'file'
-  //       input.accept = '.yaml,.yml,.json,.config'
-  //       input.onchange = (e) => {
-  //         const files = (e.target as HTMLInputElement).files
-  //         if (files?.[0]) {
-  //           selectedPath = files[0].name
-  //         }
-  //       }
-  //       input.click()
-  //     }
-
-  //     if (selectedPath) {
-  //       // Save to settings
-  //       handleSettingChange('kubeConfigPath', selectedPath)
-
-  //       // Update Kubernetes service
-  //       if (window.electronAPI?.invoke) {
-  //         await window.electronAPI.invoke('k8s:setConfigPath', selectedPath)
-  //       }
-  //     }
-  //   } catch (error) {
-  //     console.error('Error selecting kubeconfig:', error)
-  //   }
-  // }
-
-  // const handleKubeConfigSelect = async () => {
-  //   try {
-  //     const filePath = await window.electronAPI?.openFile?.({
-  //       filters: [{ name: 'Kubernetes Config', extensions: ['yaml', 'yml', 'json', 'config'] }]
-  //     });
-
-  //     if (filePath) {
-  //       const success = await window.electronAPI.setUserConfigPath(filePath);
-  //       if (success) {
-  //         const activePath = await window.electronAPI.getActiveConfigPath();
-  //         setKubeConfigState(prev => ({
-  //           active: activePath,
-  //           available: { ...prev.available, userSelected: filePath }
-  //         }));
-  //         handleSettingChange('kubeConfigPath', activePath);
-  //       }
-  //     }
-  //   } catch (error) {
-  //     console.error('Failed to update kubeconfig:', error);
-  //   }
-  // }
-
   const [isSelectingFile, setIsSelectingFile] = useState(false);
 
 
@@ -419,18 +366,6 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
       const result = await window.electronAPI?.openFile({
         filters: [{ name: 'Kubernetes Config', extensions: ['yaml', 'yml', 'json', 'config'] }]
       });
-
-      // if (result && !result.canceled && result.filePaths.length > 0) {
-      //   const rawPath = result.filePaths[0];
-      //   console.log('Selected path:', rawPath); // Debug
-
-      //   const success = await window.electronAPI.setUserConfigPath(rawPath);
-      //   if (success) {
-      //     const activePath = await window.electronAPI.getActiveConfigPath();
-      //     console.log('Active path confirmed:', activePath); // Debug
-      //     handleSettingChange('kubeConfigPath', activePath);
-      //   }
-      // }
 
       if (result && !result.canceled) {
         const rawPath = result;
@@ -448,40 +383,6 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
       console.error('Failed to update kubeconfig:', error);
     }
   }
-
-  // const handleKubeConfigSelect = async () => {
-  //   try {
-  //     const result = await window.electronAPI?.openFile();
-
-  //     if (!result || result.canceled) return;
-
-  //     // Handle both Electron and web cases
-  //     // const rawPath = Array.isArray(result) ?
-  //     //   result[0] : // Web fallback
-  //     //   result.filePaths?.[0]; // Electron
-
-  //     // if (!rawPath) {
-  //     //   console.error('No path selected');
-  //     //   return;
-  //     // }
-
-  //     console.log('Selected path:', result);
-
-  //     // For UNC paths, ensure we have the correct format
-  //     const normalizedPath = result.startsWith('\\\\') ?
-  //       result.replace(/\\/g, '\\\\') :
-  //       result;
-
-  //     const success = await window.electronAPI?.setUserConfigPath(normalizedPath);
-  //     if (success) {
-  //       const activePath = await window.electronAPI.getActiveConfigPath();
-  //       console.log('Active path confirmed:', activePath);
-  //       handleSettingChange('kubeConfigPath', activePath);
-  //     }
-  //   } catch (error) {
-  //     console.error('Failed to update kubeconfig:', error);
-  //   }
-  // };
 
   const getAuthStatusIcon = (status?: string) => {
     switch (status) {
@@ -602,7 +503,10 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
         }
       } catch (error) {
         console.error("Error creating directory:", error)
-        alert("Failed to create directory. Please check permissions and try again.")
+        showAlert({
+          title: "Failed to create directory",
+          message: "Please check permissions and try again.",
+        })
       }
     }
   }
@@ -1224,6 +1128,8 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
           </div>
         </div>
       )}
+
+      <AlertDialog />
     </div>
   )
 }

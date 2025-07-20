@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { ModalAlert } from '@/renderer/components/ui/alert';
 import { Confirm } from '@/renderer/components/ui/Confirm';
+import { toast } from '@/renderer/hooks/use-toast';
 
 interface AlertState {
   isOpen: boolean;
@@ -20,8 +21,8 @@ interface ConfirmState {
 }
 
 /**
- * Custom hook for managing alert and confirm dialogs
- * Provides a clean API to replace native browser dialogs
+ * Custom hook for managing alert and confirm dialogs with toast notifications
+ * Provides a clean API to replace native browser dialogs with modern UX patterns
  */
 export const useDialog = () => {
   const [alertState, setAlertState] = useState<AlertState>({
@@ -53,6 +54,47 @@ export const useDialog = () => {
       variant
     });
   }, []);
+
+  /**
+   * Show toast notification for non-critical feedback
+   */
+  const showToast = useCallback(({
+    title,
+    description,
+    variant = 'default'
+  }: {
+    title?: string;
+    description: string;
+    variant?: 'default' | 'destructive';
+  }) => {
+    toast({
+      title,
+      description,
+      variant
+    });
+  }, []);
+
+  /**
+   * Show success toast - convenience method
+   */
+  const showSuccessToast = useCallback((message: string, title?: string) => {
+    showToast({
+      title: title || 'Success',
+      description: message,
+      variant: 'default'
+    });
+  }, [showToast]);
+
+  /**
+   * Show error toast - convenience method
+   */
+  const showErrorToast = useCallback((message: string, title?: string) => {
+    showToast({
+      title: title || 'Error',
+      description: message,
+      variant: 'destructive'
+    });
+  }, [showToast]);
 
   /**
    * Show confirm dialog with specified configuration
@@ -98,7 +140,7 @@ export const useDialog = () => {
   }, []);
 
   /**
-   * Handle confirm action - executes callback and closes dialog
+   * Handle confirm action and close dialog
    */
   const handleConfirm = useCallback(() => {
     if (confirmState.onConfirm) {
@@ -107,11 +149,9 @@ export const useDialog = () => {
     closeConfirm();
   }, [confirmState.onConfirm, closeConfirm]);
 
-  /**
-   * Alert Dialog Component
-   */
+  // Alert Dialog Component
   const AlertDialog = useCallback(() => (
-    <ModalAlert 
+    <ModalAlert
       isOpen={alertState.isOpen}
       title={alertState.title}
       message={alertState.message}
@@ -120,11 +160,9 @@ export const useDialog = () => {
     />
   ), [alertState, closeAlert]);
 
-  /**
-   * Confirm Dialog Component
-   */
+  // Confirm Dialog Component
   const ConfirmDialog = useCallback(() => (
-    <Confirm 
+    <Confirm
       isOpen={confirmState.isOpen}
       title={confirmState.title}
       message={confirmState.message}
@@ -137,18 +175,25 @@ export const useDialog = () => {
   ), [confirmState, handleConfirm, closeConfirm]);
 
   return {
-    // Alert functionality
+    // State
     alertState,
+    confirmState,
+    
+    // Modal Alert Functions
     showAlert,
     closeAlert,
     
-    // Confirm functionality
-    confirmState,
+    // Toast Functions
+    showToast,
+    showSuccessToast,
+    showErrorToast,
+    
+    // Confirm Functions
     showConfirm,
     closeConfirm,
     handleConfirm,
     
-    // Dialog Components
+    // Components
     AlertDialog,
     ConfirmDialog
   };

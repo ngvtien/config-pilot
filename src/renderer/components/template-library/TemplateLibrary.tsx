@@ -40,7 +40,6 @@ export function TemplateLibrary({ onTemplateSelect, onTemplateImport }: Template
   const [filterType, setFilterType] = useState<string>('all')
   const [showCreateModal, setShowCreateModal] = useState(false)
 
-    // Add the dialog hook here
   const {
     alertState,
     showAlert,
@@ -397,7 +396,10 @@ export function TemplateLibrary({ onTemplateSelect, onTemplateImport }: Template
           {filteredTemplates.map((template: any) => (
             <Card key={template.id} className="hover:shadow-lg transition-all duration-200 border-l-4 border-l-blue-500">
               <CardHeader className="pb-3">
-                <CardTitle className="flex items-center justify-between">
+                <CardTitle 
+                  className="flex items-center justify-between cursor-pointer hover:text-blue-600 transition-colors" 
+                  onClick={() => handlePreviewTemplate(template)}
+                >
                   <span className="truncate text-lg font-semibold">{template.name}</span>
                   <Badge variant="secondary" className="ml-2">
                     {template.templateType || 'kubernetes'}
@@ -406,7 +408,7 @@ export function TemplateLibrary({ onTemplateSelect, onTemplateImport }: Template
               </CardHeader>
 
               <CardContent className="space-y-4">
-                <p className="text-sm text-gray-600 dark:text-gray-300 line-clamp-2 min-h-[2.5rem]">
+                <p className="text-sm cursor-pointer text-gray-600 dark:text-gray-300 line-clamp-2 min-h-[2.5rem]" onClick={() => handlePreviewTemplate(template)}>
                   {template.description || 'No description available'}
                 </p>
 
