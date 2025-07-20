@@ -1,0 +1,65 @@
+{
+  "fileFormat": {
+    "version": "1.0.0",
+    "type": "config-pilot-template",
+    "generator": "config-pilot",
+    "generatedAt": "2024-01-01T00:00:00.000Z"
+  },
+  "template": {
+    "id": "simple-nginx",
+    "name": "simple-nginx",
+    "version": "1.0.0",
+    "description": "Simple Nginx web server",
+    "category": "web",
+    "resources": [
+      {
+        "id": "deployment",
+        "kind": "Deployment",
+        "apiVersion": "apps/v1",
+        "selectedFields": [
+          {
+            "name": "replicaCount",
+            "type": "number",
+            "default": 1,
+            "required": false,
+            "description": "Number of replicas",
+            "path": "spec.replicas"
+          },
+          {
+            "name": "image.repository",
+            "type": "string",
+            "default": "nginx",
+            "required": false,
+            "description": "Container image repository",
+            "path": "spec.template.spec.containers[0].image"
+          },
+          {
+            "name": "image.tag",
+            "type": "string",
+            "default": "latest",
+            "required": false,
+            "description": "Container image tag",
+            "path": "spec.template.spec.containers[0].image"
+          }
+        ],
+        "templateType": "kubernetes"
+      }
+    ],
+    "metadata": {
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "lastUpdated": "2024-01-01T00:00:00.000Z",
+      "updatedBy": "system",
+      "tags": ["nginx", "web"]
+    }
+  },
+  "checksum": "abc123def456",
+  "exportMetadata": {
+    "exportedBy": "config-pilot-test",
+    "exportedAt": "2024-01-01T00:00:00.000Z",
+    "exportSettings": {
+      "includeExamples": true,
+      "includeDocumentation": true,
+      "minifyOutput": false
+    }
+  }
+}

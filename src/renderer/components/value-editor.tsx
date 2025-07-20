@@ -17,6 +17,7 @@ import type { ContextData } from "@/shared/types/context-data"
 import { generateConfigMap, generateConfigJson } from "@/renderer/lib/config-generator"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/renderer/components/ui/tooltip"
 import { buildConfigPath } from "@/renderer/lib/path-utils"
+import { useEditorTheme } from '@/renderer/hooks/useEditorTheme'
 
 interface ValueEditorProps {
   initialValue?: string
@@ -60,6 +61,8 @@ resources:
   const [leftPanelWidth, setLeftPanelWidth] = useState(60) // Percentage
   const [isDragging, setIsDragging] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
+
+  const { codeMirrorTheme, jsonCodeMirrorTheme, jsonExtensions } = useEditorTheme()
 
   // Use provided context or create one from environment prop for backward compatibility
   const editorContext: ContextData = context || {
@@ -192,21 +195,21 @@ resources:
   const renderDisplayContent = () => {
     let content = ""
     let language: any = yamlLanguage()
-    let theme = oneDark
+    let theme = codeMirrorTheme
     let extensions = readOnlyExtensions
 
     switch (displayFormat) {
       case "configmap":
         content = generateConfigMapOutput()
         language = yamlLanguage()
-        theme = oneDark
+        theme = codeMirrorTheme
         extensions = readOnlyExtensions
         break
       case "configjson":
         content = generateConfigJsonOutput()
         language = jsonLanguage()
-        theme = jsonTheme
-        extensions = jsonReadOnlyExtensions
+        theme = jsonCodeMirrorTheme
+        extensions = jsonExtensions
         break
     }
 

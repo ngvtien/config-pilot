@@ -6,6 +6,7 @@ import { ZoomProvider } from "@/renderer/components/zoom-provider"
 import { ProjectProvider } from "@/renderer/contexts/project-context"
 import AppLayoutPage from "@/renderer/pages/app-layout-page"
 import LoadingScreen from "@/renderer/components/loading-screen"
+import { Toaster } from "@/renderer/components/ui/toaster"
 
 function App() {
   const [isLoading, setIsLoading] = useState(true)
@@ -22,8 +23,9 @@ function App() {
   return (
     <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
       <ZoomProvider>
-      <ProjectProvider>
+        <ProjectProvider>
           {isLoading ? <LoadingScreen /> : <AppLayoutPage />}
+          <Toaster />
         </ProjectProvider>
       </ZoomProvider>      
     </ThemeProvider>

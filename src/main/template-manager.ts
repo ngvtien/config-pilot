@@ -20,7 +20,7 @@ export class TemplateManager {
    */
   async initialize(): Promise<void> {
     if (this.initialized) return
-    
+
     try {
       await templateService.initialize()
       this.initialized = true
@@ -45,7 +45,7 @@ export class TemplateManager {
   ): Promise<EnhancedTemplate> {
     // Convert designer data to enhanced template format
     const enhancedTemplate = this.convertDesignerDataToTemplate(templateData)
-    
+
     return await templateService.createTemplate(enhancedTemplate)
   }
 
@@ -60,10 +60,10 @@ export class TemplateManager {
   ): Promise<TemplateGenerationResult> {
     // Ensure template manager is initialized
     await this.initialize()
-    
+
     // Generate output path based on project structure
     const outputPath = this.generateProjectOutputPath(project, templateId, outputFormat)
-    
+
     return await templateService.generateTemplate(templateId, context, outputPath, outputFormat)
   }
 
@@ -72,19 +72,19 @@ export class TemplateManager {
    */
   async getCompatibleTemplates(project: ProjectConfig): Promise<EnhancedTemplate[]> {
     const allTemplates = await templateService.getTemplates()
-    
+
     // Filter templates based on project requirements
     return allTemplates.filter(template => {
       // Check Kubernetes version compatibility
       if (project.kubernetes?.clusters && template.metadata.compatibility?.kubernetesVersions) {
         // Add compatibility logic here
       }
-      
+
       // Check Helm compatibility
       if (project.helm && template.metadata.compatibility?.helmVersions) {
         // Add Helm version compatibility logic here
       }
-      
+
       return true // For now, return all templates
     })
   }
@@ -113,12 +113,12 @@ export class TemplateManager {
 
     // Additional project-specific validation
     const errors: { field: string; message: string; severity: 'error' | 'warning' | 'info' }[] = []
-    
+
     // Check if template requires contexts that project doesn't support
     if (template.requiredContext?.environments) {
       // Add environment validation logic
     }
-    
+
     return {
       valid: errors.length === 0,
       errors: errors.length > 0 ? errors : undefined
@@ -133,10 +133,10 @@ export class TemplateManager {
     project: ProjectConfig
   ): Promise<{ template: EnhancedTemplate; addedToProject: boolean }> {
     const template = await templateService.importTemplate(importPath)
-    
+
     // Optionally add template reference to project
     const addedToProject = this.addTemplateToProject(template, project)
-    
+
     return { template, addedToProject }
   }
 
@@ -150,7 +150,7 @@ export class TemplateManager {
     recentlyUsed: string[]
   }> {
     const allTemplates = await templateService.getTemplates()
-    
+
     // This would track template usage in project metadata
     return {
       totalTemplates: allTemplates.length,
@@ -160,14 +160,14 @@ export class TemplateManager {
     }
   }
 
-  // Private helper methods
+  // Update convertDesignerDataToTemplate method around line 164
   private convertDesignerDataToTemplate(templateData: any): Omit<EnhancedTemplate, 'id' | 'metadata'> {
     return {
       name: templateData.name,
       description: templateData.description,
-      version: '1.0.0',
-      resources: templateData.resources.map((resource: any) => ({
-        id: `${resource.kind.toLowerCase()}-${Date.now()}`,
+      version: templateData.version || '1.0.0',
+      resources: (templateData.resources || []).map((resource: any) => ({
+        id: resource.id || `${resource.kind.toLowerCase()}-${Date.now()}`,
         kind: resource.kind,
         apiVersion: resource.apiVersion,
         namespace: resource.namespace,
@@ -176,13 +176,12 @@ export class TemplateManager {
         source: resource.source || 'kubernetes'
       })),
       tags: templateData.tags || [],
-      generationSettings: {
-        outputFormats: ['helm', 'kustomize'],
+      generationSettings: templateData.generationSettings || {
+        outputFormats: ['helm', 'kustomize', 'raw-yaml'],
         defaultFormat: 'helm'
       }
     }
   }
-
   private generateProjectOutputPath(
     project: ProjectConfig,
     templateId: string,

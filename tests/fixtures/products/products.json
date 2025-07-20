@@ -1,0 +1,35 @@
+{
+  "version": "1.0",
+  "exportedAt": "2025-07-19T08:54:22.698Z",
+  "products": [
+    {
+      "id": "product-default",
+      "name": "cai",
+      "displayName": "CAI",
+      "description": "Common application interface",
+      "owner": "Tim Walker",
+      "isActive": true,
+      "createdAt": "2025-07-19T05:54:44.404Z",
+      "updatedAt": "2025-07-19T05:56:52.196Z",
+      "metadata": {
+        "category": "backend",
+        "tags": [
+          "default"
+        ]
+      }
+    },
+    {
+      "displayName": "ESB",
+      "name": "esb",
+      "description": "Enterprise Service Bus",
+      "metadata": {
+        "category": "backend"
+      },
+      "isActive": true,
+      "id": "product-1752911928178-jpxjt5kpk",
+      "createdAt": "2025-07-19T07:58:48.179Z",
+      "updatedAt": "2025-07-19T07:58:58.277Z",
+      "owner": "Tim Walker"
+    }
+  ]
+}

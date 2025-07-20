@@ -446,10 +446,7 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
     const [isLoadingSchema, setIsLoadingSchema] = useState(false);
     const [highlightedFieldPath, setHighlightedFieldPath] = useState<string | null>(null);
     const [showSelectedPreview, setShowSelectedPreview] = useState(false)
-    //const [selectedFieldForConfig, setSelectedFieldForConfig] = useState<EnhancedTemplateField | null>(null)
     const [fieldConfigurations, setFieldConfigurations] = useState<Record<string, any>>({})
-    const [arrayConfigurations, setArrayConfigurations] = useState<Record<string, ArrayItemFieldConfig>>({})
-    //const [showFieldConfigModal, setShowFieldConfigModal] = useState(false)
     const [expandedFieldPath, setExpandedFieldPath] = useState<string | null>(null)
 
     const [schemaTimestamp, setSchemaTimestamp] = useState(Date.now())
@@ -530,18 +527,6 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
                     }
 
                     // Filter the tree to only include spec and allowed metadata fields
-                    const filteredTree = tree.filter(node => {
-                        // Always include spec
-                        if (node.path === 'spec') return true;
-                        // Only include metadata.labels and metadata.annotations
-                        if (node.path === 'metadata') {
-                            // Keep metadata but filter its children later
-                            return true;
-                        }
-                        // Exclude other top-level fields (status, operation, etc.)
-                        return false;
-                    });
-
                     setSchemaTree(tree);
 
                     // Check if we have any persisted data for this resource

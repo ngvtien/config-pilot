@@ -16,6 +16,8 @@ import {
   Settings,
   FolderOpen,
   Activity,
+  Library,
+  FolderPlus
 } from "lucide-react"
 
 import {
@@ -43,6 +45,7 @@ type ViewType =
   | "secrets"
   | "chart-builder"
   | "template-editor"
+  | "template-library"
   | "oci-registry"
   | "kubernetes"
   | "argocd"
@@ -106,6 +109,16 @@ const developerTools = [
     icon: FileText,
     view: "template-editor" as ViewType,
   },
+  {
+    title: "Template Library",
+    icon: Library,
+    view: "template-library" as ViewType,
+  },
+  {
+    title: "Project Composer",
+    icon: FolderPlus,
+    view: "project-composer" as ViewType,
+  },  
   {
     title: "OCI Registry",
     icon: Archive,

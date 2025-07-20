@@ -4,7 +4,7 @@ import { Button } from '@/renderer/components/ui/button'
 import { ScrollArea } from '@/renderer/components/ui/scroll-area'
 import { Copy, Check } from 'lucide-react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { useEditorTheme } from '@/renderer/hooks/useEditorTheme'
 
 interface YamlPreviewProps {
   isOpen: boolean
@@ -20,6 +20,7 @@ interface YamlPreviewProps {
  */
 export function YamlPreview({ isOpen, onClose, yamlContent, title, resourceKind }: YamlPreviewProps) {
   const [copied, setCopied] = useState(false)
+  const { syntaxHighlighterTheme, syntaxHighlighterCustomStyle, syntaxHighlighterLineNumberStyle } = useEditorTheme()
 
   /**
    * Copy YAML content to clipboard with user feedback
@@ -76,25 +77,13 @@ export function YamlPreview({ isOpen, onClose, yamlContent, title, resourceKind 
         </DialogHeader>
         
         <div className="flex-1 min-h-0 border rounded-lg overflow-hidden">
-          <ScrollArea className="h-full">
+          <ScrollArea className="h-full">                    
             <SyntaxHighlighter
               language="yaml"
-              style={oneDark}
+              style={syntaxHighlighterTheme}
               showLineNumbers={true}
-              lineNumberStyle={{
-                minWidth: '3em',
-                paddingRight: '1em',
-                color: '#6b7280',
-                borderRight: '1px solid #374151',
-                marginRight: '1em'
-              }}
-              customStyle={{
-                margin: 0,
-                padding: '1rem',
-                background: '#1f2937',
-                fontSize: '14px',
-                lineHeight: '1.5'
-              }}
+              lineNumberStyle={syntaxHighlighterLineNumberStyle}
+              customStyle={syntaxHighlighterCustomStyle}
               wrapLongLines={true}
             >
               {yamlContent}

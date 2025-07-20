@@ -1,0 +1,51 @@
+{
+  "version": "1.0",
+  "exportedAt": "2025-07-19T08:54:54.140Z",
+  "customers": [
+    {
+      "id": "customer-default",
+      "name": "acf",
+      "displayName": "ACF",
+      "description": "acf",
+      "isActive": true,
+      "createdAt": "2025-07-19T04:36:05.409Z",
+      "updatedAt": "2025-07-19T04:49:43.431Z"
+    },
+    {
+      "name": "bhcu",
+      "displayName": "BHCU",
+      "description": "BHCU",
+      "isActive": true,
+      "metadata": {
+        "tier": "basic"
+      },
+      "id": "customer-1752900611879-2dl8kzvwl",
+      "createdAt": "2025-07-19T04:50:11.879Z",
+      "updatedAt": "2025-07-19T04:50:11.879Z"
+    },
+    {
+      "name": "mecu",
+      "displayName": "MECU",
+      "description": "MECU",
+      "isActive": true,
+      "metadata": {
+        "tier": "basic"
+      },
+      "id": "customer-1752900644848-wewdw1sa3",
+      "createdAt": "2025-07-19T04:50:44.848Z",
+      "updatedAt": "2025-07-19T04:50:44.848Z"
+    },
+    {
+      "name": "pccu",
+      "displayName": "PCCU",
+      "description": "People Choice Credit Union",
+      "isActive": true,
+      "metadata": {
+        "tier": "basic"
+      },
+      "id": "customer-1752912001249-ef2kybaij",
+      "createdAt": "2025-07-19T08:00:01.249Z",
+      "updatedAt": "2025-07-19T08:00:01.249Z"
+    }
+  ]
+}

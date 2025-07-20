@@ -65,9 +65,11 @@ interface TemplateResource {
 interface Template {
   name: string // Template name
   description?: string // Template description
+  version?: string // Template version
+  tags?: string[] // Template tags
   resources: TemplateResource[] // Array of resources in this template
   createdAt?: Date // Creation timestamp
   updatedAt?: Date // Last update timestamp
 }
 
-export type { Template, TemplateResource, TemplateField }
+export type { Template, TemplateResource }
