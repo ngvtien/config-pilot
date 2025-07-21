@@ -349,7 +349,7 @@ export function TemplateLibrary({ onTemplateSelect, onTemplateImport }: Template
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button onClick={handleImportTemplate} variant="outline" className="flex items-center gap-2">
-                  <Upload className="h-4 w-4" />
+                  <Download className="h-4 w-4" />
                   Import
                 </Button>
               </TooltipTrigger>
@@ -470,7 +470,7 @@ export function TemplateLibrary({ onTemplateSelect, onTemplateImport }: Template
                         onClick={() => handleExportTemplate(template)}
                         className="text-xs"
                       >
-                        <Download className="h-3 w-3" />
+                        <Upload className="h-3 w-3" />
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>

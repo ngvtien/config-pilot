@@ -71,6 +71,18 @@ helm install gitea gitea-charts/gitea \
   --set service.http.type=NodePort
 ```
 
+You can forward the Gitea service port to your local machine like this:
+
+```bash
+kubectl port-forward svc/gitea-http -n gitea 9080:3000
+```
+
+Now access Gitea in your browser:
+
+```plaintext
+http://localhost:9080
+```
+
 📂 Gitea will be accessible at `http://localhost:<NodePort>`
 (Default user: `gitadmin` / `gitadmin`)
 

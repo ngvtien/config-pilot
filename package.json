@@ -67,6 +67,7 @@
     "react-dom": "^19.1.0",
     "react-organizational-chart": "^2.2.1",
     "react-syntax-highlighter": "^15.6.1",
+    "simple-git": "^3.28.0",
     "tailwind-merge": "^3.3.0",
     "tailwindcss-animate": "^1.0.7",
     "use-immer": "^0.11.0",

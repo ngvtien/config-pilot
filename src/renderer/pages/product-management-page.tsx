@@ -237,11 +237,11 @@ const performImport = async (filePath: string, mergeMode: 'merge' | 'replace') =
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={handleImportProducts}>
-            <Upload className="h-4 w-4 mr-2" />
+            <Download className="h-4 w-4 mr-2" />
             Import
           </Button>
           <Button variant="outline" onClick={handleExportProducts}>
-            <Download className="h-4 w-4 mr-2" />
+            <Upload className="h-4 w-4 mr-2" />
             Export
           </Button>
           <Button onClick={handleCreateProduct}>

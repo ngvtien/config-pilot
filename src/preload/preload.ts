@@ -144,6 +144,23 @@ contextBridge.exposeInMainWorld("electronAPI", {
       'product:showSaveDialog',
       'product:showOpenDialog',
 
+      // Git operations
+      'git:clone',
+      'git:prepareCustomerBranch',
+      'git:getCustomerOverrides',
+      'git:updateCustomerOverrides',
+      'git:commitYamlToGit',
+      'git:push',
+      'git:pull',
+      'git:status',
+      'git:getCommitHistory',
+      'git:merge',
+      'git:mergeCustomerBranch',
+      'git:checkMergeConflicts',
+      'git:resolveMergeConflicts',
+      'git:abortMerge',
+      'git:prepareMergeRequest',
+      
     ]
     if (validChannels.includes(channel)) {
       return ipcRenderer.invoke(channel, ...args)
@@ -361,4 +378,52 @@ contextBridge.exposeInMainWorld("electronAPI", {
     showSaveDialog: () => ipcRenderer.invoke('product:showSaveDialog'),
     showOpenDialog: () => ipcRenderer.invoke('product:showOpenDialog')
   },
+
+  // Git operations
+  git: {
+    clone: (repoUrl: string, localPath: string, credentialId?: string) => 
+      ipcRenderer.invoke('git:clone', repoUrl, localPath, credentialId),
+    
+    prepareCustomerBranch: (customer: string, env: string) => 
+      ipcRenderer.invoke('git:prepareCustomerBranch', customer, env),
+    
+    getCustomerOverrides: (customer: string, env: string) => 
+      ipcRenderer.invoke('git:getCustomerOverrides', customer, env),
+    
+    updateCustomerOverrides: (customer: string, env: string, values: string) => 
+      ipcRenderer.invoke('git:updateCustomerOverrides', customer, env, values),
+    
+    commitYamlToGit: (filePath: string, content: string, commitMessage: string, credentialId?: string) => 
+      ipcRenderer.invoke('git:commitYamlToGit', filePath, content, commitMessage, credentialId),
+    
+    push: (remote?: string, branch?: string, credentialId?: string) => 
+      ipcRenderer.invoke('git:push', remote, branch, credentialId),
+    
+    pull: (remote?: string, branch?: string, credentialId?: string) => 
+      ipcRenderer.invoke('git:pull', remote, branch, credentialId),
+    
+    getStatus: () => ipcRenderer.invoke('git:status'),
+    
+    getCommitHistory: (maxCount?: number) => 
+      ipcRenderer.invoke('git:getCommitHistory', maxCount),
+
+  // Merge operations
+  merge: (branchName: string, options?: { noFf?: boolean, squash?: boolean }) => 
+    ipcRenderer.invoke('git:merge', branchName, options),
+  
+  mergeCustomerBranch: (customer: string, env: string, targetBranch: string) => 
+    ipcRenderer.invoke('git:mergeCustomerBranch', customer, env, targetBranch),
+  
+  checkMergeConflicts: (branchName: string) => 
+    ipcRenderer.invoke('git:checkMergeConflicts', branchName),
+  
+  resolveMergeConflicts: (resolvedFiles: string[]) => 
+    ipcRenderer.invoke('git:resolveMergeConflicts', resolvedFiles),
+  
+  abortMerge: () => ipcRenderer.invoke('git:abortMerge'),
+  
+  prepareMergeRequest: (sourceBranch: string, targetBranch: string, title: string, description?: string) => 
+    ipcRenderer.invoke('git:prepareMergeRequest', sourceBranch, targetBranch, title, description),    
+  },
+    
 })

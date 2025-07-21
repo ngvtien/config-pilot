@@ -216,11 +216,11 @@ export function CustomerManagementPage({ onNavigateBack }: CustomerManagementPag
                 </div>
                 <div className="flex items-center gap-2">
                     <Button variant="outline" onClick={handleImportCustomers}>
-                        <Upload className="h-4 w-4 mr-2" />
+                        <Download className="h-4 w-4 mr-2" />
                         Import
                     </Button>
                     <Button variant="outline" onClick={handleExportCustomers}>
-                        <Download className="h-4 w-4 mr-2" />
+                        <Upload className="h-4 w-4 mr-2" />
                         Export
                     </Button>
                     <Button onClick={handleCreateCustomer}>
