@@ -20,12 +20,12 @@ import type { SettingsData } from "@/shared/types/settings-data"
 import { KubernetesResourcePage } from "./kubernetes-resource-page"
 import { KubernetesDashboardPage } from './kubernetes-dashboard-page'
 import TemplateDesigner from "@/renderer/components/template-creator/TemplateDesigner"
-import { SourceSpecificSearch } from "@/renderer/components/template-creator/SourceSpecificSearch"
 import { useWindowTitle } from '@/renderer/hooks/useWindowTitle'
 import { TemplateLibrary } from "@/renderer/components/template-library/TemplateLibrary"
 import { ProjectComposerPage } from "@/renderer/pages/project-composer-page"
 import { CustomerManagementPage } from "@/renderer/pages/customer-management-page"
 import { ProductManagementPage } from '@/renderer/pages/product-management-page'
+import { EnhancedProductManagementPage } from '@/renderer/pages/enhanced-product-management-page'
 
 type UserRole = "developer" | "devops" | "operations"
 type ViewType =
@@ -411,7 +411,7 @@ export default function AppLayoutPage({
 
     case "product-management":
       return (
-        <ProductManagementPage 
+        <EnhancedProductManagementPage 
           onNavigateBack={() => setView("schema")} 
         />
       )

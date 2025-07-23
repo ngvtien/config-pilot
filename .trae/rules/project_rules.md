@@ -1,6 +1,9 @@
-Practice TDD
-Comment on code
-Max 600 lines
-unit tests output in a file called tests/output/unit-tests.txt
-integration tests output in a file called tests/output/integration-tests.txt
-e2e tests output in a file called tests/output/e2e-tests.txt
+- Practice TDD
+- Comment on code
+- Max 600 lines
+- unit tests output in a file called tests/output/unit-tests.txt
+- integration tests output in a file called tests/output/integration-tests.txt
+- e2e tests output in a file called tests/output/e2e-tests.txt
+- Always scan existing codebase before suggesting anything new
+- Always check the github community for any existing libraries or tools before reinventing the wheel
+- Any new or enhance UI should provide a propose wireframe beforehand 

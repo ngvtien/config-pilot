@@ -144,6 +144,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
       'product:showSaveDialog',
       'product:showOpenDialog',
 
+      // Product component management
+      'productComponent:initialize',
+      'productComponent:getAllComponents',
+      'productComponent:getComponentsByProduct',
+      'productComponent:createComponent',
+      'productComponent:updateComponent',
+      'productComponent:deleteComponent',
+
       // Git operations
       'git:clone',
       'git:prepareCustomerBranch',
@@ -160,7 +168,23 @@ contextBridge.exposeInMainWorld("electronAPI", {
       'git:resolveMergeConflicts',
       'git:abortMerge',
       'git:prepareMergeRequest',
-      
+
+      'git:getRepositories',
+      'git:saveRepository',
+      'git:removeRepository',
+      'git:validateRepository',
+
+      // Git authentication
+      // 'git-auth:getServers',
+      // 'git-auth:saveServer',
+      // 'git-auth:removeServer',
+      // 'git-auth:authenticateToServer',
+      // 'git-auth:getServerAuthStatus',
+      // 'git-auth:testRepositoryAccess',
+
+      'git:createRepository',
+      'git:createEnvironmentBranches',
+
     ]
     if (validChannels.includes(channel)) {
       return ipcRenderer.invoke(channel, ...args)
@@ -379,51 +403,58 @@ contextBridge.exposeInMainWorld("electronAPI", {
     showOpenDialog: () => ipcRenderer.invoke('product:showOpenDialog')
   },
 
-  // Git operations
-  git: {
-    clone: (repoUrl: string, localPath: string, credentialId?: string) => 
-      ipcRenderer.invoke('git:clone', repoUrl, localPath, credentialId),
-    
-    prepareCustomerBranch: (customer: string, env: string) => 
-      ipcRenderer.invoke('git:prepareCustomerBranch', customer, env),
-    
-    getCustomerOverrides: (customer: string, env: string) => 
-      ipcRenderer.invoke('git:getCustomerOverrides', customer, env),
-    
-    updateCustomerOverrides: (customer: string, env: string, values: string) => 
-      ipcRenderer.invoke('git:updateCustomerOverrides', customer, env, values),
-    
-    commitYamlToGit: (filePath: string, content: string, commitMessage: string, credentialId?: string) => 
-      ipcRenderer.invoke('git:commitYamlToGit', filePath, content, commitMessage, credentialId),
-    
-    push: (remote?: string, branch?: string, credentialId?: string) => 
-      ipcRenderer.invoke('git:push', remote, branch, credentialId),
-    
-    pull: (remote?: string, branch?: string, credentialId?: string) => 
-      ipcRenderer.invoke('git:pull', remote, branch, credentialId),
-    
-    getStatus: () => ipcRenderer.invoke('git:status'),
-    
-    getCommitHistory: (maxCount?: number) => 
-      ipcRenderer.invoke('git:getCommitHistory', maxCount),
-
-  // Merge operations
-  merge: (branchName: string, options?: { noFf?: boolean, squash?: boolean }) => 
-    ipcRenderer.invoke('git:merge', branchName, options),
-  
-  mergeCustomerBranch: (customer: string, env: string, targetBranch: string) => 
-    ipcRenderer.invoke('git:mergeCustomerBranch', customer, env, targetBranch),
-  
-  checkMergeConflicts: (branchName: string) => 
-    ipcRenderer.invoke('git:checkMergeConflicts', branchName),
-  
-  resolveMergeConflicts: (resolvedFiles: string[]) => 
-    ipcRenderer.invoke('git:resolveMergeConflicts', resolvedFiles),
-  
-  abortMerge: () => ipcRenderer.invoke('git:abortMerge'),
-  
-  prepareMergeRequest: (sourceBranch: string, targetBranch: string, title: string, description?: string) => 
-    ipcRenderer.invoke('git:prepareMergeRequest', sourceBranch, targetBranch, title, description),    
+  // Add this to the contextBridge.exposeInMainWorld call
+  productComponent: {
+    initialize: () => ipcRenderer.invoke('productComponent:initialize'),
+    getAllComponents: () => ipcRenderer.invoke('productComponent:getAllComponents'),
+    getComponentsByProduct: (productName: string) => ipcRenderer.invoke('productComponent:getComponentsByProduct', productName),
+    createComponent: (component: any) => ipcRenderer.invoke('productComponent:createComponent', component),
+    updateComponent: (id: string, updates: any) => ipcRenderer.invoke('productComponent:updateComponent', id, updates),
+    deleteComponent: (id: string) => ipcRenderer.invoke('productComponent:deleteComponent', id)
   },
-    
+
+  // Unified Git API
+  git: {
+    // Server Management
+    getServers: () => ipcRenderer.invoke('git:getServers'),
+    saveServer: (server: any) => ipcRenderer.invoke('git:saveServer', server),
+    authenticateServer: (serverId: string, credentials: any) => ipcRenderer.invoke('git:authenticateServer', serverId, credentials),
+
+    // Repository Management
+    getRepositories: () => ipcRenderer.invoke('git:getRepositories'),
+    saveRepository: (repository: any) => ipcRenderer.invoke('git:saveRepository', repository),
+    validateRepositoryAccess: (url: string, serverId: string) => ipcRenderer.invoke('git:validateRepositoryAccess', url, serverId),
+    createRepository: (config: any, serverId: string) => ipcRenderer.invoke('git:createRepository', config, serverId),
+
+    // Health Check
+    checkHealth: () => ipcRenderer.invoke('git:checkHealth'),
+
+    // Legacy Git Operations
+    clone: (repoUrl: string, localPath: string, credentialId?: string) => ipcRenderer.invoke('git:clone', repoUrl, localPath, credentialId),
+    prepareCustomerBranch: (customer: string, env: string) => ipcRenderer.invoke('git:prepareCustomerBranch', customer, env),
+    getCustomerOverrides: (customer: string, env: string) => ipcRenderer.invoke('git:getCustomerOverrides', customer, env),
+    updateCustomerOverrides: (customer: string, env: string, values: string) => ipcRenderer.invoke('git:updateCustomerOverrides', customer, env, values),
+    commitYamlToGit: (filePath: string, content: string, commitMessage: string, credentialId?: string) => ipcRenderer.invoke('git:commitYamlToGit', filePath, content, commitMessage, credentialId),
+    push: (remote?: string, branch?: string, credentialId?: string) => ipcRenderer.invoke('git:push', remote, branch, credentialId),
+    pull: (remote?: string, branch?: string, credentialId?: string) => ipcRenderer.invoke('git:pull', remote, branch, credentialId),
+    status: () => ipcRenderer.invoke('git:status'),
+    getCommitHistory: (maxCount?: number) => ipcRenderer.invoke('git:getCommitHistory', maxCount),
+    merge: (branchName: string, options?: { noFf?: boolean, squash?: boolean }) => ipcRenderer.invoke('git:merge', branchName, options),
+    mergeCustomerBranch: (customer: string, env: string, targetBranch: string) => ipcRenderer.invoke('git:mergeCustomerBranch', customer, env, targetBranch),
+    checkMergeConflicts: (branchName: string) => ipcRenderer.invoke('git:checkMergeConflicts', branchName),
+    resolveMergeConflicts: (resolvedFiles: string[]) => ipcRenderer.invoke('git:resolveMergeConflicts', resolvedFiles),
+    abortMerge: () => ipcRenderer.invoke('git:abortMerge'),
+    prepareMergeRequest: (sourceBranch: string, targetBranch: string, title: string, description?: string) => ipcRenderer.invoke('git:prepareMergeRequest', sourceBranch, targetBranch, title, description),
+    createEnvironmentBranches: (repositoryUrl: string, environments: string[]) => ipcRenderer.invoke('git:createEnvironmentBranches', repositoryUrl, environments)
+  },
+  // Legacy Git Auth API - Keep for backward compatibility
+  // 'git-auth': {
+  //   getServers: () => ipcRenderer.invoke('git-auth:getServers'),
+  //   saveServer: (server: any) => ipcRenderer.invoke('git-auth:saveServer', server),
+  //   removeServer: (serverId: string) => ipcRenderer.invoke('git-auth:removeServer', serverId),
+  //   authenticateToServer: (serverId: string, credentials: any) => ipcRenderer.invoke('git-auth:authenticateToServer', serverId, credentials),
+  //   getServerAuthStatus: (serverId: string) => ipcRenderer.invoke('git-auth:getServerAuthStatus', serverId),
+  //   testRepositoryAccess: (repositoryUrl: string, serverId: string) => ipcRenderer.invoke('git-auth:testRepositoryAccess', repositoryUrl, serverId)
+  // },
+
 })

@@ -10,10 +10,17 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/renderer/components/ui/select'
 import { Textarea } from '@/renderer/components/ui/textarea'
 import { Switch } from '@/renderer/components/ui/switch'
-import { Trash2, Edit, Plus, Download, Upload, Package } from 'lucide-react'
+import { Trash2, Edit, Plus, Download, Upload, Package, GitBranch } from 'lucide-react'
 import type { Product } from '@/shared/types/product'
 import { createNewProduct, validateProduct } from '@/shared/types/product'
 import { useDialog } from '@/renderer/hooks/useDialog'
+import { useRepositorySelector } from '@/renderer/hooks/use-repository-selector'
+import { GitRepositoryService } from '@/renderer/services/git-repository.service'
+import { RepositoryRegistrationDialog } from '@/renderer/components/git/repository-registration-dialog'
+import { EnhancedRepositorySelector } from '@/renderer/components/git/enhanced-repository-selector'
+import { GitRepository, PermissionFilter } from '../../shared/types/git-repository'
+// import { EnhancedRepositorySelector } from '@/renderer/components/git/enhanced-repository-selector'
+// import { GitOpsStructureValidator } from '@/renderer/components/git/gitops-structure-validator'
 
 interface ProductManagementPageProps {
   onNavigateBack?: () => void
@@ -30,10 +37,34 @@ export function ProductManagementPage({ onNavigateBack }: ProductManagementPageP
   const [formData, setFormData] = useState<Partial<Product>>({})
   const [errors, setErrors] = useState<string[]>([])
 
+  const { repositories, loading, error } = useRepositorySelector('developer');
+  const [showNewRepoDialog, setShowNewRepoDialog] = useState(false)
+
   // Load products on component mount
   useEffect(() => {
     loadProducts()
   }, [])
+
+  /**
+   * Filter repositories by permission (implement the missing function)
+   */
+  const getRepositoriesByPermission = (filter: PermissionFilter): GitRepository[] => {
+    return repositories.filter((repo: { permissions: { [x: string]: any } }) => {
+      const userPermission = repo.permissions[filter.role];
+      return userPermission === filter.level || userPermission === 'admin';
+    });
+  };
+
+  /**
+   * Test repository connection (implement the missing function)
+   */
+  const testConnection = async (repositoryUrl: string): Promise<boolean> => {
+    try {
+      return await GitRepositoryService.testConnection(repositoryUrl);
+    } catch {
+      return false;
+    }
+  };
 
   /**
    * Load all products from the service
@@ -100,27 +131,61 @@ export function ProductManagementPage({ onNavigateBack }: ProductManagementPageP
   /**
    * Handle deleting a product
    */
-const handleDeleteProduct = async (product: Product) => {
-  showConfirm({
-    title: 'Delete Product',
-    message: `Are you sure you want to delete product "${product.displayName || product.name}"?\n\nThis action cannot be undone.`,
-    variant: 'destructive',
-    confirmText: 'Delete',
-    cancelText: 'Cancel',
-    onConfirm: async () => {
-      try {
-        await window.electronAPI?.product?.deleteProduct(product.id)
-        await loadProducts()
-      } catch (error: any) {
-        showAlert({
-          title: 'Error',
-          message: `Failed to delete product: ${error.message}`,
-          variant: 'error'
-        })
+  const handleDeleteProduct = async (product: Product) => {
+    showConfirm({
+      title: 'Delete Product',
+      message: `Are you sure you want to delete product "${product.displayName || product.name}"?\n\nThis action cannot be undone.`,
+      variant: 'destructive',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      onConfirm: async () => {
+        try {
+          await window.electronAPI?.product?.deleteProduct(product.id)
+          await loadProducts()
+        } catch (error: any) {
+          showAlert({
+            title: 'Error',
+            message: `Failed to delete product: ${error.message}`,
+            variant: 'error'
+          })
+        }
       }
+    })
+  }
+
+  /**
+   * Add new repository from product form
+   */
+  const handleAddNewRepository = async (repoData: any) => {
+    try {
+      const newRepo = await GitRepositoryService.createRepository(repoData)
+      // Update form with new repository URL
+      handleRepositoryChange(newRepo.url)
+      setShowNewRepoDialog(false)
+    } catch (error: any) {
+      console.error('Failed to add repository:', error.message)
     }
-  })
-}
+  }
+
+  /**
+   * Handle repository selection
+   */
+  const handleRepositoryChange = (repositoryUrl: string) => {
+    setFormData({
+      ...formData,
+      metadata: { ...formData.metadata, repository: repositoryUrl }
+    })
+  }
+
+  const handleCreateBranch = async (repoUrl: string, branchName: string) => {
+    try {
+      console.log(`Creating branch ${branchName} in repository ${repoUrl}`);
+      // In real implementation, this would call the backend to create the branch
+      // and potentially update the product's repository configuration
+    } catch (error) {
+      console.error('Failed to create branch:', error);
+    }
+  };
 
   /**
    * Handle exporting products
@@ -145,61 +210,62 @@ const handleDeleteProduct = async (product: Product) => {
     }
   }
 
-/**
- * Handle importing products
- */
-const handleImportProducts = async () => {
-  try {
-    const filePath = await window.electronAPI?.product?.showOpenDialog()
-    if (filePath) {
-      // Replace native confirm with showConfirm for merge mode selection
-      showConfirm({
-        title: 'Import Mode Selection',
-        message: `How would you like to import products from "${filePath}"?\n\n• Merge: Add new products and update existing ones\n• Replace: Replace all existing products`,
-        variant: 'default',
-        confirmText: 'Merge',
-        cancelText: 'Replace All',
-        onConfirm: async () => {
-          // User chose merge
-          await performImport(filePath, 'merge')
-        },
-        onCancel: async () => {
-          // User chose replace
-          await performImport(filePath, 'replace')
-        }
+  /**
+   * Handle importing products
+   */
+  const handleImportProducts = async () => {
+    try {
+      const filePath = await window.electronAPI?.product?.showOpenDialog()
+      if (filePath) {
+        // Replace native confirm with showConfirm for merge mode selection
+        showConfirm({
+          title: 'Import Mode Selection',
+          message: `How would you like to import products from "${filePath}"?\n\n• Merge: Add new products and update existing ones\n• Replace: Replace all existing products`,
+          variant: 'default',
+          confirmText: 'Merge',
+          cancelText: 'Replace All',
+          onConfirm: async () => {
+            // User chose merge
+            await performImport(filePath, 'merge')
+          },
+          onCancel: async () => {
+            // User chose replace
+            await performImport(filePath, 'replace')
+          }
+        })
+      }
+    } catch (error: any) {
+      // Replace native alert with showAlert
+      showAlert({
+        title: 'Import Error',
+        message: `Failed to import products: ${error.message}`,
+        variant: 'error'
       })
     }
-  } catch (error: any) {
-    // Replace native alert with showAlert
-    showAlert({
-      title: 'Import Error',
-      message: `Failed to import products: ${error.message}`,
-      variant: 'error'
-    })
   }
-}
 
-/**
- * Helper function to perform the actual import operation
- */
-const performImport = async (filePath: string, mergeMode: 'merge' | 'replace') => {
-  try {
-    await window.electronAPI?.product?.importProducts(filePath, mergeMode)
-    await loadProducts()
-    // Replace native alert with showAlert
-    showAlert({
-      title: 'Import Success',
-      message: 'Products imported successfully!',
-      variant: 'success'
-    })
-  } catch (error: any) {
-    showAlert({
-      title: 'Import Error',
-      message: `Failed to import products: ${error.message}`,
-      variant: 'error'
-    })
+  /**
+   * Helper function to perform the actual import operation
+   */
+  const performImport = async (filePath: string, mergeMode: 'merge' | 'replace') => {
+    try {
+      await window.electronAPI?.product?.importProducts(filePath, mergeMode)
+      await loadProducts()
+      // Replace native alert with showAlert
+      showAlert({
+        title: 'Import Success',
+        message: 'Products imported successfully!',
+        variant: 'success'
+      })
+    } catch (error: any) {
+      showAlert({
+        title: 'Import Error',
+        message: `Failed to import products: ${error.message}`,
+        variant: 'error'
+      })
+    }
   }
-}
+
   /**
    * Get category badge color
    */
@@ -305,6 +371,19 @@ const performImport = async (filePath: string, mergeMode: 'merge' | 'replace') =
                   <span className="text-gray-900 dark:text-gray-100">{product.metadata.version}</span>
                 </div>
               )}
+              {product.metadata?.repository && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600 dark:text-gray-400">Repository:</span>
+                  <a 
+                    href={product.metadata.repository} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 text-xs truncate max-w-48"
+                  >
+                    {product.metadata.repository}
+                  </a>
+                </div>
+              )}              
               <div className="text-xs text-gray-500 dark:text-gray-400">
                 Updated: {new Date(product.updatedAt).toLocaleDateString()}
               </div>
@@ -335,12 +414,12 @@ const performImport = async (filePath: string, mergeMode: 'merge' | 'replace') =
               {editingProduct ? 'Edit Product' : 'Add New Product'}
             </DialogTitle>
             <DialogDescription>
-              {editingProduct 
-                ? 'Update the product information below.' 
+              {editingProduct
+                ? 'Update the product information below.'
                 : 'Create a new product by filling out the form below.'}
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-4">
             {errors.length > 0 && (
               <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md p-3">
@@ -351,14 +430,14 @@ const performImport = async (filePath: string, mergeMode: 'merge' | 'replace') =
                 </ul>
               </div>
             )}
-            
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="displayName">Display Name *</Label>
                 <Input
                   id="displayName"
                   value={formData.displayName || ''}
-                  onChange={(e) => setFormData({ ...formData, displayName: e.target.value })}
+                  onChange={(e: { target: { value: any } }) => setFormData({ ...formData, displayName: e.target.value })}
                   placeholder="e.g., User Management API"
                 />
               </div>
@@ -367,40 +446,40 @@ const performImport = async (filePath: string, mergeMode: 'merge' | 'replace') =
                 <Input
                   id="name"
                   value={formData.name || ''}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-') })}
+                  onChange={(e: { target: { value: string } }) => setFormData({ ...formData, name: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-') })}
                   placeholder="e.g., user-mgmt-api"
                 />
               </div>
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="owner">Owner</Label>
               <Input
                 id="owner"
                 value={formData.owner || ''}
-                onChange={(e) => setFormData({ ...formData, owner: e.target.value })}
+                onChange={(e: { target: { value: any } }) => setFormData({ ...formData, owner: e.target.value })}
                 placeholder="e.g., Backend Team"
               />
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="description">Description</Label>
               <Textarea
                 id="description"
                 value={formData.description || ''}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                onChange={(e: { target: { value: any } }) => setFormData({ ...formData, description: e.target.value })}
                 placeholder="Brief description of the product"
                 rows={3}
               />
             </div>
-            
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="category">Category</Label>
                 <Select
                   value={formData.metadata?.category || 'general'}
-                  onValueChange={(value) => setFormData({ 
-                    ...formData, 
+                  onValueChange={(value: any) => setFormData({
+                    ...formData,
                     metadata: { ...formData.metadata, category: value }
                   })}
                 >
@@ -421,38 +500,142 @@ const performImport = async (filePath: string, mergeMode: 'merge' | 'replace') =
                 <Input
                   id="version"
                   value={formData.metadata?.version || ''}
-                  onChange={(e) => setFormData({ 
-                    ...formData, 
+                  onChange={(e: { target: { value: any } }) => setFormData({
+                    ...formData,
                     metadata: { ...formData.metadata, version: e.target.value }
                   })}
                   placeholder="e.g., 1.0.0"
                 />
               </div>
             </div>
-            
+
+            {/**
             <div className="space-y-2">
-              <Label htmlFor="repository">Repository URL</Label>
-              <Input
-                id="repository"
+              <Label htmlFor="repository">Repository</Label>
+              <div className="flex gap-2">
+                <Select
+                  value={formData.metadata?.repository || ''}
+                  onValueChange={handleRepositoryChange}
+                  disabled={reposLoading}
+                >
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder="Select a repository" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {repositories.map((repo: any) => (
+                      <SelectItem key={repo.id} value={repo.url}>
+                        <div className="flex items-center gap-2">
+                          <GitBranch className="h-4 w-4" />
+                          <span>{repo.name}</span>
+                          <Badge variant="outline" className="text-xs">
+                            {repo.branch}
+                          </Badge>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowNewRepoDialog(true)}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Select from configured repositories or add a new one
+              </p>
+            </div>
+ */}
+
+            {/*
+             <div className="space-y-2">
+              <Label htmlFor="repository">Repository Configuration</Label>
+              <EnhancedRepositorySelector
                 value={formData.metadata?.repository || ''}
-                onChange={(e) => setFormData({ 
-                  ...formData, 
-                  metadata: { ...formData.metadata, repository: e.target.value }
-                })}
-                placeholder="https://github.com/org/repo"
+                onChange={handleRepositoryChange}
+                onCreateBranch={handleCreateBranch}
+              />
+              {formData.metadata?.repository && (
+                <GitOpsStructureValidator repositoryUrl={formData.metadata.repository} />
+              )}
+              <p className="text-xs text-muted-foreground">
+                Select a repository that follows the GitOps structure defined in the PRD
+              </p>
+            </div>
+*/}
+
+            {/* <div className="space-y-2">
+              <Label htmlFor="repository">Repository</Label>
+              <div className="flex gap-2">
+                <Select
+                  value={formData.metadata?.repository || ''}
+                  onValueChange={handleRepositoryChange}
+                  disabled={reposLoading}
+                >
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder="Select a repository" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {repositories.map((repo: any) => (
+                      <SelectItem key={repo.id} value={repo.url}>
+                        <div className="flex items-center gap-2">
+                          <GitBranch className="h-4 w-4" />
+                          <span>{repo.name}</span>
+                          <Badge variant="outline" className="text-xs">
+                            {repo.branch}
+                          </Badge>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowNewRepoDialog(true)}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Select from configured repositories or add a new one
+              </p>
+            </div> */}
+
+            <div className="space-y-2">
+              <Label htmlFor="repository">Repository *</Label>
+              <EnhancedRepositorySelector
+                repositories={repositories}
+                getRepositoriesByPermission={getRepositoriesByPermission}
+                testConnection={testConnection}
+                value={editingProduct?.repository || ''}
+                onChange={(repositoryUrl: any) => {
+                  if (editingProduct) {
+                    setEditingProduct({ ...editingProduct, repository: repositoryUrl });
+                  }
+                }}
+                onCreateBranch={handleCreateBranch}
+                filterByPermission={{
+                  role: 'developer',
+                  level: 'any'
+                }}
+                showGitOpsValidation={true}
+                className="min-h-32"
               />
             </div>
-            
+
             <div className="flex items-center space-x-2">
               <Switch
                 id="isActive"
                 checked={formData.isActive ?? true}
-                onCheckedChange={(checked) => setFormData({ ...formData, isActive: checked })}
+                onCheckedChange={(checked: any) => setFormData({ ...formData, isActive: checked })}
               />
               <Label htmlFor="isActive">Active Product</Label>
             </div>
           </div>
-          
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
               Cancel
@@ -464,8 +647,14 @@ const performImport = async (filePath: string, mergeMode: 'merge' | 'replace') =
         </DialogContent>
       </Dialog>
 
+      <RepositoryRegistrationDialog
+        open={showNewRepoDialog}
+        onOpenChange={setShowNewRepoDialog}
+        onSuccess={handleAddNewRepository}
+      />
+
       <AlertDialog />
-      <ConfirmDialog />      
+      <ConfirmDialog />
     </div>
   )
 }
