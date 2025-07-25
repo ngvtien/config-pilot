@@ -1,11 +1,22 @@
-import { simpleGit, SimpleGit, SimpleGitOptions } from 'simple-git';
 import { safeStorage } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import * as yaml from 'js-yaml';
 import os from 'os';
-import { GitRepository, GitCredentials, GitOperationResult, GitDiffResult, GitAuthStatus, GitCommit, GitServerConfig, GitServerCredentials } from '../../shared/types/git-repository';
-import { GitAuthService } from './git-auth-service';
+import { GitRepository, GitCredentials, GitOperationResult, GitDiffResult, GitAuthStatus, GitCommit, GitServerConfig, GitServerCredentials, GitServerValidationResult, GitValidationResult, RepositoryInfo } from '../../shared/types/git-repository';
+//import { GitAuthService } from './git-auth-service';
+
+import { simpleGit, SimpleGit, SimpleGitOptions } from 'simple-git';
+import { GiteaProvider } from './providers/gitea-provider';
+import { BitbucketProvider } from './providers/bitbucket-provider';
+import Store from 'electron-store';
+import gitUrlParse from 'git-url-parse';
+
+interface GitStoreSchema {
+    servers: GitServerConfig[];
+    repositories: GitRepository[];
+    credentials: Record<string, string>; // serverId -> encrypted credentials
+}
 
 export interface MergeOptions {
     noFf?: boolean;  // Force create merge commit even for fast-forward
@@ -24,23 +35,6 @@ export interface MergeRequestInfo {
     description?: string;
 }
 
-export interface GitValidationResult {
-    isValid: boolean;
-    authStatus: GitAuthStatus;
-    error?: string;
-    repositoryInfo?: RepositoryInfo;
-}
-
-export interface RepositoryInfo {
-    name: string;
-    description?: string;
-    defaultBranch: string;
-    isPrivate: boolean;
-    size: number;
-    language?: string;
-    topics: string[];
-}
-
 export interface CreateRepositoryConfig {
     name: string;
     description?: string;
@@ -50,6 +44,8 @@ export interface CreateRepositoryConfig {
     licenseTemplate?: string;
     provider: 'github' | 'gitlab' | 'gitea' | 'bitbucket';
     baseUrl?: string;
+    url?: string; // Add this field for git-url-parse
+    projectKey?: string; // For Bitbucket projects
 }
 
 export interface GitOpsConfig {
@@ -88,49 +84,155 @@ export interface AuthResult {
  */
 export class GitService {
     private git: SimpleGit;
-    private credentialStore: any;
-    private _gitAuthService?: GitAuthService;   // Make it optional and lazy-loaded
+    private store: any; //Store<GitStoreSchema>;
+    //private credentialStore: any;
+    //private _gitAuthService?: GitAuthService;   // Make it optional and lazy-loaded
+    private giteaProvider = new GiteaProvider();
+    private bitbucketProvider = new BitbucketProvider();
 
     constructor(workingDirectory?: string) {
-        const options: Partial<SimpleGitOptions> = {
-            baseDir: workingDirectory || process.cwd(),
-            binary: 'git',
-            maxConcurrentProcesses: 6,
-            trimmed: false,
+        this.git = simpleGit({ baseDir: workingDirectory || process.cwd() });
+        this.store = new Store<GitStoreSchema>({
+            name: 'git-unified',
+            defaults: { servers: [], repositories: [], credentials: {} }
+        });
+    }
+
+    // Server Management
+    getServers(): GitServerConfig[] {
+        return this.store.get('servers', []);
+    }
+
+    saveServer(server: Omit<GitServerConfig, 'id' | 'createdAt' | 'updatedAt'>): GitServerConfig {
+        const servers = this.getServers();
+
+        // Use baseUrl as unique identifier - pragmatic and logical
+        const serverId = server.baseUrl.replace(/[^a-zA-Z0-9]/g, '-');
+
+        // Check if server already exists
+        const existingIndex = servers.findIndex(s => s.baseUrl === server.baseUrl);
+
+        if (existingIndex >= 0) {
+            // Update existing server, preserving provider
+            const updatedServer = {
+                ...servers[existingIndex],
+                ...server,
+                id: servers[existingIndex].id,
+                updatedAt: new Date().toISOString()
+            };
+            servers[existingIndex] = updatedServer;
+            this.store.set('servers', servers);
+            return updatedServer;
+        }
+
+        // Create new server
+        const newServer: GitServerConfig = {
+            ...server,
+            id: serverId,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
         };
 
-        this.git = simpleGit(options);
-        this.initializeCredentialStore();
+        servers.push(newServer);
+        this.store.set('servers', servers);
+        return newServer;
     }
 
-    /**
-     * Get GitAuthService instance with lazy initialization
-     */
-    private get gitAuthService(): GitAuthService {
-        if (!this._gitAuthService) {
-            // Lazy import to avoid circular dependency
-            const { GitAuthService } = require('./git-auth-service');
-            this._gitAuthService = new GitAuthService();
+
+    // Repository Management
+    getRepositories(): GitRepository[] {
+        return this.store.get('repositories', []);
+    }
+
+    saveRepository(repository: GitRepository): GitRepository {
+        const repositories = this.getRepositories();
+        const existingIndex = repositories.findIndex(r => r.id === repository.id);
+        if (existingIndex >= 0) {
+            repositories[existingIndex] = repository;
+        } else {
+            repositories.push(repository);
         }
-        return this._gitAuthService!;
+        this.store.set('repositories', repositories);
+        return repository;
     }
 
-    /**
-     * Initialize the credential store using dynamic import
-     */
-    private async initializeCredentialStore(): Promise<void> {
-        const Store = (await import('electron-store')).default;
-        this.credentialStore = new Store({ name: 'git-credentials' });
-    }
+    // Provider Routing
+    private getProviderForUrl(url: string): { provider: 'gitea' | 'bitbucket', instance: GiteaProvider | BitbucketProvider } {
+        const parsed = gitUrlParse(url);
+        const baseUrl = parsed.port
+            ? `${parsed.protocol}://${parsed.resource}:${parsed.port}`
+            : `${parsed.protocol}://${parsed.resource}`;
 
-    /**
-     * Ensure credential store is initialized before use
-     */
-    private async ensureCredentialStore(): Promise<void> {
-        if (!this.credentialStore) {
-            await this.initializeCredentialStore();
+        // 🔍 DEBUG: Log what we're looking for
+        console.log('🔍 Looking for server with baseUrl:', baseUrl);
+
+        const allServers = this.getServers();
+        console.log('📋 All stored servers:', allServers.map(s => ({
+            name: s.name,
+            baseUrl: s.baseUrl,
+            provider: s.provider,
+            id: s.id
+        })));
+
+        const server = allServers.find(s => s.baseUrl === baseUrl);
+        if (!server) throw new Error(`No server configured for ${baseUrl}`);
+
+        // 🔍 DEBUG: Log what we found
+        console.log('✅ Found server:', {
+            name: server.name,
+            baseUrl: server.baseUrl,
+            provider: server.provider,
+            id: server.id
+        });
+
+        switch (server.provider) {
+            case 'gitea':
+                return { provider: 'gitea', instance: this.giteaProvider };
+            case 'bitbucket':
+                return { provider: 'bitbucket', instance: this.bitbucketProvider };
+            default:
+                console.error('❌ Invalid provider found:', server.provider);
+                throw new Error(`Unsupported provider: ${server.provider}`);
         }
     }
+
+    /**
+     * Get server configuration and credentials for a repository URL
+     * @param url Repository URL
+     * @param serverId Optional server ID to use instead of URL parsing
+     * @returns Server configuration and credentials
+     */
+    private getServerAndCredentials(url: string, serverId?: string): { server: GitServerConfig, credentials: GitServerCredentials } {
+        let server: GitServerConfig | undefined;
+
+        if (serverId) {
+            server = this.getServers().find(s => s.id === serverId);
+            if (!server) throw new Error(`No server configured with ID: ${serverId}`);
+        } else {
+            const parsed = gitUrlParse(url);
+            const baseUrl = parsed.port
+                ? `${parsed.protocol}://${parsed.resource}:${parsed.port}`
+                : `${parsed.protocol}://${parsed.resource}`;
+            server = this.getServers().find(s => s.baseUrl === baseUrl);
+            if (!server) throw new Error(`No server configured for ${baseUrl}`);
+        }
+
+        // ✅ FIXED: Use the same key format as credential manager
+        const credentialKey = `configpilot-git-server:${server.id}`;
+
+        // ✅ FIXED: Use the imported Store class instead of requiring it dynamically
+        const credentialStore = new Store({ name: 'secure-credentials' }) as any;
+        const encryptedCreds = credentialStore.get(credentialKey);
+
+        if (!encryptedCreds) throw new Error(`No credentials for server ${server.id}`);
+
+        // ✅ FIXED: Decrypt using safeStorage (already imported at the top)
+        const decrypted = safeStorage.decryptString(Buffer.from(encryptedCreds, 'base64'));
+        const credentials: GitServerCredentials = JSON.parse(decrypted);
+
+        return { server, credentials };
+    }
+
 
     /**
      * Validate repository URL and check authentication status
@@ -144,7 +246,9 @@ export class GitService {
                 return {
                     isValid: true,
                     authStatus: 'success',
-                    repositoryInfo: repoInfo
+                    repositoryInfo: repoInfo,
+                    canConnect: true,
+                    requiresAuth: false
                 };
             }
 
@@ -154,13 +258,17 @@ export class GitService {
             return {
                 isValid: authResult.success,
                 authStatus: authResult.authStatus,
-                error: authResult.error
+                error: authResult.error,
+                canConnect: authResult.success,
+                requiresAuth: authResult.requiresCredentials || false
             };
         } catch (error: any) {
             return {
                 isValid: false,
                 authStatus: 'failed',
-                error: this.parseGitError(error.message)
+                error: this.parseGitError(error.message),
+                canConnect: false,
+                requiresAuth: true
             };
         }
     }
@@ -211,28 +319,37 @@ export class GitService {
         }
     }
 
+    // Core Operations    
     /**
-     * Create a new repository (delegates to provider-specific implementation)
+     * Create a new repository using the specified provider
+     * @param config Repository configuration
+     * @param serverId Optional server ID to use for authentication
+     * @returns Created repository information
      */
-    async createRepository(config: CreateRepositoryConfig, credentials: GitCredentials): Promise<GitRepository> {
-        try {
-            switch (config.provider) {
-                case 'gitea':
-                    return await this.createGiteaRepository(config, credentials);
-                case 'github':
-                    return await this.createGitHubRepository(config, credentials);
-                case 'gitlab':
-                    return await this.createGitLabRepository(config, credentials);
-                case 'bitbucket':
-                    return await this.createBitbucketRepository(config, credentials);
-                default:
-                    throw new Error(`Provider ${config.provider} not supported`);
-            }
-        } catch (error: any) {
-            throw new Error(`Failed to create repository: ${error.message}`);
-        }
+    async createRepository(config: CreateRepositoryConfig, serverId?: string): Promise<GitRepository> {
+        const { server, credentials } = this.getServerAndCredentials(config.url!, serverId);
+        const { instance } = this.getProviderForUrl(config.url!);
+
+        return await instance.createRepository(server, credentials, config);
     }
 
+    async setDefaultBranch(repositoryUrl: string, branchName: string): Promise<{ success: boolean; error?: string }> {
+        try {
+            const { server, credentials } = this.getServerAndCredentials(repositoryUrl);
+            const { provider, instance } = this.getProviderForUrl(repositoryUrl);
+            const parsed = gitUrlParse(repositoryUrl);
+
+            if (provider === 'gitea') {
+                await (instance as GiteaProvider).setDefaultBranch(parsed.owner, parsed.name, branchName, server, credentials);
+            } else if (provider === 'bitbucket') {
+                await (instance as BitbucketProvider).setDefaultBranch(parsed.owner, parsed.name, branchName, server, credentials);
+            }
+
+            return { success: true };
+        } catch (error: any) {
+            return { success: false, error: error.message };
+        }
+    }
 
     /**
      * Initialize GitOps folder structure in repository
@@ -838,14 +955,12 @@ The ApplicationSet uses GitDirectoryGenerator to automatically discover applicat
      * Store git credentials securely
      */
     async storeCredentials(credentialId: string, credentials: GitCredentials): Promise<void> {
-        await this.ensureCredentialStore();
-
         if (!safeStorage.isEncryptionAvailable()) {
             throw new Error('Encryption is not available on this system');
         }
 
         const encrypted = safeStorage.encryptString(JSON.stringify(credentials));
-        this.credentialStore.set(credentialId, encrypted.toString('base64'));
+        this.store.set(credentialId, encrypted.toString('base64'));
     }
 
     /**
@@ -853,7 +968,7 @@ The ApplicationSet uses GitDirectoryGenerator to automatically discover applicat
      */
     async getStoredCredentials(repoId: string): Promise<GitCredentials | null> {
         try {
-            const encryptedData = this.credentialStore.get(repoId) as string;
+            const encryptedData = this.store.get(repoId) as string;
             if (!encryptedData) {
                 return null;
             }
@@ -880,14 +995,12 @@ The ApplicationSet uses GitDirectoryGenerator to automatically discover applicat
      * Get credentials for git operations
      */
     async getCredentialsForOperation(credentialId: string): Promise<GitCredentials | null> {
-        await this.ensureCredentialStore();
-
         try {
             if (!safeStorage.isEncryptionAvailable()) {
                 return null;
             }
 
-            const encryptedData = this.credentialStore.get(credentialId) as string;
+            const encryptedData = this.store.get(credentialId) as string;
             if (!encryptedData) {
                 return null;
             }
@@ -948,147 +1061,6 @@ The ApplicationSet uses GitDirectoryGenerator to automatically discover applicat
             };
         } catch (error: any) {
             throw new Error(`Failed to prepare merge request: ${error.message}`);
-        }
-    }
-
-    /**
-     * Enhanced Gitea repository creation using provider implementation
-     */
-    private async createGiteaRepository(config: CreateRepositoryConfig, credentials: GitCredentials): Promise<GitRepository> {
-        try {
-            // Use server information from credentials if available
-            let server: GitServerConfig | undefined;
-            let serverCredentials: GitServerCredentials | undefined;
-
-            if (credentials.url && credentials.repoId) {
-                // Server info passed through credentials from UnifiedGitService
-                server = {
-                    id: credentials.repoId,
-                    name: 'Auto-detected Gitea',
-                    provider: 'gitea',
-                    baseUrl: credentials.url,
-                    description: 'Auto-detected server',
-                    isDefault: false,
-                    createdAt: new Date().toISOString(),
-                    updatedAt: new Date().toISOString()
-                };
-
-                serverCredentials = {
-                    serverId: credentials.repoId,
-                    method: credentials.method,
-                    token: credentials.token,
-                    username: credentials.username,
-                    password: credentials.password,
-                    sshKeyPath: credentials.sshKeyPath
-                };
-            } else {
-                // Fallback to old logic for backward compatibility
-                const servers = this.gitAuthService.getServers();
-                server = servers.find(s => s.provider === 'gitea' &&
-                    (config.baseUrl ? s.baseUrl === config.baseUrl : s.isDefault));
-
-                if (!server) {
-                    throw new Error('No Gitea server configuration found');
-                }
-
-                const creds = await this.gitAuthService.getServerCredentials(server.id);
-                if (!creds) {
-                    throw new Error('No credentials found for Gitea server');
-                }
-                serverCredentials = creds;
-            }
-
-            if (!server || !serverCredentials) {
-                throw new Error('Server configuration or credentials not available');
-            }
-
-            const giteaProvider = new (await import('./providers/gitea-provider')).GiteaProvider();
-            const repoData = await giteaProvider.createRepository(server, serverCredentials, config);
-
-            return {
-                id: `gitea-${Date.now()}`,
-                name: config.name,
-                url: repoData.clone_url || repoData.ssh_url,
-                branch: 'main',
-                description: config.description || '',
-                permissions: { developer: 'dev-only', devops: 'full', operations: 'read-only' },
-                serverId: server.id,
-                authStatus: 'success',
-                lastAuthCheck: new Date().toISOString()
-            };
-
-        } catch (error: any) {
-            throw new Error(`Gitea repository creation failed: ${error.message}`);
-        }
-    }
-    /**
-     * Enhanced Bitbucket repository creation using provider implementation
-     */
-    private async createBitbucketRepository(config: CreateRepositoryConfig, credentials: GitCredentials): Promise<GitRepository> {
-        try {
-            // Use server information from credentials if available
-            let server: GitServerConfig | undefined;
-            let serverCredentials: GitServerCredentials | undefined;
-
-            if (credentials.url && credentials.repoId) {
-                // Server info passed through credentials from UnifiedGitService
-                server = {
-                    id: credentials.repoId,
-                    name: 'Auto-detected Bitbucket',
-                    provider: 'bitbucket',
-                    baseUrl: credentials.url,
-                    description: 'Auto-detected server',
-                    isDefault: false,
-                    createdAt: new Date().toISOString(),
-                    updatedAt: new Date().toISOString()
-                };
-
-                serverCredentials = {
-                    serverId: credentials.repoId,
-                    method: credentials.method,
-                    token: credentials.token,
-                    username: credentials.username,
-                    password: credentials.password,
-                    sshKeyPath: credentials.sshKeyPath
-                };
-            } else {
-                // Fallback to old logic for backward compatibility
-                const servers = this.gitAuthService.getServers();
-                server = servers.find(s => s.provider === 'bitbucket' &&
-                    (config.baseUrl ? s.baseUrl === config.baseUrl : s.isDefault));
-
-                if (!server) {
-                    throw new Error('No Bitbucket server configuration found');
-                }
-
-                const creds = await this.gitAuthService.getServerCredentials(server.id);
-                if (!creds) {
-                    throw new Error('No credentials found for Bitbucket server');
-                }
-                serverCredentials = creds;
-            }
-
-            if (!server || !serverCredentials) {
-                throw new Error('Server configuration or credentials not available');
-            }
-
-            const bitbucketProvider = new (await import('./providers/bitbucket-provider')).BitbucketProvider();
-            const repoData = await bitbucketProvider.createRepository(server, serverCredentials, config);
-
-            return {
-                id: `bitbucket-${Date.now()}`,
-                name: config.name,
-                url: repoData.links?.clone?.find((link: any) => link.name === 'http')?.href || '',
-                branch: 'main',
-                description: config.description || '',
-                permissions: { developer: 'dev-only', devops: 'full', operations: 'read-only' },
-                serverId: server.id,
-                authStatus: 'success',
-                lastAuthCheck: new Date().toISOString()
-            };
-
-        } catch (error: any) {
-            throw new Error(`Bitbucket repository creation failed: ${error.message}`);
         }
     }
 
@@ -1158,6 +1130,106 @@ The ApplicationSet uses GitDirectoryGenerator to automatically discover applicat
                 success: false,
                 createdBranches,
                 errors: [{ error: error.message }]
+            };
+        }
+    }
+
+    /**
+     * Authenticate with a Git server
+     */
+    async authenticateServer(serverId: string, credentials: GitServerCredentials): Promise<GitServerValidationResult> {
+        try {
+            // Store credentials
+            const credentialsKey = `credentials_${serverId}`;
+            const encryptedCredentials = safeStorage.encryptString(JSON.stringify(credentials));
+            this.store.set(credentialsKey, encryptedCredentials.toString('base64'));
+
+            // Get server config
+            const server = this.getServers().find(s => s.id === serverId);
+            if (!server) {
+                return {
+                    isValid: false,
+                    authStatus: 'failed',
+                    error: 'Server not found',
+                    canConnect: false
+                };
+            }
+
+            // Get appropriate provider
+            const provider = this.getProviderForUrl(server.baseUrl);
+            if (!provider) {
+                return {
+                    isValid: false,
+                    authStatus: 'failed',
+                    error: 'Unsupported server provider',
+                    canConnect: false
+                };
+            }
+
+            // Test authentication
+            const result = await provider.instance.testAuthentication(server, credentials);
+
+            return result;
+        } catch (error: any) {
+            return {
+                isValid: false,
+                authStatus: 'failed',
+                error: error.message,
+                canConnect: false
+            };
+        }
+    }
+
+    /**
+     * Validate repository access
+     */
+    async validateRepositoryAccess(repositoryUrl: string, serverId?: string): Promise<GitValidationResult> {
+        try {
+            // Parse repository URL
+            const parsed = gitUrlParse(repositoryUrl);
+
+            // Find server and credentials
+            const { server, credentials } = await this.getServerAndCredentials(repositoryUrl, serverId);
+
+            if (!server || !credentials) {
+                return {
+                    isValid: false,
+                    authStatus: 'failed',
+                    error: 'No server configuration or credentials found',
+                    canConnect: false,
+                    requiresAuth: true
+                };
+            }
+
+            // Get appropriate provider
+            const provider = this.getProviderForUrl(server.baseUrl);
+            if (!provider) {
+                return {
+                    isValid: false,
+                    authStatus: 'failed',
+                    error: 'Unsupported server provider',
+                    canConnect: false,
+                    requiresAuth: true
+                };
+            }
+
+            // Test repository access - only pass 3 parameters
+            const hasAccess = await provider.instance.testRepositoryAccess(server, credentials, repositoryUrl);
+
+            return {
+                isValid: hasAccess,
+                authStatus: hasAccess ? 'success' : 'failed',
+                error: hasAccess ? undefined : 'Repository access denied',
+                canConnect: hasAccess,
+                requiresAuth: !hasAccess
+            };
+        } catch (error: any) {
+            return {
+                isValid: false,
+                authStatus: 'failed',
+                error: error.message,
+                canConnect: false,
+                requiresAuth: true
             };
         }
     }

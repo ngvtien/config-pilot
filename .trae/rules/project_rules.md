@@ -1,3 +1,6 @@
+- Be pragmatic
+- Do not overengineer the solution
+- Always check current codebase to avoid reinventing the wheel or bloatin up the codebase
 - Practice TDD
 - Comment on code
 - Max 600 lines

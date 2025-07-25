@@ -184,6 +184,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
       'git:createRepository',
       'git:createEnvironmentBranches',
+      'git:setDefaultBranch',
 
     ]
     if (validChannels.includes(channel)) {
@@ -413,7 +414,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
     deleteComponent: (id: string) => ipcRenderer.invoke('productComponent:deleteComponent', id)
   },
 
-  // Unified Git API
   git: {
     // Server Management
     getServers: () => ipcRenderer.invoke('git:getServers'),
@@ -445,16 +445,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     resolveMergeConflicts: (resolvedFiles: string[]) => ipcRenderer.invoke('git:resolveMergeConflicts', resolvedFiles),
     abortMerge: () => ipcRenderer.invoke('git:abortMerge'),
     prepareMergeRequest: (sourceBranch: string, targetBranch: string, title: string, description?: string) => ipcRenderer.invoke('git:prepareMergeRequest', sourceBranch, targetBranch, title, description),
-    createEnvironmentBranches: (repositoryUrl: string, environments: string[]) => ipcRenderer.invoke('git:createEnvironmentBranches', repositoryUrl, environments)
+    createEnvironmentBranches: (repositoryUrl: string, environments: string[]) => ipcRenderer.invoke('git:createEnvironmentBranches', repositoryUrl, environments),
+    setDefaultBranch: (repositoryUrl: string, branchName: string) => ipcRenderer.invoke('git:setDefaultBranch', repositoryUrl, branchName)
   },
-  // Legacy Git Auth API - Keep for backward compatibility
-  // 'git-auth': {
-  //   getServers: () => ipcRenderer.invoke('git-auth:getServers'),
-  //   saveServer: (server: any) => ipcRenderer.invoke('git-auth:saveServer', server),
-  //   removeServer: (serverId: string) => ipcRenderer.invoke('git-auth:removeServer', serverId),
-  //   authenticateToServer: (serverId: string, credentials: any) => ipcRenderer.invoke('git-auth:authenticateToServer', serverId, credentials),
-  //   getServerAuthStatus: (serverId: string) => ipcRenderer.invoke('git-auth:getServerAuthStatus', serverId),
-  //   testRepositoryAccess: (repositoryUrl: string, serverId: string) => ipcRenderer.invoke('git-auth:testRepositoryAccess', repositoryUrl, serverId)
-  // },
-
 })

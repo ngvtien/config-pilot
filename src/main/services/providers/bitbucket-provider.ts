@@ -1,4 +1,5 @@
 import { GitServerConfig, GitServerCredentials, GitServerValidationResult } from '../../../shared/types/git-repository';
+import gitUrlParse from 'git-url-parse';
 
 /**
  * Bitbucket on-premise provider implementation for simple authentication
@@ -85,16 +86,12 @@ export class BitbucketProvider {
    */
   async testRepositoryAccess(server: GitServerConfig, credentials: GitServerCredentials, repositoryUrl: string): Promise<boolean> {
     try {
-      // Extract project and repo from URL
-      const urlParts = repositoryUrl.replace(server.baseUrl, '').split('/');
-      const project = urlParts[2]; // /scm/PROJECT/repo.git
-      const repo = urlParts[3]?.replace('.git', '');
-
-      if (!project || !repo) {
+      const repoInfo = this.extractRepoInfoFromUrl(repositoryUrl);
+      if (!repoInfo.project || !repoInfo.repo) {
         return false;
       }
 
-      const apiUrl = `${server.baseUrl}/rest/api/1.0/projects/${project}/repos/${repo}`;
+      const apiUrl = `${server.baseUrl}/rest/api/1.0/projects/${repoInfo.project}/repos/${repoInfo.repo}`;
       const headers: Record<string, string> = {
         'Content-Type': 'application/json'
       };
@@ -119,12 +116,43 @@ export class BitbucketProvider {
   }
 
   /**
-   * Create repository using Bitbucket Server API
+   * Extract repository information from Bitbucket URL
+   */
+  private extractRepoInfoFromUrl(url: string): { project: string; repo: string } {
+    try {
+      const parsed = gitUrlParse(url);
+
+      // Handle Bitbucket Server URLs which typically have /scm/PROJECT/repo.git format
+      if (parsed.pathname.includes('/scm/')) {
+        const pathParts = parsed.pathname.split('/');
+        const scmIndex = pathParts.indexOf('scm');
+        if (scmIndex >= 0 && pathParts.length > scmIndex + 2) {
+          return {
+            project: pathParts[scmIndex + 1],
+            repo: pathParts[scmIndex + 2].replace('.git', '')
+          };
+        }
+      }
+
+      // Fallback to standard git-url-parse owner/name
+      return {
+        project: parsed.owner || '',
+        repo: parsed.name || ''
+      };
+    } catch (error) {
+      console.error('Failed to parse Bitbucket repository URL:', error);
+      return { project: '', repo: '' };
+    }
+  }
+
+  /**
+   * Create repository using Bitbucket Server API with project support
    */
   async createRepository(server: GitServerConfig, credentials: GitServerCredentials, config: any): Promise<any> {
     try {
-      // Bitbucket requires a project key, use a default or extract from config
-      const projectKey = config.projectKey || 'DEFAULT';
+      const repoInfo = this.extractRepoInfoFromUrl(config.url);
+      const projectKey = repoInfo.project || config.projectKey || 'DEFAULT';
+
       const apiUrl = `${server.baseUrl}/rest/api/1.0/projects/${projectKey}/repos`;
 
       const headers: Record<string, string> = {
@@ -139,11 +167,13 @@ export class BitbucketProvider {
         headers['Authorization'] = `Basic ${auth}`;
       }
 
+      console.log(`Creating Bitbucket repository in project ${projectKey} at ${apiUrl}`);
+
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          name: config.name,
+          name: repoInfo.repo || config.name,
           description: config.description || '',
           public: !config.isPrivate,
           scmId: 'git'
@@ -151,12 +181,81 @@ export class BitbucketProvider {
       });
 
       if (response.ok) {
-        return await response.json();
+        const repoData = await response.json();
+        console.log('Bitbucket repository created successfully:', repoData.name);
+        return repoData;
+      } else if (response.status === 409) {
+        // Repository already exists - try to fetch existing repository info
+        console.warn(`Repository ${projectKey}/${repoInfo.repo} already exists, attempting to fetch existing repository info`);
+
+        try {
+          const existingRepoUrl = `${server.baseUrl}/rest/api/1.0/projects/${projectKey}/repos/${repoInfo.repo}`;
+          const existingResponse = await fetch(existingRepoUrl, {
+            method: 'GET',
+            headers,
+          });
+
+          if (existingResponse.ok) {
+            const existingRepo = await existingResponse.json();
+            console.log('Found existing Bitbucket repository:', existingRepo.name);
+            return existingRepo;
+          } else {
+            throw new Error(`Repository ${projectKey}/${repoInfo.repo} exists but cannot be accessed. You may not have sufficient permissions.`);
+          }
+        } catch (fetchError: any) {
+          throw new Error(`Repository ${projectKey}/${repoInfo.repo} already exists but cannot be accessed: ${fetchError.message}`);
+        }
       } else {
-        throw new Error(`Failed to create repository: ${response.status} ${response.statusText}`);
+        const errorText = await response.text();
+        throw new Error(`Failed to create repository: ${response.status} ${response.statusText} - ${errorText}`);
       }
     } catch (error: any) {
       throw new Error(`Bitbucket repository creation failed: ${error.message}`);
     }
   }
+
+  /**
+   * Set the default branch for a Bitbucket repository
+   * Uses Bitbucket Server REST API v1.0
+   */
+  async setDefaultBranch(project: string, repo: string, branchName: string, server: GitServerConfig, credentials: GitServerCredentials): Promise<void> {
+    try {
+      // Bitbucket Server API endpoint for updating repository settings
+      const apiUrl = `${server.baseUrl}/rest/api/1.0/projects/${project}/repos/${repo}`;
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      };
+
+      // Add authentication header
+      if (credentials.method === 'token' && credentials.token && credentials.username) {
+        const auth = Buffer.from(`${credentials.username}:${credentials.token}`).toString('base64');
+        headers['Authorization'] = `Basic ${auth}`;
+      } else if (credentials.method === 'credentials' && credentials.username && credentials.password) {
+        const auth = Buffer.from(`${credentials.username}:${credentials.password}`).toString('base64');
+        headers['Authorization'] = `Basic ${auth}`;
+      } else {
+        throw new Error('Invalid authentication method or missing credentials');
+      }
+
+      const response = await fetch(apiUrl, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({
+          defaultBranch: branchName
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to set default branch: ${response.status} ${response.statusText} - ${errorText}`);
+      }
+
+      console.log(`✅ Successfully set default branch to '${branchName}' for ${project}/${repo}`);
+    } catch (error: any) {
+      throw new Error(`Bitbucket setDefaultBranch failed: ${error.message}`);
+    }
+  }
+
 }

@@ -5,8 +5,7 @@ import { Input } from "@/renderer/components/ui/input"
 import { Label } from "@/renderer/components/ui/label"
 import { Alert, AlertDescription } from "@/renderer/components/ui/alert"
 import { XCircle, Eye, EyeOff, Shield, Key } from "lucide-react"
-import { credentialManager, type GitCredentials } from "@/renderer/services/credential-manager.service"
-import { type GitServerCredentials } from '../services/credential-manager.service'
+import { gitCredentialManager, type GitCredentials, type GitServerCredentials } from "@/renderer/services/git-credential-manager"
 
 interface GitRepository {
   id: string
@@ -64,13 +63,12 @@ export function AuthenticationModal({ isOpen, repository, onClose, onSuccess, co
       }
 
       const serverUrl = new URL(repository.url)
-      const serverId = `${serverUrl.hostname}-${authMethod}`
 
       // First, save the server configuration
       const serverConfig = {
         name: `${serverUrl.hostname} (${authMethod})`,
         baseUrl: serverUrl.origin,
-        type: 'gitea' as const, // or detect based on URL
+        provider: 'gitea' as const, // or detect based on URL
         description: `Auto-configured server for ${serverUrl.hostname}`
       }
 
@@ -125,10 +123,10 @@ export function AuthenticationModal({ isOpen, repository, onClose, onSuccess, co
       if (authSuccess) {
         // Store server credentials if requested
         if (rememberCredentials) {
-          await credentialManager.storeServerCredentials(serverCredentials, true)
+          await gitCredentialManager.storeServerCredentials(serverCredentials, true)
         } else {
           // Store in session only
-          await credentialManager.storeServerCredentials(serverCredentials, false)
+          await gitCredentialManager.storeServerCredentials(serverCredentials, false)
         }
 
         onSuccess(serverCredentials)
@@ -215,7 +213,7 @@ export function AuthenticationModal({ isOpen, repository, onClose, onSuccess, co
         </div>
 
         {/* Secure Storage Info */}
-        {credentialManager.isSecureStorageAvailable() && (
+        {gitCredentialManager.isSecureStorageAvailable() && (
           <Alert className="mb-4">
             <Shield className="h-4 w-4" />
             <AlertDescription className="text-xs">
@@ -349,7 +347,7 @@ export function AuthenticationModal({ isOpen, repository, onClose, onSuccess, co
           )}
 
           {/* Remember Credentials Option */}
-          {credentialManager.isSecureStorageAvailable() && (
+          {gitCredentialManager.isSecureStorageAvailable() && (
             <div className="flex items-center space-x-2">
               <input
                 type="checkbox"
