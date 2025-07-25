@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Input } from '../ui/input';
 import { Button } from '../ui/button';
 import { Label } from '../ui/label';
@@ -35,11 +35,21 @@ export const SimpleRepositoryInput: React.FC<SimpleRepositoryInputProps> = ({
     const [isCreatingBranches, setIsCreatingBranches] = useState(false);
     const [createdBranches, setCreatedBranches] = useState<string[]>([]);
     const [validationError, setValidationError] = useState<string>('');
+    const [isRepositoryCreated, setIsRepositoryCreated] = useState(false);
+    
+    // Use refs to track timeouts and prevent race conditions
+    const validationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const revalidationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     /**
      * Validate repository URL format and accessibility
      */
-    const validateRepository = async (url: string) => {
+    const validateRepository = async (url: string, skipIfCreated = false) => {
+        // Skip validation if repository was just created to prevent race condition
+        if (skipIfCreated && isRepositoryCreated) {
+            return;
+        }
+
         if (!url) {
             setValidationStatus('idle');
             setValidationError('');
@@ -82,13 +92,17 @@ export const SimpleRepositoryInput: React.FC<SimpleRepositoryInputProps> = ({
     const handleUrlChange = (newUrl: string) => {
         onChange?.(newUrl);
         setCreatedBranches([]); // Reset branch status when URL changes
+        setIsRepositoryCreated(false); // Reset repository created flag
+
+        // Clear existing timeout
+        if (validationTimeoutRef.current) {
+            clearTimeout(validationTimeoutRef.current);
+        }
 
         // Debounced validation
-        const timeoutId = setTimeout(() => {
-            validateRepository(newUrl);
+        validationTimeoutRef.current = setTimeout(() => {
+            validateRepository(newUrl, true); // Skip if repository was just created
         }, 500);
-
-        return () => clearTimeout(timeoutId);
     };
 
     /**
@@ -98,7 +112,14 @@ export const SimpleRepositoryInput: React.FC<SimpleRepositoryInputProps> = ({
         if (!value) return;
 
         setIsCreatingRepo(true);
-        // Don't clear validation error yet - wait until everything succeeds
+        
+        // Clear any pending validation timeouts to prevent race conditions
+        if (validationTimeoutRef.current) {
+            clearTimeout(validationTimeoutRef.current);
+        }
+        if (revalidationTimeoutRef.current) {
+            clearTimeout(revalidationTimeoutRef.current);
+        }
 
         try {
             // Extract repository name from URL
@@ -173,20 +194,17 @@ export const SimpleRepositoryInput: React.FC<SimpleRepositoryInputProps> = ({
 
             console.log('✅ Default branch set to dev');
 
-            // Only NOW clear validation errors and set status to valid - after ALL operations succeed
+            // Mark repository as created and set validation status
+            setIsRepositoryCreated(true);
             setValidationStatus('valid');
             setValidationError('');
             console.log('✅ Complete repository setup workflow finished successfully');
-
-            // Optional: Re-validate after a delay to double-check
-            setTimeout(async () => {
-                await validateRepository(value);
-            }, 3000);
 
         } catch (error: any) {
             console.error('Repository creation workflow failed:', error);
             setValidationError(`Repository setup failed: ${error.message}`);
             setValidationStatus('invalid');
+            setIsRepositoryCreated(false);
             // Reset created branches on failure
             setCreatedBranches([]);
         } finally {
@@ -195,8 +213,8 @@ export const SimpleRepositoryInput: React.FC<SimpleRepositoryInputProps> = ({
     };
 
     /**
-         * Create repository and environment branches workflow
-         */
+     * Create repository and environment branches workflow
+     */
     const handleCreateBranches = async () => {
         if (!value) return;
 
@@ -210,12 +228,7 @@ export const SimpleRepositoryInput: React.FC<SimpleRepositoryInputProps> = ({
             if (validationStatus !== 'valid') {
                 console.log('Repository does not exist, creating it first...');
                 await handleCreateRepository();
-
-                // Wait a moment for repository creation to complete
-                await new Promise(resolve => setTimeout(resolve, 2000));
-
-                // Re-validate the repository
-                await validateRepository(value);
+                return; // handleCreateRepository already handles everything
             }
 
             // Step 2: Create environment branches
@@ -265,6 +278,18 @@ export const SimpleRepositoryInput: React.FC<SimpleRepositoryInputProps> = ({
         return `${baseUrl}/your-org/your-repo.git`;
     };
 
+    // Cleanup timeouts on unmount
+    useEffect(() => {
+        return () => {
+            if (validationTimeoutRef.current) {
+                clearTimeout(validationTimeoutRef.current);
+            }
+            if (revalidationTimeoutRef.current) {
+                clearTimeout(revalidationTimeoutRef.current);
+            }
+        };
+    }, []);
+
     return (
         <div className={`space-y-4 ${className}`}>
             {/* Repository URL Input */}
@@ -299,7 +324,7 @@ export const SimpleRepositoryInput: React.FC<SimpleRepositoryInputProps> = ({
             </div>
 
             {/* Repository Creation */}
-            {validationStatus === 'invalid' && value && (
+            {validationStatus === 'invalid' && value && !isRepositoryCreated && (
                 <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md p-4">
                     <div className="flex items-center justify-between mb-3">
                         <div>
