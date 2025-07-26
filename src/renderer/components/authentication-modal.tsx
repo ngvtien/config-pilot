@@ -5,7 +5,7 @@ import { Input } from "@/renderer/components/ui/input"
 import { Label } from "@/renderer/components/ui/label"
 import { Alert, AlertDescription } from "@/renderer/components/ui/alert"
 import { XCircle, Eye, EyeOff, Shield, Key } from "lucide-react"
-import { credentialManager, type GitCredentials } from "@/renderer/services/credential-manager.service"
+import { gitCredentialManager, type GitCredentials, type GitServerCredentials } from "@/renderer/services/git-credential-manager"
 
 interface GitRepository {
   id: string
@@ -62,10 +62,31 @@ export function AuthenticationModal({ isOpen, repository, onClose, onSuccess, co
         return
       }
 
-      const credentials: GitCredentials = {
+      const serverUrl = new URL(repository.url)
+
+      // First, save the server configuration
+      const serverConfig = {
+        name: `${serverUrl.hostname} (${authMethod})`,
+        baseUrl: serverUrl.origin,
+        provider: 'gitea' as const, // or detect based on URL
+        description: `Auto-configured server for ${serverUrl.hostname}`
+      }
+
+      let savedServer
+      try {
+        savedServer = await window.electronAPI?.git?.saveServer(serverConfig)
+        console.log('Server saved:', savedServer)
+      } catch (error) {
+        console.error('Failed to save server:', error)
+        setError('Failed to configure server. Please try again.')
+        return
+      }
+
+      // Create server credentials with the saved server ID
+      const serverCredentials: GitServerCredentials = {
         method: authMethod,
-        url: repository.url,
-        repoId: repository.id,
+        serverUrl: serverUrl.origin,
+        serverId: savedServer.id, // Use the actual server ID from saved server
         ...(authMethod === "token" && { token: authForm.token }),
         ...(authMethod === "credentials" && {
           username: authForm.username,
@@ -74,13 +95,25 @@ export function AuthenticationModal({ isOpen, repository, onClose, onSuccess, co
         ...(authMethod === "ssh" && { sshKeyPath: authForm.sshKeyPath }),
       }
 
-      // Test the credentials first
+      console.log('Testing server credentials:', serverCredentials)
+
+      // Test the credentials using the git-auth service
       let authSuccess = false
-      if (window.electronAPI?.testGitCredentials) {
-        authSuccess = await window.electronAPI.testGitCredentials({
-          url: repository.url,
-          credentials: credentials,
-        })
+      if (window.electronAPI?.git?.authenticateToServer) {
+        try {
+          const result = await window.electronAPI.git.authenticateToServer(savedServer.id, serverCredentials)
+          authSuccess = result.isValid
+          console.log('Authentication result:', result)
+
+          if (!authSuccess && result.error) {
+            setError(`Authentication failed: ${result.error}`)
+            return
+          }
+        } catch (error) {
+          console.error('Authentication error:', error)
+          setError('Authentication failed. Please check your credentials.')
+          return
+        }
       } else {
         // Fallback simulation for development
         await new Promise((resolve) => setTimeout(resolve, 1500))
@@ -88,24 +121,24 @@ export function AuthenticationModal({ isOpen, repository, onClose, onSuccess, co
       }
 
       if (authSuccess) {
-        // Store credentials if requested
+        // Store server credentials if requested
         if (rememberCredentials) {
-          await credentialManager.storeCredentials(credentials, true)
+          await gitCredentialManager.storeServerCredentials(serverCredentials, true)
         } else {
           // Store in session only
-          await credentialManager.storeCredentials(credentials, false)
+          await gitCredentialManager.storeServerCredentials(serverCredentials, false)
         }
 
-        onSuccess(credentials)
+        onSuccess(serverCredentials)
 
         // Reset form
         setAuthForm({ username: "", password: "", token: "", sshKeyPath: "" })
       } else {
-        setError("Authentication failed. Please check your credentials and try again.")
+        setError("Authentication failed. Please check your credentials.")
       }
     } catch (error) {
       console.error("Authentication error:", error)
-      setError("Authentication failed. Please check your credentials and repository access.")
+      setError("An unexpected error occurred. Please try again.")
     } finally {
       setIsAuthenticating(false)
     }
@@ -180,7 +213,7 @@ export function AuthenticationModal({ isOpen, repository, onClose, onSuccess, co
         </div>
 
         {/* Secure Storage Info */}
-        {credentialManager.isSecureStorageAvailable() && (
+        {gitCredentialManager.isSecureStorageAvailable() && (
           <Alert className="mb-4">
             <Shield className="h-4 w-4" />
             <AlertDescription className="text-xs">
@@ -314,7 +347,7 @@ export function AuthenticationModal({ isOpen, repository, onClose, onSuccess, co
           )}
 
           {/* Remember Credentials Option */}
-          {credentialManager.isSecureStorageAvailable() && (
+          {gitCredentialManager.isSecureStorageAvailable() && (
             <div className="flex items-center space-x-2">
               <input
                 type="checkbox"

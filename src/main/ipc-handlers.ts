@@ -23,10 +23,272 @@ import { templateManager } from "./template-manager";
 import { templateService } from "./services/template-service";
 import { CustomerService } from './services/customer-service'
 import { ProductService } from './services/product-service'
+import { gitService } from './services/git-service';
+//import { GitRepositoryStore } from './services/git-repository-store';
+import { GitRepository, GitValidationResult, GitCredentials } from '../shared/types/git-repository';
+//import { GitAuthService } from './services/git-auth-service';
+//import { UnifiedGitService } from './services/unified-git-service';
+import { ProductComponentService } from './services/product-component-service'
 
 const execPromise = util.promisify(exec)
 
+// Unified Git Service - Single instance for all Git operations
+//const unifiedGitService = new UnifiedGitService();
+
+// Legacy services - Keep for backward compatibility during migration
+// const gitAuthService = new GitAuthService();
+// const gitRepositoryStore = new GitRepositoryStore();
+
 let platformDetectionService: PlatformDetectionService | null = null
+
+/**
+ * Register unified Git handlers that consolidate server and repository management
+ */
+export function registerUnifiedGitHandlers() {
+  // Server Management
+  ipcMain.handle('git:getServers', async () => {
+    try {
+      return await gitService.getServers();
+    } catch (error: any) {
+      throw new Error(`Failed to get servers: ${error.message}`);
+    }
+  });
+
+  ipcMain.handle('git:saveServer', async (_, server) => {
+    try {
+      return await gitService.saveServer(server);
+    } catch (error: any) {
+      throw new Error(`Failed to save server: ${error.message}`);
+    }
+  });
+
+  ipcMain.handle('git:authenticateServer', async (_, serverId: string, credentials) => {
+    try {
+      return await gitService.authenticateServer(serverId, credentials);
+    } catch (error: any) {
+      throw new Error(`Failed to authenticate to server: ${error.message}`);
+    }
+  });
+
+  // Repository Management with Server Integration
+  ipcMain.handle('git:getRepositories', async (): Promise<GitRepository[]> => {
+    try {
+      return await gitService.getRepositories();
+    } catch (error: any) {
+      console.error('Failed to get repositories:', error);
+      return [];
+    }
+  });
+
+  ipcMain.handle('git:saveRepository', async (_, repository: GitRepository): Promise<GitRepository> => {
+    try {
+      return await gitService.saveRepository(repository);
+    } catch (error: any) {
+      console.error('Failed to save repository:', error);
+      throw new Error(`Failed to save repository: ${error.message}`);
+    }
+  });
+
+  ipcMain.handle('git:validateRepositoryAccess', async (_, url: string, serverId: string): Promise<GitValidationResult> => {
+    try {
+      return await gitService.validateRepositoryAccess(url, serverId);
+    } catch (error: any) {
+      console.error('Failed to validate repository access:', error);
+      return {
+        isValid: false,
+        error: error.message || 'Validation failed',
+        canConnect: false,
+        requiresAuth: true
+      };
+    }
+  });
+
+  ipcMain.handle('git:createRepository', async (_, config, serverId?: string) => {
+    try {
+      return await gitService.createRepository(config, serverId);
+    } catch (error: any) {
+      console.error('Error occurred in handler for \'git:createRepository\':', error);
+      throw error;
+    }
+  });
+
+  // ipcMain.handle('git:createRepository', async (_, config: any, serverId: string): Promise<GitRepository> => {
+  //   try {
+  //     return await gitService.createRepository(config, serverId);
+  //   } catch (error: any) {
+  //     console.error('Failed to create repository:', error);
+  //     throw new Error(`Failed to create repository: ${error.message}`);
+  //   }
+  // });
+
+  // Health Check
+  // ipcMain.handle('git:checkHealth', async () => {
+  //   try {
+  //     return await gitService.checkAllRepositoriesHealth();
+  //   } catch (error: any) {
+  //     console.error('Failed to check Git health:', error);
+  //     throw new Error(`Failed to check Git health: ${error.message}`);
+  //   }
+  // });
+
+  // Legacy Git Operations (keep existing functionality)
+  ipcMain.handle('git:clone', async (_, repoUrl: string, localPath: string, credentialId?: string) => {
+    try {
+      return await gitService.cloneRepository(repoUrl, localPath, credentialId);
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('git:prepareCustomerBranch', async (_, customer: string, env: string) => {
+    try {
+      return await gitService.checkoutCustomerBranch(customer, env);
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('git:getCustomerOverrides', async (_, customer: string, env: string) => {
+    try {
+      return await gitService.getCustomerOverrides(customer, env);
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('git:updateCustomerOverrides', async (_, customer: string, env: string, values: string) => {
+    try {
+      return await gitService.updateCustomerOverrides(customer, env, values);
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('git:commitYamlToGit', async (_, filePath: string, content: string, commitMessage: string, credentialId?: string) => {
+    try {
+      return await gitService.commitYamlToGit(filePath, content, commitMessage, credentialId);
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('git:push', async (_, remote?: string, branch?: string, credentialId?: string) => {
+    try {
+      return await gitService.pushChanges(remote, branch, credentialId);
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('git:pull', async (_, remote?: string, branch?: string, credentialId?: string) => {
+    try {
+      return await gitService.pullChanges(remote, branch, credentialId);
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('git:status', async () => {
+    try {
+      return await gitService.getStatus();
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('git:getCommitHistory', async (_, maxCount?: number) => {
+    try {
+      return await gitService.getCommitHistory(maxCount);
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('git:merge', async (_, branchName: string, options?: { noFf?: boolean, squash?: boolean }) => {
+    try {
+      return await gitService.mergeBranch(branchName, options);
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('git:mergeCustomerBranch', async (_, customer: string, env: string, targetBranch: string) => {
+    try {
+      return await gitService.mergeCustomerBranch(customer, env, targetBranch);
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('git:checkMergeConflicts', async (_, branchName: string) => {
+    try {
+      return await gitService.checkMergeConflicts(branchName);
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('git:resolveMergeConflicts', async (_, resolvedFiles: string[]) => {
+    try {
+      return await gitService.resolveMergeConflicts(resolvedFiles);
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('git:abortMerge', async () => {
+    try {
+      return await gitService.abortMerge();
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('git:prepareMergeRequest', async (_, sourceBranch: string, targetBranch: string, title: string, description?: string) => {
+    try {
+      return await gitService.prepareMergeRequest(sourceBranch, targetBranch, title, description);
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('git:createEnvironmentBranches', async (_, repositoryUrl: string, environments: string[]): Promise<{ success: boolean; createdBranches: string[]; errors: any[] }> => {
+    try {
+      const result = await gitService.createEnvironmentBranches(repositoryUrl, environments);
+      return result;
+    } catch (error: any) {
+      console.error('Failed to create environment branches:', error);
+      throw new Error(`Failed to create environment branches: ${error.message}`);
+    }
+  });
+
+  // ipcMain.handle('git:removeRepository', async (_, repositoryId: string): Promise<void> => {
+  //   try {
+  //     return await gitService.removeRepository(repositoryId);
+  //   } catch (error: any) {
+  //     console.error('Failed to remove repository:', error);
+  //     throw new Error(`Failed to remove repository: ${error.message}`);
+  //   }
+  // });
+
+  // ipcMain.handle('git:removeServer', async (_, serverId: string): Promise<void> => {
+  //   try {
+  //     return await gitService.removeServer(serverId);
+  //   } catch (error: any) {
+  //     console.error('Failed to remove server:', error);
+  //     throw new Error(`Failed to remove server: ${error.message}`);
+  //   }
+  // });
+
+  ipcMain.handle('git:setDefaultBranch', async (_, repositoryUrl: string, branchName: string) => {
+    try {
+      return await gitService.setDefaultBranch(repositoryUrl, branchName);
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+}
 
 export function registerProductHandlers() {
   // Initialize product service
@@ -127,6 +389,58 @@ export function registerProductHandlers() {
     return result.canceled ? null : result.filePaths[0]
   })
 }
+
+// export function registerGitAuthHandlers() {
+//   // Server management
+//   ipcMain.handle('git-auth:getServers', async () => {
+//     try {
+//       return gitAuthService.getServers();
+//     } catch (error: any) {
+//       throw new Error(`Failed to get servers: ${error.message}`);
+//     }
+//   });
+
+//   ipcMain.handle('git-auth:saveServer', async (_, server) => {
+//     try {
+//       return await gitAuthService.saveServer(server);
+//     } catch (error: any) {
+//       throw new Error(`Failed to save server: ${error.message}`);
+//     }
+//   });
+
+//   ipcMain.handle('git-auth:removeServer', async (_, serverId: string) => {
+//     try {
+//       return await gitAuthService.removeServer(serverId);
+//     } catch (error: any) {
+//       throw new Error(`Failed to remove server: ${error.message}`);
+//     }
+//   });
+
+//   // Authentication
+//   ipcMain.handle('git-auth:authenticateToServer', async (_, serverId: string, credentials) => {
+//     try {
+//       return await gitAuthService.authenticateToServer(serverId, credentials);
+//     } catch (error: any) {
+//       throw new Error(`Failed to authenticate to server: ${error.message}`);
+//     }
+//   });
+
+//   ipcMain.handle('git-auth:getServerAuthStatus', async (_, serverId: string) => {
+//     try {
+//       return gitAuthService.getServerAuthStatus(serverId);
+//     } catch (error: any) {
+//       throw new Error(`Failed to get server auth status: ${error.message}`);
+//     }
+//   });
+
+//   ipcMain.handle('git-auth:testRepositoryAccess', async (_, repositoryUrl: string, serverId: string) => {
+//     try {
+//       return await gitAuthService.testRepositoryAccess(repositoryUrl, serverId);
+//     } catch (error: any) {
+//       throw new Error(`Failed to test repository access: ${error.message}`);
+//     }
+//   });
+// }
 
 /**
  * Initialize schema service handlers
@@ -240,6 +554,71 @@ export function initializeSchemaHandlers(): void {
     return schemaService.getRawCRDSchema(cacheKey);
   });
 
+}
+
+/**
+ * Register Git-related IPC handlers
+ */
+export function registerGitHandlers() {
+
+}
+
+export function registerProductComponentHandlers() {
+  // Initialize component service
+  ipcMain.handle('productComponent:initialize', async () => {
+    try {
+      await ProductComponentService.initialize()
+      return { success: true }
+    } catch (error: any) {
+      throw new Error(`Failed to initialize component service: ${error.message}`)
+    }
+  })
+
+  // Get all components
+  ipcMain.handle('productComponent:getAllComponents', async () => {
+    try {
+      return await ProductComponentService.getAllComponents()
+    } catch (error: any) {
+      throw new Error(`Failed to get components: ${error.message}`)
+    }
+  })
+
+  // Get components by product
+  ipcMain.handle('productComponent:getComponentsByProduct', async (_, productName: string) => {
+    try {
+      return await ProductComponentService.getComponentsByProduct(productName)
+    } catch (error: any) {
+      throw new Error(`Failed to get components for product: ${error.message}`)
+    }
+  })
+
+  // Create component
+  ipcMain.handle('productComponent:createComponent', async (_, component) => {
+    try {
+      return await ProductComponentService.createComponent(component)
+    } catch (error: any) {
+      throw new Error(`Failed to create component: ${error.message}`)
+    }
+  })
+
+  // Update component
+  ipcMain.handle('productComponent:updateComponent', async (_, id: string, updates) => {
+    try {
+      return await ProductComponentService.updateComponent(id, updates)
+    } catch (error: any) {
+      throw new Error(`Failed to update component: ${error.message}`)
+    }
+  })
+
+  // Delete component
+  ipcMain.handle('productComponent:deleteComponent', async (_, id: string) => {
+    try {
+      await ProductComponentService.deleteComponent(id)
+      return { success: true }
+    } catch (error: any) {
+      throw new Error(`Failed to delete component: ${error.message}`)
+    }
+  })
 }
 
 /**
@@ -1109,9 +1488,9 @@ export function setupIpcHandlers(): void {
   // ipcMain.handle('template:getPreview', async (_, templateId: string, context: any) => {
   //   return await templateService.generatePreview(templateId, context)
   // })
- 
+
   // Register customer handlers
-  registerCustomerHandlers()  
+  registerCustomerHandlers()
 
   // Register product handlers
   registerProductHandlers()

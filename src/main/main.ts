@@ -1,7 +1,7 @@
 import { app, BrowserWindow, nativeTheme, screen, session, ipcMain } from 'electron';
 import Store from 'electron-store';
 import path from 'path';
-import { initializeSchemaHandlers, setupIpcHandlers } from './ipc-handlers';
+import { initializeSchemaHandlers, setupIpcHandlers, registerProductComponentHandlers, registerUnifiedGitHandlers } from './ipc-handlers';
 import waitOn from 'wait-on';
 import { initK8sService } from './k8s-service-client';
 import { templateManager } from './template-manager';
@@ -136,6 +136,8 @@ app.whenReady().then(async () => {
   const savedConfigPath = store.get('kubeConfigPath') as string | undefined;
   setupIpcHandlers();
   initializeSchemaHandlers();
+  registerUnifiedGitHandlers();
+  registerProductComponentHandlers();
 
   // template service initialization
   await templateManager.initialize();

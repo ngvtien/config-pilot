@@ -882,7 +882,7 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
                 <p className="text-sm text-muted-foreground mb-4">
                   Select your Kubernetes platform type or enable auto-detection.
                 </p>
-                
+
                 <div className="space-y-3">
                   <div className="flex items-center gap-4">
                     <Label className="font-medium min-w-[120px]">Platform:</Label>
@@ -899,7 +899,7 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
                         <SelectItem value="openshift">Red Hat OpenShift</SelectItem>
                       </SelectContent>
                     </Select>
-                    
+
                     <Button
                       variant="outline"
                       size="sm"
@@ -915,7 +915,7 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
                       Detect
                     </Button>
                   </div>
-                  
+
                   {/* Platform Detection Results */}
                   {platformInfo && (
                     <div className="bg-muted/50 rounded-lg p-4 mt-4">
@@ -927,7 +927,7 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
                         <p><strong>Type:</strong> {platformInfo.type === 'openshift' ? 'Red Hat OpenShift' : 'Vanilla Kubernetes'}</p>
                         {platformInfo.version && <p><strong>Version:</strong> {platformInfo.version}</p>}
                         <p><strong>Detected:</strong> {platformInfo.detectedAt.toLocaleString()}</p>
-                        
+
                         <div className="mt-3">
                           <p className="font-medium mb-2">Available Features:</p>
                           <div className="grid grid-cols-2 gap-1 text-xs">
@@ -1038,9 +1038,20 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
           setAuthModalRepo(null)
         }}
         onSuccess={(credentials) => {
-          console.log(credentials)
+          window.electronAPI?.logger?.debug('Authentication completed successfully', {
+            serverName: authModalRepo?.name,
+            serverUrl: authModalRepo?.url,
+            timestamp: new Date().toISOString(),
+            credentialsReceived: !!credentials
+          });
+          console.log('Credentials received:', credentials)
           if (authModalRepo) {
-            // Update repository auth status
+            window.electronAPI?.logger?.info('Updating repository authentication status', {
+              repositoryId: authModalRepo.id,
+              repositoryName: authModalRepo.name,
+              newStatus: 'success'
+            });
+                // Update repository auth status
             const updatedRepos = localSettings.gitRepositories.map((repo) =>
               repo.id === authModalRepo.id
                 ? {
@@ -1050,7 +1061,11 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
                 }
                 : repo,
             )
+            console.log('🔐 [SETTINGS-PAGE] Updated repositories list:', updatedRepos)
             handleSettingChange("gitRepositories", updatedRepos)
+            console.log('🔐 [SETTINGS-PAGE] Repository auth status updated successfully!')
+          } else {
+            console.log('🔐 [SETTINGS-PAGE] WARNING: No authModalRepo found, skipping repository update')
           }
           setAuthModalOpen(false)
           setAuthModalRepo(null)

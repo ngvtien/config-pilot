@@ -1,3 +1,16 @@
+// export interface GitRepository {
+//   id: string
+//   name: string
+//   url: string
+//   branch: string
+//   description: string
+//   permissions: GitRepositoryPermissions
+//   authStatus?: GitAuthStatus
+//   lastAuthCheck?: string
+//   tags?: string[]
+//   metadata?: GitRepositoryMetadata
+// }
+
 export interface GitRepository {
   id: string
   name: string
@@ -5,8 +18,12 @@ export interface GitRepository {
   branch: string
   description: string
   permissions: GitRepositoryPermissions
+  // Unified server integration
+  serverId: string // Required - links to GitServerConfig
+  serverName?: string // Display name for UI
   authStatus?: GitAuthStatus
   lastAuthCheck?: string
+  accessStatus?: GitRepositoryAccessStatus
   tags?: string[]
   metadata?: GitRepositoryMetadata
 }
@@ -100,4 +117,107 @@ export interface GitOperationOptions {
   branch?: string
   force?: boolean
   dryRun?: boolean
+}
+
+export interface GitValidationResult {
+  isValid: boolean
+  authStatus?: GitAuthStatus
+  error?: string
+  canConnect: boolean
+  requiresAuth: boolean
+  repositoryInfo?: RepositoryInfo
+}
+
+
+export interface RepositoryInfo {
+  name: string
+  description?: string
+  defaultBranch: string
+  isPrivate: boolean
+  size: number
+  language?: string
+  topics: string[]
+}
+
+export interface GitServerConfig {
+  id: string
+  name: string
+  provider: 'github' | 'gitlab' | 'gitea' | 'bitbucket'
+  baseUrl: string // e.g., "https://github.com", "https://git.company.com"
+  isDefault?: boolean
+  description?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface GitServerCredentials {
+  serverId: string
+  method: "token" | "ssh" | "credentials"
+  token?: string
+  username?: string
+  password?: string
+  sshKeyPath?: string
+  sshPassphrase?: string
+  // Remove url and repoId as these are server-level, not repo-specific
+}
+
+export interface GitServerAuthStatus {
+  serverId: string
+  status: GitAuthStatus
+  lastCheck: string
+  error?: string
+  userInfo?: {
+    username: string
+    email?: string
+    name?: string
+  }
+}
+
+export interface GitRepositoryAccessStatus {
+  repositoryUrl: string
+  serverId: string
+  hasAccess: boolean
+  permissions: GitRepositoryPermissions
+  lastCheck: string
+  error?: string
+  accessLevel?: 'none' | 'read' | 'write' | 'admin' // Add missing property
+}
+
+export interface PermissionFilter {
+  role: 'developer' | 'devops' | 'operations';
+  level: 'full' | 'read-only' | 'dev-only' | 'any';
+}
+
+// Enhanced repository interface to include server association
+// export interface GitRepositoryEnhanced extends GitRepository {
+//   serverId?: string // Associate repository with a Git server
+//   serverName?: string // Display name for UI
+//   accessStatus?: GitRepositoryAccessStatus
+// }
+export interface GitRepositoryEnhanced extends Omit<GitRepository, 'serverId'> {
+  serverId?: string // Optional for enhanced version
+  serverName?: string // Display name for UI
+  accessStatus?: GitRepositoryAccessStatus
+}
+
+// Server validation result
+export interface GitServerValidationResult {
+  isValid: boolean
+  authStatus: GitAuthStatus
+  error?: string
+  canConnect: boolean
+  serverInfo?: {
+    version?: string
+    features?: string[]
+    userInfo?: {
+      username: string
+      email?: string
+      name?: string
+    }
+  }
+  userInfo?: { // Add for backward compatibility
+    username: string
+    email?: string
+    name?: string
+  }
 }
