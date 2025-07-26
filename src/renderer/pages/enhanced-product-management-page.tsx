@@ -12,21 +12,21 @@ import { Textarea } from '@/renderer/components/ui/textarea'
 import { Switch } from '@/renderer/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/renderer/components/ui/collapsible'
-import { 
-  Trash2, Edit, Plus, Download, Upload, Package, GitBranch, 
-  ChevronDown, ChevronRight, Component, Settings, Eye, EyeOff 
+import {
+  Trash2, Edit, Plus, Download, Upload, Package, GitBranch,
+  ChevronDown, ChevronRight, Component, Settings, Eye, EyeOff
 } from 'lucide-react'
 import type { Product } from '@/shared/types/product'
 import type { ProductComponent } from '@/shared/types/product-component'
-import { 
-  createNewProduct, 
+import {
+  createNewProduct,
   validateProduct,
   generateKubernetesNamespace,
   generateGitOpsFolderPath,
   generateApplicationSetName
 } from '@/shared/types/product'
 
-import { 
+import {
   createNewProductComponent,
   validateProductComponent,
   // generateKubernetesNamespace,
@@ -56,19 +56,19 @@ export function EnhancedProductManagementPage({ onNavigateBack }: EnhancedProduc
   const [components, setComponents] = useState<Record<string, ProductComponent[]>>({})
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set())
   const [isLoading, setIsLoading] = useState(true)
-  
+
   // Dialog state
   const [dialogMode, setDialogMode] = useState<DialogMode>(null)
   const [dialogAction, setDialogAction] = useState<DialogAction>('create')
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
   const [editingComponent, setEditingComponent] = useState<ProductComponent | null>(null)
   const [selectedProductForComponent, setSelectedProductForComponent] = useState<string>('')
-  
+
   // Form state
   const [productFormData, setProductFormData] = useState<Partial<Product>>({})
   const [componentFormData, setComponentFormData] = useState<Partial<ProductComponent>>({})
   const [errors, setErrors] = useState<string[]>([])
-  
+
   // Repository integration
   const { repositories, loading, error } = useRepositorySelector('developer')
   const { showConfirm, showAlert, AlertDialog, ConfirmDialog } = useDialog()
@@ -88,7 +88,7 @@ export function EnhancedProductManagementPage({ onNavigateBack }: EnhancedProduc
       const productResponse = await window.electronAPI?.product?.getAllProducts()
       if (productResponse?.products) {
         setProducts(productResponse.products)
-        
+
         // Load components for each product
         const componentData: Record<string, ProductComponent[]> = {}
         for (const product of productResponse.products) {
@@ -217,10 +217,10 @@ export function EnhancedProductManagementPage({ onNavigateBack }: EnhancedProduc
   const handleDeleteProduct = async (product: Product) => {
     const productComponents = components[product.name] || []
     const hasComponents = productComponents.length > 0
-    
+
     showConfirm({
       title: 'Delete Product',
-      message: hasComponents 
+      message: hasComponents
         ? `Product "${product.displayName || product.name}" has ${productComponents.length} component(s). Deleting the product will also delete all its components.\n\nThis action cannot be undone.`
         : `Are you sure you want to delete product "${product.displayName || product.name}"?\n\nThis action cannot be undone.`,
       variant: 'destructive',
@@ -264,6 +264,102 @@ export function EnhancedProductManagementPage({ onNavigateBack }: EnhancedProduc
         }
       }
     })
+  }
+
+  /**
+   * Handle exporting products
+   */
+  const handleExportProducts = async () => {
+    try {
+      const filePath = await window.electronAPI?.product?.showSaveDialog()
+      if (filePath) {
+        await window.electronAPI?.product?.exportProducts(filePath)
+        showAlert({
+          title: 'Success',
+          message: 'Products exported successfully!',
+          variant: 'success'
+        })
+      }
+    } catch (error: any) {
+      showAlert({
+        title: 'Error',
+        message: `Failed to export products: ${error.message}`,
+        variant: 'error'
+      })
+    }
+  }
+
+  /**
+   * Handle importing products
+   */
+  const handleImportProducts = async () => {
+    try {
+      const filePath = await window.electronAPI?.product?.showOpenDialog()
+      if (filePath) {
+        // Replace native confirm with showConfirm for merge mode selection
+        showConfirm({
+          title: 'Import Mode Selection',
+          message: `How would you like to import products from "${filePath}"?\n\n• Merge: Add new products and update existing ones\n• Replace: Replace all existing products`,
+          variant: 'default',
+          confirmText: 'Merge',
+          cancelText: 'Replace All',
+          onConfirm: async () => {
+            // User chose merge
+            await performImport(filePath, 'merge')
+          },
+          onCancel: async () => {
+            // User chose replace
+            await performImport(filePath, 'replace')
+          }
+        })
+      }
+    } catch (error: any) {
+      // Replace native alert with showAlert
+      showAlert({
+        title: 'Import Error',
+        message: `Failed to import products: ${error.message}`,
+        variant: 'error'
+      })
+    }
+  }
+
+  /**
+   * Helper function to perform the actual import operation
+   */
+  const performImport = async (filePath: string, mergeMode: 'merge' | 'replace') => {
+    try {
+      await window.electronAPI?.product?.importProducts(filePath, mergeMode)
+      await loadProducts()
+      // Replace native alert with showAlert
+      showAlert({
+        title: 'Import Success',
+        message: 'Products imported successfully!',
+        variant: 'success'
+      })
+    } catch (error: any) {
+      showAlert({
+        title: 'Import Error',
+        message: `Failed to import products: ${error.message}`,
+        variant: 'error'
+      })
+    }
+  }
+
+  /**
+   * Load all products from the service
+   */
+  const loadProducts = async () => {
+    setIsLoading(true)
+    try {
+      const response = await window.electronAPI?.product?.getAllProducts()
+      if (response?.products) {
+        setProducts(response.products)
+      }
+    } catch (error) {
+      console.error('Failed to load products:', error)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   /**
@@ -323,11 +419,11 @@ export function EnhancedProductManagementPage({ onNavigateBack }: EnhancedProduc
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => {/* TODO: Import */}}>
+          <Button variant="outline" onClick={handleImportProducts}>
             <Download className="h-4 w-4 mr-2" />
             Import
           </Button>
-          <Button variant="outline" onClick={() => {/* TODO: Export */}}>
+          <Button variant="outline" onClick={handleExportProducts}>
             <Upload className="h-4 w-4 mr-2" />
             Export
           </Button>
@@ -343,11 +439,11 @@ export function EnhancedProductManagementPage({ onNavigateBack }: EnhancedProduc
         {products.map((product) => {
           const productComponents = components[product.name] || []
           const isExpanded = expandedProducts.has(product.name)
-          
+
           return (
             <Card key={product.id} className="overflow-hidden">
               {/* Product Header */}
-              <CardHeader className="pb-3">
+              <CardHeader className="pb-3" onClick={() => toggleProductExpansion(product.name)}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <Button
@@ -402,7 +498,7 @@ export function EnhancedProductManagementPage({ onNavigateBack }: EnhancedProduc
                 <CardContent className="pt-0">
                   <div className="grid gap-4">
                     {/* Product Info */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg" onClick={() => toggleProductExpansion(product.name)}>
                       <div className="text-sm">
                         <span className="text-gray-600 dark:text-gray-400">Internal Name:</span>
                         <code className="block bg-white dark:bg-gray-900 px-2 py-1 rounded text-xs mt-1">{product.name}</code>
@@ -439,7 +535,7 @@ export function EnhancedProductManagementPage({ onNavigateBack }: EnhancedProduc
                           Add Component
                         </Button>
                       </div>
-                      
+
                       {productComponents.length === 0 ? (
                         <div className="text-center py-8 text-gray-500 dark:text-gray-400">
                           <Component className="h-8 w-8 mx-auto mb-2 opacity-50" />
@@ -494,9 +590,9 @@ export function EnhancedProductManagementPage({ onNavigateBack }: EnhancedProduc
                                 {component.metadata?.gitOps?.repositoryUrl && (
                                   <div className="flex items-center justify-between text-xs">
                                     <span className="text-gray-600 dark:text-gray-400">Repository:</span>
-                                    <a 
-                                      href={component.metadata.gitOps.repositoryUrl} 
-                                      target="_blank" 
+                                    <a
+                                      href={component.metadata.gitOps.repositoryUrl}
+                                      target="_blank"
                                       rel="noopener noreferrer"
                                       className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 truncate max-w-24"
                                     >
@@ -766,43 +862,43 @@ export function EnhancedProductManagementPage({ onNavigateBack }: EnhancedProduc
               </div>
             </div>
 
-<div className="space-y-2">
-  <SimpleRepositoryInput
-    value={componentFormData.metadata?.gitOps?.repositoryUrl || ''}
-    onChange={(repositoryUrl) => {
-      setComponentFormData({
-        ...componentFormData,
-        metadata: {
-          ...componentFormData.metadata,
-          gitOps: {
-            ...componentFormData.metadata?.gitOps,
-            repositoryUrl
-          }
-        }
-      })
-    }}
-    onCreateEnvironmentBranches={async (repositoryUrl) => {
-      // Create environment branches: dev, sit, uat, prod
-      const environments = ['dev', 'sit', 'uat', 'prod'];
-      
-      for (const env of environments) {
-        try {
-          // Call your git service to create branch
-          console.log(`Creating branch: ${env} in ${repositoryUrl}`);
-          
-          // Create default files in each branch
-          // - customers.yaml
-          // - appset.yaml
-          // - values.yaml (optional)
-          
-        } catch (error) {
-          console.error(`Failed to create ${env} branch:`, error);
-        }
-      }
-    }}
-    className="min-h-24"
-  />
-</div>
+            <div className="space-y-2">
+              <SimpleRepositoryInput
+                value={componentFormData.metadata?.gitOps?.repositoryUrl || ''}
+                onChange={(repositoryUrl) => {
+                  setComponentFormData({
+                    ...componentFormData,
+                    metadata: {
+                      ...componentFormData.metadata,
+                      gitOps: {
+                        ...componentFormData.metadata?.gitOps,
+                        repositoryUrl
+                      }
+                    }
+                  })
+                }}
+                onCreateEnvironmentBranches={async (repositoryUrl) => {
+                  // Create environment branches: dev, sit, uat, prod
+                  const environments = ['dev', 'sit', 'uat', 'prod'];
+
+                  for (const env of environments) {
+                    try {
+                      // Call your git service to create branch
+                      console.log(`Creating branch: ${env} in ${repositoryUrl}`);
+
+                      // Create default files in each branch
+                      // - customers.yaml
+                      // - appset.yaml
+                      // - values.yaml (optional)
+
+                    } catch (error) {
+                      console.error(`Failed to create ${env} branch:`, error);
+                    }
+                  }
+                }}
+                className="min-h-24"
+              />
+            </div>
 
             <div className="flex items-center space-x-2">
               <Switch
