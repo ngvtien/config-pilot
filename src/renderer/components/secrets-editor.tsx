@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useRef, useState, useEffect } from "react"
+import { useRef, useState, useEffect, useCallback } from "react"
 import yaml from "js-yaml"
 import {
   Search,
@@ -18,6 +18,9 @@ import {
   ChevronDown,
   Loader2,
   Info,
+  Shield,
+  File,
+  X
 } from "lucide-react"
 import { Button } from "@/renderer/components/ui/button"
 import { Input } from "@/renderer/components/ui/input"
@@ -42,6 +45,7 @@ import { CheckCircle, XCircle, AlertTriangle } from "lucide-react"
 import { Alert, AlertDescription } from "@/renderer/components/ui/alert"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/renderer/components/ui/tooltip"
 import { useDialog } from '@/renderer/hooks/useDialog'
+import { cn } from "@/lib/utils"
 
 interface SecretEditorProps {
   initialValue?: string
@@ -108,6 +112,13 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
   const [vaultError, setVaultError] = useState<string | null>(null)
   const [hasVaultCredentials, setHasVaultCredentials] = useState(false)
   const [secretVaultStatuses, setSecretVaultStatuses] = useState<Record<string, 'checking' | 'synced' | 'out-of-sync' | 'error'>>({})
+
+  const certificateInputRef = useRef<HTMLInputElement>(null)
+  const [isDragOver, setIsDragOver] = useState(false)
+  const [fileType, setFileType] = useState<'text' | 'certificate' | 'binary'>('text')
+  const [fileName, setFileName] = useState<string | null>(null)
+  const secretValueRef = useRef<HTMLTextAreaElement>(null)
+
   const { showConfirm, ConfirmDialog } = useDialog()
 
   // Load schema when component mounts
@@ -518,28 +529,6 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
     setEditVaultKey("")
   }
 
-  // const removeSecret = (index: number) => {
-  //   const newFormData = { ...formData }
-  //   if (newFormData.env && Array.isArray(newFormData.env)) {
-  //     const secretName = newFormData.env[index]?.name
-  //     newFormData.env.splice(index, 1)
-
-  //     const newYamlContent = yaml.dump(newFormData)
-  //     setYamlContent(newYamlContent)
-  //     localStorage.setItem(`secrets_editor_${env}`, newYamlContent)
-  //     setFormData(newFormData)
-  //     generateExternalSecretsYaml(newFormData)
-
-  //     setSelectedSecrets((prev) => prev.filter((i) => i !== index).map((i) => (i > index ? i - 1 : i)))
-
-  //     if (secretName) {
-  //       const newSecretValues = { ...secretValues }
-  //       delete newSecretValues[secretName]
-  //       setSecretValues(newSecretValues)
-  //     }
-  //   }
-  // }
-
   /**
    * Remove a single secret with confirmation
    * Updates both localStorage, source file, and regenerates external-secret.yaml
@@ -596,33 +585,6 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
       }
     })
   }
-
-  // const removeSelectedSecrets = () => {
-  //   if (selectedSecrets.length === 0) return
-
-  //   const newFormData = { ...formData }
-  //   const newSecretValues = { ...secretValues }
-
-  //   const sortedIndices = [...selectedSecrets].sort((a, b) => b - a)
-
-  //   sortedIndices.forEach((index) => {
-  //     if (newFormData.env && Array.isArray(newFormData.env)) {
-  //       const secretName = newFormData.env[index]?.name
-  //       if (secretName && newSecretValues[secretName]) {
-  //         delete newSecretValues[secretName]
-  //       }
-  //       newFormData.env.splice(index, 1)
-  //     }
-  //   })
-
-  //   const newYamlContent = yaml.dump(newFormData)
-  //   setYamlContent(newYamlContent)
-  //   localStorage.setItem(`secrets_editor_${env}`, newYamlContent)
-  //   setFormData(newFormData)
-  //   setSecretValues(newSecretValues)
-  //   setSelectedSecrets([])
-  //   generateExternalSecretsYaml(newFormData)
-  // }
 
   /**
    * Remove multiple selected secrets with confirmation
@@ -761,238 +723,6 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
   const handleVaultKeyChange = (value: string) => {
     setEditVaultKey(value.toLowerCase())
   }
-
-  // const saveSecretChanges = () => {
-  //   try {
-  //     if (secretInputValue && secretInputValue.length > 1000000) {
-  //       toast({ title: "Processing large secret value..." })
-  //     }
-
-  //     setTimeout(() => {
-  //       try {
-  //         if (editingSecretIndex === -1) {
-  //           if (editSecretName) {
-  //             const newFormData = { ...formData }
-  //             if (!newFormData.env) {
-  //               newFormData.env = []
-  //             }
-
-  //             const newSecret: SecretItem = {
-  //               name: editSecretName,
-  //               vaultRef: {
-  //                 path: editVaultPath,
-  //                 key: editVaultKey,
-  //               },
-  //             }
-
-  //             newFormData.env.push(newSecret)
-  //             setFormData(newFormData)
-
-  //             const newYamlContent = yaml.dump(newFormData)
-  //             setYamlContent(newYamlContent)
-  //             localStorage.setItem(`secrets_editor_${env}`, newYamlContent)
-  //             generateExternalSecretsYaml(newFormData)
-
-  //             if (secretInputValue) {
-  //               try {
-  //                 setSecretValues({
-  //                   ...secretValues,
-  //                   [editSecretName]: secretInputValue,
-  //                 })
-  //                 toast({ title: "Secret value updated locally" })
-  //               } catch (error) {
-  //                 console.error("Error saving secret value:", error)
-  //                 toast({
-  //                   title: "Error: Could not save the secret value. It might be too large.",
-  //                   variant: "destructive",
-  //                 })
-  //               }
-  //             }
-  //           }
-  //         } else if (editingSecretIndex !== null) {
-  //           updateSecretField(editingSecretIndex, "name", editSecretName)
-  //           updateSecretField(editingSecretIndex, "path", editVaultPath)
-  //           updateSecretField(editingSecretIndex, "key", editVaultKey)
-
-  //           if (secretInputValue) {
-  //             try {
-  //               setSecretValues({
-  //                 ...secretValues,
-  //                 [editSecretName]: secretInputValue,
-  //               })
-  //               toast({ title: "Secret value updated locally" })
-  //             } catch (error) {
-  //               console.error("Error saving secret value:", error)
-  //               toast({
-  //                 title: "Error: Could not save the secret value. It might be too large.",
-  //                 variant: "destructive",
-  //               })
-  //             }
-  //           }
-  //         }
-
-  //         closeSecretEditModal()
-  //       } catch (error) {
-  //         console.error("Error in saveSecretChanges:", error)
-  //         toast({
-  //           title: "Error: Could not save changes. Please try again with smaller values.",
-  //           variant: "destructive",
-  //         })
-  //       }
-  //     }, 0)
-  //   } catch (error) {
-  //     console.error("Error in saveSecretChanges outer block:", error)
-  //     toast({ title: "Error: Could not save changes. Please try again with smaller values.", variant: "destructive" })
-  //   }
-  // }
-
-  // const saveSecretToVault = (index: number) => {
-  //   const secret = formData.env[index]
-  //   if (!secret) return
-
-  //   const secretName = secret.name
-  //   const secretValue = secretValues[secretName]
-
-  //   if (!secretValue) {
-  //     toast({ title: "Please update the secret value first", variant: "destructive" })
-  //     return
-  //   }
-
-  //   if (!secret.vaultRef.path || !secret.vaultRef.key) {
-  //     toast({ title: "Please provide both Vault Path and Vault Key", variant: "destructive" })
-  //     return
-  //   }
-
-  //   setTimeout(() => {
-  //     toast({ title: `Secret "${secretName}" saved to vault at ${secret.vaultRef.path}` })
-  //   }, 500)
-  // }
-
-  // const saveSecretChanges = async () => {
-  //   try {
-  //     if (secretInputValue && secretInputValue.length > 1000000) {
-  //       toast({ title: "Processing large secret value..." })
-  //     }
-
-  //     setTimeout(async () => {
-  //       try {
-  //         if (editingSecretIndex === -1) {
-  //           if (editSecretName) {
-  //             const newFormData = { ...formData }
-  //             if (!newFormData.env) {
-  //               newFormData.env = []
-  //             }
-
-  //             const newSecret: SecretItem = {
-  //               name: editSecretName,
-  //               vaultRef: {
-  //                 path: editVaultPath,
-  //                 key: editVaultKey,
-  //               },
-  //             }
-
-  //             newFormData.env.push(newSecret)
-  //             setFormData(newFormData)
-
-  //             const newYamlContent = yaml.dump(newFormData)
-  //             setYamlContent(newYamlContent)
-  //             localStorage.setItem(`secrets_editor_${env}`, newYamlContent)
-  //             generateExternalSecretsYaml(newFormData)
-
-  //             if (secretInputValue) {
-  //               try {
-  //                 setSecretValues({
-  //                   ...secretValues,
-  //                   [editSecretName]: secretInputValue,
-  //                 })
-
-  //                 // Also save to vault if connected
-  //                 if (vaultConnectionStatus === 'success' && editVaultPath && editVaultKey) {
-  //                   try {
-  //                     const result = await window.electronAPI.vault.writeSecret(
-  //                       env,
-  //                       editVaultPath,
-  //                       editVaultKey,
-  //                       secretInputValue
-  //                     )
-
-  //                     if (result.success) {
-  //                       toast({ title: "Secret saved locally and to vault successfully" })
-  //                     } else {
-  //                       toast({ title: "Secret saved locally, but failed to save to vault", variant: "destructive" })
-  //                     }
-  //                   } catch (vaultError: any) {
-  //                     toast({ title: "Secret saved locally, but vault write failed", description: vaultError.message, variant: "destructive" })
-  //                   }
-  //                 } else {
-  //                   toast({ title: "Secret value updated locally" })
-  //                 }
-  //               } catch (error) {
-  //                 console.error("Error saving secret value:", error)
-  //                 toast({
-  //                   title: "Error: Could not save the secret value. It might be too large.",
-  //                   variant: "destructive",
-  //                 })
-  //               }
-  //             }
-  //           }
-  //         } else if (editingSecretIndex !== null) {
-  //           updateSecretField(editingSecretIndex, "name", editSecretName)
-  //           updateSecretField(editingSecretIndex, "path", editVaultPath)
-  //           updateSecretField(editingSecretIndex, "key", editVaultKey)
-
-  //           if (secretInputValue) {
-  //             try {
-  //               setSecretValues({
-  //                 ...secretValues,
-  //                 [editSecretName]: secretInputValue,
-  //               })
-
-  //               // Also save to vault if connected
-  //               if (vaultConnectionStatus === 'success' && editVaultPath && editVaultKey) {
-  //                 try {
-  //                   const result = await window.electronAPI.vault.writeSecret(
-  //                     env,
-  //                     editVaultPath,
-  //                     editVaultKey,
-  //                     secretInputValue
-  //                   )
-
-  //                   if (result.success) {
-  //                     toast({ title: "Secret updated locally and in vault successfully" })
-  //                   } else {
-  //                     toast({ title: "Secret updated locally, but failed to update in vault", variant: "destructive" })
-  //                   }
-  //                 } catch (vaultError: any) {
-  //                   toast({ title: "Secret updated locally, but vault write failed", description: vaultError.message, variant: "destructive" })
-  //                 }
-  //               } else {
-  //                 toast({ title: "Secret value updated locally" })
-  //               }
-  //             } catch (error) {
-  //               console.error("Error saving secret value:", error)
-  //               toast({
-  //                 title: "Error: Could not save the secret value. It might be too large.",
-  //                 variant: "destructive",
-  //               })
-  //             }
-  //           }
-  //         }
-
-  //         closeSecretEditModal()
-  //       } catch (error) {
-  //         console.error("Error in saveSecretChanges:", error)
-  //         toast({
-  //           title: "Error: Could not save changes. Please try again with smaller values.",
-  //           variant: "destructive",
-  //         })
-  //       }
-  //     }, 0)
-  //   } catch (error) {
-  //     console.error("Error in saveSecretChanges outer block:", error)
-  //     toast({ title: "Error: Could not save changes. Please try again with smaller values.", variant: "destructive" })
-  //   }
-  // }
 
   const saveSecretChanges = async () => {
     try {
@@ -1378,6 +1108,101 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
       document.body.style.userSelect = ""
     }
   }, [isResizing])
+
+  /**
+   * Handle drag and drop events for certificate files
+   */
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragOver(true)
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragOver(false)
+  }, [])
+
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragOver(false)
+
+    const files = Array.from(e.dataTransfer.files)
+    if (files.length === 0) return
+
+    const file = files[0]
+    const supportedExtensions = ['.crt', '.pem', '.pfx', '.p12', '.cer', '.der', '.key', '.pub', '.cert']
+    const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'))
+
+    if (supportedExtensions.includes(fileExtension)) {
+      try {
+        const content = await file.text()
+        setSecretInputValue(content)
+        setFileType('certificate')
+        setFileName(file.name)
+        toast({
+          title: "Certificate loaded successfully",
+          description: `${file.name} (${(file.size / 1024).toFixed(1)} KB)`
+        })
+      } catch (error) {
+        toast({
+          title: "Error reading certificate",
+          description: "Failed to read the certificate file",
+          variant: "destructive"
+        })
+      }
+    } else {
+      toast({
+        title: "Unsupported file type",
+        description: "Please drop a certificate file (.crt, .pem, .pfx, etc.)",
+        variant: "destructive"
+      })
+    }
+  }, [setSecretInputValue, toast])
+
+  /**
+   * Handle file input for certificate upload
+   */
+  const handleCertificateUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    try {
+      const content = await file.text()
+      setSecretInputValue(content)
+      setFileType('certificate')
+      setFileName(file.name)
+      toast({
+        title: "Certificate uploaded successfully",
+        description: `${file.name} (${(file.size / 1024).toFixed(1)} KB)`
+      })
+    } catch (error) {
+      toast({
+        title: "Error reading certificate",
+        description: "Failed to read the certificate file",
+        variant: "destructive"
+      })
+    }
+
+    // Reset file input
+    e.target.value = ''
+  }, [setSecretInputValue, toast])
+
+  /**
+   * Detect content type automatically
+   */
+  const detectContentType = useCallback((value: string) => {
+    if (value.includes('-----BEGIN CERTIFICATE-----') ||
+      value.includes('-----BEGIN PRIVATE KEY-----') ||
+      value.includes('-----BEGIN PUBLIC KEY-----') ||
+      value.includes('-----BEGIN RSA PRIVATE KEY-----')) {
+      setFileType('certificate')
+    } else {
+      setFileType('text')
+    }
+  }, [])
 
   return (
     <div className="h-full flex flex-col">
@@ -2015,57 +1840,194 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
               <p className="text-xs text-gray-500 italic">Keys are automatically converted to lowercase</p>
             </div>
 
+            {/* Secret Value section */}
             <div className="space-y-2">
               <div className="flex justify-between items-center">
-                <Label htmlFor="secretValue">Secret Value</Label>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={toggleSecretValueVisibility}
-                  className="text-xs"
-                >
-                  {showSecretValue ? (
-                    <>
-                      <EyeOff className="w-3 h-3 mr-1" />
-                      Hide
-                    </>
-                  ) : (
-                    <>
-                      <Eye className="w-3 h-3 mr-1" />
-                      Show
-                    </>
+                <Label htmlFor="secretValue" className="flex items-center gap-2">
+                  Secret Value
+                  {fileType === 'certificate' && (
+                    <Badge variant="secondary" className="text-xs">
+                      <Shield className="w-3 h-3 mr-1" />
+                      Certificate
+                    </Badge>
                   )}
-                </Button>
+                  {fileName && (
+                    <Badge variant="outline" className="text-xs">
+                      <File className="w-3 h-3 mr-1" />
+                      {fileName}
+                    </Badge>
+                  )}
+                </Label>
+                <div className="flex items-center gap-2">
+                  {/* Certificate Upload Button */}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => certificateInputRef.current?.click()}
+                    className="text-xs hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                  >
+                    <Upload className="w-3 h-3 mr-1" />
+                    Upload Cert
+                  </Button>
+
+                  {/* Show/Hide Toggle */}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={toggleSecretValueVisibility}
+                    className="text-xs"
+                  >
+                    {showSecretValue ? (
+                      <>
+                        <EyeOff className="w-3 h-3 mr-1" />
+                        Hide
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="w-3 h-3 mr-1" />
+                        Show
+                      </>
+                    )}
+                  </Button>
+
+                  {/* Clear Button */}
+                  {secretInputValue && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setSecretInputValue('')
+                        setFileType('text')
+                        setFileName(null)
+                      }}
+                      className="text-xs hover:bg-red-50 hover:text-red-600 transition-colors"
+                    >
+                      <X className="w-3 h-3 mr-1" />
+                      Clear
+                    </Button>
+                  )}
+                </div>
               </div>
-              <Textarea
-                id="secretValue"
-                value={secretInputValue}
-                onChange={(e) => {
-                  try {
-                    const newValue = e.target.value
-                    if (newValue.length > 5000000) {
-                      toast({ title: "Warning: Very large input detected. This may cause performance issues." })
-                    }
-                    requestAnimationFrame(() => {
-                      try {
-                        setSecretInputValue(newValue)
-                      } catch (error) {
-                        console.error("Error updating secret value:", error)
-                        toast({ title: "Error: The value is too large to process", variant: "destructive" })
+
+              {/* Enhanced Textarea with Drag & Drop */}
+              <div
+                className={cn(
+                  "relative border-2 border-dashed rounded-lg transition-all duration-200",
+                  isDragOver
+                    ? "border-blue-400 bg-blue-50/50 shadow-lg scale-[1.02]"
+                    : "border-gray-200 hover:border-gray-300",
+                  fileType === 'certificate' && "border-green-200 bg-green-50/30"
+                )}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+              >
+                <Textarea
+                  ref={secretValueRef}
+                  id="secretValue"
+                  value={secretInputValue}
+                  onChange={(e) => {
+                    try {
+                      const newValue = e.target.value
+                      if (newValue.length > 5000000) {
+                        toast({ title: "Warning: Very large input detected. This may cause performance issues." })
                       }
-                    })
-                  } catch (error) {
-                    console.error("Error in textarea change handler:", error)
-                    toast({ title: "Error processing input", variant: "destructive" })
+                      requestAnimationFrame(() => {
+                        try {
+                          setSecretInputValue(newValue)
+                          detectContentType(newValue)
+                        } catch (error) {
+                          console.error("Error updating secret value:", error)
+                          toast({ title: "Error: The value is too large to process", variant: "destructive" })
+                        }
+                      })
+                    } catch (error) {
+                      console.error("Error in textarea change handler:", error)
+                      toast({ title: "Error processing input", variant: "destructive" })
+                    }
+                  }}
+                  placeholder={isDragOver
+                    ? "Drop your certificate file here..."
+                    : "Enter secret value here or drag & drop a certificate file (.crt, .pem, .pfx, etc.)"
                   }
-                }}
-                placeholder="Enter secret value here..."
-                rows={5}
-                className={showSecretValue ? "" : "font-mono"}
-                style={showSecretValue ? {} : ({ WebkitTextSecurity: "disc" } as React.CSSProperties)}
+                  rows={secretInputValue.length > 500 ? 8 : 5}
+                  className={cn(
+                    "min-h-[120px] resize-none transition-all duration-200",
+                    showSecretValue ? "" : "font-mono",
+                    isDragOver && "pointer-events-none",
+                    fileType === 'certificate' && "font-mono text-sm"
+                  )}
+                  style={showSecretValue ? {} : ({ WebkitTextSecurity: "disc" } as React.CSSProperties)}
+                />
+
+                {/* Drag Overlay */}
+                {isDragOver && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-blue-50/80 rounded-lg pointer-events-none">
+                    <div className="text-center">
+                      <Upload className="w-8 h-8 mx-auto mb-2 text-blue-500 animate-bounce" />
+                      <p className="text-sm font-medium text-blue-700">Drop certificate file here</p>
+                      <p className="text-xs text-blue-600">Supports .crt, .pem, .pfx, .p12, .cer, .der, .key</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* File Info & Actions */}
+              {secretInputValue && (
+                <div className="flex items-center justify-between text-xs text-muted-foreground bg-muted/30 rounded px-3 py-2">
+                  <div className="flex items-center gap-4">
+                    <span>Size: {(secretInputValue.length / 1024).toFixed(1)} KB</span>
+                    <span>Lines: {secretInputValue.split('\n').length}</span>
+                    {fileType === 'certificate' && (
+                      <span className="text-green-600 font-medium">✓ Certificate format detected</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => navigator.clipboard.writeText(secretInputValue)}
+                      className="h-6 px-2 text-xs"
+                    >
+                      <Copy className="w-3 h-3 mr-1" />
+                      Copy
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        const blob = new Blob([secretInputValue], { type: 'text/plain' })
+                        const url = URL.createObjectURL(blob)
+                        const a = document.createElement('a')
+                        a.href = url
+                        a.download = fileName || `secret-${editSecretName.toLowerCase()}.txt`
+                        a.click()
+                        URL.revokeObjectURL(url)
+                      }}
+                      className="h-6 px-2 text-xs"
+                    >
+                      <Download className="w-3 h-3 mr-1" />
+                      Save
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Hidden file input for certificate upload */}
+              <input
+                ref={certificateInputRef}
+                type="file"
+                accept=".crt,.pem,.pfx,.p12,.cer,.der,.key,.pub,.cert"
+                onChange={handleCertificateUpload}
+                className="hidden"
               />
             </div>
+
           </div>
 
           <DialogFooter>
