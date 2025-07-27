@@ -107,7 +107,7 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
   const [vaultConnectionStatus, setVaultConnectionStatus] = useState<'unknown' | 'success' | 'error' | 'checking'>('unknown')
   const [vaultError, setVaultError] = useState<string | null>(null)
   const [hasVaultCredentials, setHasVaultCredentials] = useState(false)
-
+  const [secretVaultStatuses, setSecretVaultStatuses] = useState<Record<string, 'checking' | 'synced' | 'out-of-sync' | 'error'>>({})
   const { showConfirm, ConfirmDialog } = useDialog()
 
   // Load schema when component mounts
@@ -124,6 +124,13 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
   useEffect(() => {
     checkVaultConnection()
   }, [environment])
+
+  // Auto-load secret values from Vault when formData is ready and Vault is connected
+  useEffect(() => {
+    if (formData?.env && vaultConnectionStatus === 'success') {
+      loadSecretValuesFromVault()
+    }
+  }, [formData, vaultConnectionStatus])
 
   const checkVaultConnection = async () => {
     try {
@@ -161,6 +168,53 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
   }
 
   /**
+   * Enhanced function to check if local values match vault values
+   * This extends the existing loadSecretValuesFromVault pattern
+   */
+  const checkVaultSync = async () => {
+    if (!formData?.env || vaultConnectionStatus !== 'success') {
+      return
+    }
+
+    const statusUpdates: Record<string, 'checking' | 'synced' | 'out-of-sync' | 'error'> = {}
+
+    for (const secret of formData.env) {
+      if (secret.name && secret.vaultRef?.path && secret.vaultRef?.key) {
+        statusUpdates[secret.name] = 'checking'
+      }
+    }
+    setSecretVaultStatuses(prev => ({ ...prev, ...statusUpdates }))
+
+    for (const secret of formData.env) {
+      if (secret.name && secret.vaultRef?.path && secret.vaultRef?.key) {
+        try {
+          const result = await window.electronAPI.vault.readSecret(
+            env,
+            secret.vaultRef.path,
+            secret.vaultRef.key
+          )
+
+          const localValue = secretValues[secret.name]
+          const vaultValue = result.success ? result.value : null
+
+          if (localValue && vaultValue && localValue === vaultValue) {
+            statusUpdates[secret.name] = 'synced'
+          } else if (localValue || vaultValue) {
+            statusUpdates[secret.name] = 'out-of-sync'
+          } else {
+            // Both are empty - keep existing "No Value" logic
+            delete statusUpdates[secret.name]
+          }
+        } catch (error: any) {
+          statusUpdates[secret.name] = 'error'
+        }
+      }
+    }
+
+    setSecretVaultStatuses(prev => ({ ...prev, ...statusUpdates }))
+  }
+
+  /**
    * Load actual secret values from Vault for all configured secrets
    */
   const loadSecretValuesFromVault = async () => {
@@ -169,7 +223,7 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
     }
 
     const newSecretValues: Record<string, string> = {}
-    
+
     for (const secret of formData.env) {
       if (secret.vaultRef?.path && secret.vaultRef?.key && secret.name) {
         try {
@@ -178,7 +232,7 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
             secret.vaultRef.path,
             secret.vaultRef.key
           )
-          
+
           if (result.success && result.value) {
             newSecretValues[secret.name] = result.value
             console.log(`✅ Loaded secret value for ${secret.name} from Vault`)
@@ -190,16 +244,16 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
         }
       }
     }
-    
+
     if (Object.keys(newSecretValues).length > 0) {
       setSecretValues(prev => ({ ...prev, ...newSecretValues }))
-      toast({ 
+      toast({
         title: `Loaded ${Object.keys(newSecretValues).length} secret value(s) from Vault`,
         description: "Secret values are now available in the editor"
       })
     }
   }
-    
+
   // Use provided context or create one from environment prop for backward compatibility
   const editorContext: ContextData = context || {
     environment: environment as any,
@@ -493,7 +547,7 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
   const removeSecret = (index: number) => {
     const secret = formData.env[index]
     const secretName = secret?.name || 'Unnamed Secret'
-    
+
     showConfirm({
       title: 'Delete Secret',
       message: `Are you sure you want to delete the secret "${secretName}"?\n\nThis action will:\n• Remove it from the secrets configuration\n• Update the secrets.yaml file\n• Regenerate the external-secret.yaml\n\nThis action cannot be undone.`,
@@ -511,10 +565,10 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
             setYamlContent(newYamlContent)
             localStorage.setItem(`secrets_editor_${env}`, newYamlContent)
             setFormData(newFormData)
-            
+
             // Update the source secrets.yaml file
             await updateSecretsSourceFile(env, newYamlContent)
-            
+
             // Regenerate external-secret.yaml
             generateExternalSecretsYaml(newFormData)
 
@@ -525,18 +579,18 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
               delete newSecretValues[secretName]
               setSecretValues(newSecretValues)
             }
-            
-            toast({ 
-              title: "Secret deleted successfully", 
-              description: "The secret has been removed and files have been updated." 
+
+            toast({
+              title: "Secret deleted successfully",
+              description: "The secret has been removed and files have been updated."
             })
           }
         } catch (error) {
           console.error('Error deleting secret:', error)
-          toast({ 
-            title: "Error deleting secret", 
+          toast({
+            title: "Error deleting secret",
             description: "Failed to delete the secret. Please try again.",
-            variant: "destructive" 
+            variant: "destructive"
           })
         }
       }
@@ -581,10 +635,10 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
       .map(index => formData.env[index]?.name)
       .filter(Boolean)
       .join('", "')
-    
+
     const secretCount = selectedSecrets.length
     const secretText = secretCount === 1 ? 'secret' : 'secrets'
-    
+
     showConfirm({
       title: `Delete ${secretCount} ${secretText.charAt(0).toUpperCase() + secretText.slice(1)}`,
       message: `Are you sure you want to delete ${secretCount} ${secretText}?\n\n${secretNames ? `Secrets to be deleted: "${secretNames}"\n\n` : ''}This action will:\n• Remove them from the secrets configuration\n• Update the secrets.yaml file\n• Regenerate the external-secret.yaml\n\nThis action cannot be undone.`,
@@ -614,23 +668,23 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
           setFormData(newFormData)
           setSecretValues(newSecretValues)
           setSelectedSecrets([])
-          
+
           // Update the source secrets.yaml file
           await updateSecretsSourceFile(env, newYamlContent)
-          
+
           // Regenerate external-secret.yaml
           generateExternalSecretsYaml(newFormData)
-          
-          toast({ 
-            title: `${secretCount} ${secretText} deleted successfully`, 
-            description: "The secrets have been removed and files have been updated." 
+
+          toast({
+            title: `${secretCount} ${secretText} deleted successfully`,
+            description: "The secrets have been removed and files have been updated."
           })
         } catch (error) {
           console.error('Error deleting selected secrets:', error)
-          toast({ 
-            title: "Error deleting secrets", 
+          toast({
+            title: "Error deleting secrets",
             description: "Failed to delete the selected secrets. Please try again.",
-            variant: "destructive" 
+            variant: "destructive"
           })
         }
       }
@@ -968,11 +1022,11 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
 
               const newYamlContent = yaml.dump(newFormData)
               setYamlContent(newYamlContent)
-              
+
               // Update both localStorage and the source file
               localStorage.setItem(`secrets_editor_${env}`, newYamlContent)
               await updateSecretsSourceFile(env, newYamlContent)
-              
+
               generateExternalSecretsYaml(newFormData)
 
               if (secretInputValue) {
@@ -1411,21 +1465,43 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
                         />
                       </div>
                     </div>
-                    <div className="flex gap-2">
-                      <Button onClick={addSecret} className="flex items-center gap-2 bg-primary hover:bg-primary/90">
+                    <div className="flex gap-3 items-center">
+                      <Button
+                        variant="outline"
+                        size="default"
+                        onClick={checkVaultSync}
+                        disabled={vaultConnectionStatus !== 'success'}
+                        className="flex items-center gap-2 min-w-[120px] h-10 transition-all duration-200 hover:scale-105 hover:shadow-md"
+                      >
+                        {Object.values(secretVaultStatuses).some(s => s === 'checking') ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <CheckCircle className="w-4 h-4" />
+                        )}
+                        Check Sync
+                      </Button>
+
+                      <Button
+                        onClick={addSecret}
+                        size="default"
+                        className="flex items-center gap-2 min-w-[130px] h-10 bg-primary hover:bg-primary/90 transition-all duration-200 hover:scale-105 hover:shadow-lg font-semibold"
+                      >
                         <Plus className="w-4 h-4" />
                         Add Secret
                       </Button>
+
                       {selectedSecrets.length > 0 && (
                         <Button
                           variant="destructive"
+                          size="default"
                           onClick={removeSelectedSecrets}
-                          className="flex items-center gap-2"
+                          className="flex items-center gap-2 min-w-[140px] h-10 transition-all duration-200 hover:scale-105 hover:shadow-lg animate-in slide-in-from-right-2"
                         >
                           <Trash2 className="w-4 h-4" />
                           Delete Selected ({selectedSecrets.length})
                         </Button>
                       )}
+
                     </div>
                   </div>
 
@@ -1543,13 +1619,12 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
                               return (
                                 <tr
                                   key={originalIndex}
-                                  className={`border-b border-border hover:bg-muted/30 transition-colors ${
-                                    selectedSecrets.includes(originalIndex)
-                                      ? "bg-primary/10 border-l-4 border-l-primary"
-                                      : index % 2 === 0
+                                  className={`border-b border-border hover:bg-muted/30 transition-colors ${selectedSecrets.includes(originalIndex)
+                                    ? "bg-primary/10 border-l-4 border-l-primary"
+                                    : index % 2 === 0
                                       ? "bg-muted/20"
                                       : "bg-card"
-                                  }`}
+                                    }`}
                                 >
                                   <td className="p-3">
                                     <Checkbox
@@ -1595,42 +1670,97 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
                                       </TooltipContent>
                                     </Tooltip>
                                   </td>
+
+                                  {/* Enhance the existing status rendering*/}
                                   <td className="p-3">
                                     <Tooltip>
                                       <TooltipTrigger asChild>
                                         <div className="cursor-help">
-                                          {secretValues[secret.name] ? (
-                                            <Badge className="bg-green-500/10 text-green-700 border-green-500/20 dark:bg-green-500/20 dark:text-green-400 text-xs font-medium">
-                                              Has Value
-                                            </Badge>
-                                          ) : (
-                                            <Badge
-                                              variant="destructive"
-                                              className="bg-red-500/10 text-red-700 border-red-500/20 dark:bg-red-500/20 dark:text-red-400 text-xs font-medium"
-                                            >
-                                              No Value
-                                            </Badge>
-                                          )}
+                                          {(() => {
+                                            const hasLocalValue = !!secretValues[secret.name]
+                                            const vaultStatus = secretVaultStatuses[secret.name]
+
+                                            // Keep existing logic as primary, add vault sync as secondary indicator
+                                            if (hasLocalValue) {
+                                              if (vaultStatus === 'checking') {
+                                                return (
+                                                  <div className="flex items-center gap-1">
+                                                    <Badge className="bg-green-500/10 text-green-700 border-green-500/20 dark:bg-green-500/20 dark:text-green-400 text-xs font-medium">
+                                                      Has Value
+                                                    </Badge>
+                                                    <Loader2 className="w-3 h-3 animate-spin text-blue-500" />
+                                                  </div>
+                                                )
+                                              } else if (vaultStatus === 'synced') {
+                                                return (
+                                                  <Badge className="bg-green-500/10 text-green-700 border-green-500/20 dark:bg-green-500/20 dark:text-green-400 text-xs font-medium">
+                                                    Has Value ✓
+                                                  </Badge>
+                                                )
+                                              } else if (vaultStatus === 'out-of-sync') {
+                                                return (
+                                                  <Badge className="bg-yellow-500/10 text-yellow-700 border-yellow-500/20 dark:bg-yellow-500/20 dark:text-yellow-400 text-xs font-medium">
+                                                    Has Value ⚠
+                                                  </Badge>
+                                                )
+                                              } else {
+                                                // Fallback to existing "Has Value" when vault status unknown
+                                                return (
+                                                  <Badge className="bg-green-500/10 text-green-700 border-green-500/20 dark:bg-green-500/20 dark:text-green-400 text-xs font-medium">
+                                                    Has Value
+                                                  </Badge>
+                                                )
+                                              }
+                                            } else {
+                                              // Keep existing "No Value" logic unchanged
+                                              return (
+                                                <Badge
+                                                  variant="destructive"
+                                                  className="bg-red-500/10 text-red-700 border-red-500/20 dark:bg-red-500/20 dark:text-red-400 text-xs font-medium"
+                                                >
+                                                  No Value
+                                                </Badge>
+                                              )
+                                            }
+                                          })()
+                                          }
                                         </div>
                                       </TooltipTrigger>
                                       <TooltipContent>
-                                        <p className="text-xs">
-                                          {secretValues[secret.name] 
-                                            ? 'This secret has a configured value' 
-                                            : 'This secret needs a value to be set'}
-                                        </p>
+                                        <div className="text-xs space-y-1">
+                                          <p>
+                                            {secretValues[secret.name]
+                                              ? 'This secret has a configured value'
+                                              : 'This secret needs a value to be set'}
+                                          </p>
+                                          {secretVaultStatuses[secret.name] && (
+                                            <p className="text-muted-foreground">
+                                              Vault: {(() => {
+                                                switch (secretVaultStatuses[secret.name]) {
+                                                  case 'synced': return 'In sync with Vault'
+                                                  case 'out-of-sync': return 'Different from Vault'
+                                                  case 'checking': return 'Checking...'
+                                                  case 'error': return 'Error checking Vault'
+                                                  default: return 'Unknown'
+                                                }
+                                              })()}
+                                            </p>
+                                          )}
+                                        </div>
                                       </TooltipContent>
                                     </Tooltip>
                                   </td>
+
+                                  {/*// Enhanced action buttons in table with consistent sizing */}
                                   <td className="p-3">
-                                    <div className="flex justify-center gap-1">
+                                    <div className="flex justify-center gap-2">
                                       <Tooltip>
                                         <TooltipTrigger asChild>
                                           <Button
                                             variant="ghost"
-                                            size="sm"
+                                            size="icon"
                                             onClick={() => openSecretEditModal(originalIndex)}
-                                            className="h-8 w-8 p-0 hover:bg-primary/10 hover:text-primary"
+                                            className="h-9 w-9 hover:bg-primary/10 hover:text-primary transition-all duration-200 hover:scale-110"
                                           >
                                             <Edit className="w-4 h-4" />
                                           </Button>
@@ -1639,33 +1769,35 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
                                           <p className="text-xs">Edit secret configuration</p>
                                         </TooltipContent>
                                       </Tooltip>
+
                                       <Tooltip>
                                         <TooltipTrigger asChild>
                                           <Button
                                             variant="ghost"
-                                            size="sm"
+                                            size="icon"
                                             onClick={() => saveSecretToVault(originalIndex)}
                                             disabled={!secretValues[secret.name]}
-                                            className="h-8 w-8 p-0 hover:bg-green-500/10 hover:text-green-600 disabled:opacity-50"
+                                            className="h-9 w-9 hover:bg-green-500/10 hover:text-green-600 disabled:opacity-50 transition-all duration-200 hover:scale-110"
                                           >
                                             <Lock className="w-4 h-4" />
                                           </Button>
                                         </TooltipTrigger>
                                         <TooltipContent>
                                           <p className="text-xs">
-                                            {secretValues[secret.name] 
-                                              ? 'Save secret to Vault' 
+                                            {secretValues[secret.name]
+                                              ? 'Save secret to Vault'
                                               : 'No value to save - edit first'}
                                           </p>
                                         </TooltipContent>
                                       </Tooltip>
+
                                       <Tooltip>
                                         <TooltipTrigger asChild>
                                           <Button
                                             variant="ghost"
-                                            size="sm"
+                                            size="icon"
                                             onClick={() => removeSecret(originalIndex)}
-                                            className="h-8 w-8 p-0 hover:bg-red-500/10 hover:text-red-600"
+                                            className="h-9 w-9 hover:bg-red-500/10 hover:text-red-600 transition-all duration-200 hover:scale-110"
                                           >
                                             <Trash2 className="w-4 h-4" />
                                           </Button>
@@ -1676,6 +1808,7 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
                                       </Tooltip>
                                     </div>
                                   </td>
+
                                 </tr>
                               )
                             })
