@@ -6,7 +6,7 @@
 # ========================
 GITEA_URL="curl http://172.18.0.2:30581"
 ADMIN_USER="gitadmin"
-ADMIN_TOKEN="358fa0d502c54ea7a45873b2b76046a9f676550a"  # Obtain via Method 1/2 from previous answer
+ADMIN_TOKEN="c8683bd0fcdd0fc9045ee4095771002f5b41380f"  # Obtain via Method 1/2 from previous answer
 
 # Products and Environments
 PRODUCTS=("cai" "esb", "b2b", "npp", "payto", "cop")  # Add your products

@@ -1,0 +1,15 @@
+# Force LF line endings for all .sh files in this specific folder
+/configpilot/vault-integration/scripts/*.sh text eol=lf
+
+# Alternative: Apply to all files in this folder
+#/configpilot/vault-integration/scripts/** text eol=lf
+
+# For Windows batch files (needs CRLF)
+*.bat text eol=crlf
+
+# For shell scripts everywhere
+*.sh text eol=lf
+
+# Binary files should stay untouched
+*.png binary
+*.jpg binary

@@ -16,6 +16,7 @@ import {
   EyeOff,
   ChevronUp,
   ChevronDown,
+  Loader2,
 } from "lucide-react"
 import { Button } from "@/renderer/components/ui/button"
 import { Input } from "@/renderer/components/ui/input"
@@ -25,7 +26,7 @@ import { Checkbox } from "@/renderer/components/ui/checkbox"
 import { Badge } from "@/renderer/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/renderer/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/renderer/components/ui/tabs"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/renderer/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/renderer/components/ui/dialog"
 import { useToast } from "@/renderer/hooks/use-toast"
 import CodeMirror from "@uiw/react-codemirror"
 import { yaml as yamlLanguage } from "@codemirror/lang-yaml"
@@ -34,6 +35,10 @@ import { oneDark } from "@codemirror/theme-one-dark"
 import { jsonTheme, readOnlyExtensions, jsonReadOnlyExtensions } from "@/renderer/lib/codemirror-themes"
 import { buildConfigPath } from "@/renderer/lib/path-utils"
 import type { ContextData } from "@/shared/types/context-data"
+
+import { VaultCredentialManager } from "@/renderer/services/vault-credential-manager"
+import { CheckCircle, XCircle, AlertTriangle } from "lucide-react"
+import { Alert, AlertDescription } from "@/renderer/components/ui/alert"
 
 interface SecretEditorProps {
   initialValue?: string
@@ -96,6 +101,10 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
   const [isResizing, setIsResizing] = useState(false)
   const [leftPanelWidth, setLeftPanelWidth] = useState(66.67) // Default 2/3 (66.67%)
 
+  const [vaultConnectionStatus, setVaultConnectionStatus] = useState<'unknown' | 'success' | 'error' | 'checking'>('unknown')
+  const [vaultError, setVaultError] = useState<string | null>(null)
+  const [hasVaultCredentials, setHasVaultCredentials] = useState(false)
+
   // Load schema when component mounts
   useEffect(() => {
     loadSchema()
@@ -106,6 +115,86 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
     loadValues(environment)
   }, [environment])
 
+  // Check vault connection status on mount and environment change
+  useEffect(() => {
+    checkVaultConnection()
+  }, [environment])
+
+  const checkVaultConnection = async () => {
+    try {
+      setVaultConnectionStatus('checking')
+      setVaultError(null)
+
+      // Check if credentials are stored - use env instead of environment
+      const credentials = await VaultCredentialManager.getCredentials(env as any)
+      setHasVaultCredentials(!!credentials)
+
+      if (!credentials) {
+        setVaultConnectionStatus('error')
+        setVaultError('No vault credentials configured. Please configure vault in settings.')
+        return
+      }
+
+      // Test connection - use env instead of environment
+      const result = await window.electronAPI.vault.testConnection(
+        env,
+        credentials.url,
+        credentials.token,
+        credentials.namespace
+      )
+
+      if (result.success) {
+        setVaultConnectionStatus('success')
+      } else {
+        setVaultConnectionStatus('error')
+        setVaultError(result.error || 'Failed to connect to vault')
+      }
+    } catch (error: any) {
+      setVaultConnectionStatus('error')
+      setVaultError(error.message || 'Failed to check vault connection')
+    }
+  }
+
+  /**
+   * Load actual secret values from Vault for all configured secrets
+   */
+  const loadSecretValuesFromVault = async () => {
+    if (!formData?.env || vaultConnectionStatus !== 'success') {
+      return
+    }
+
+    const newSecretValues: Record<string, string> = {}
+    
+    for (const secret of formData.env) {
+      if (secret.vaultRef?.path && secret.vaultRef?.key && secret.name) {
+        try {
+          const result = await window.electronAPI.vault.readSecret(
+            env,
+            secret.vaultRef.path,
+            secret.vaultRef.key
+          )
+          
+          if (result.success && result.value) {
+            newSecretValues[secret.name] = result.value
+            console.log(`✅ Loaded secret value for ${secret.name} from Vault`)
+          } else {
+            console.log(`ℹ️ No value found in Vault for ${secret.name}`)
+          }
+        } catch (error: any) {
+          console.error(`❌ Failed to load secret ${secret.name} from Vault:`, error)
+        }
+      }
+    }
+    
+    if (Object.keys(newSecretValues).length > 0) {
+      setSecretValues(prev => ({ ...prev, ...newSecretValues }))
+      toast({ 
+        title: `Loaded ${Object.keys(newSecretValues).length} secret value(s) from Vault`,
+        description: "Secret values are now available in the editor"
+      })
+    }
+  }
+    
   // Use provided context or create one from environment prop for backward compatibility
   const editorContext: ContextData = context || {
     environment: environment as any,
@@ -116,7 +205,7 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
     baseHostUrl: "",
   }
 
-    // Build the file path using the path utility
+  // Build the file path using the path utility
   const filePath = buildConfigPath(
     baseDirectory,
     editorContext.customer,
@@ -490,13 +579,245 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
     setEditVaultKey(value.toLowerCase())
   }
 
-  const saveSecretChanges = () => {
+  // const saveSecretChanges = () => {
+  //   try {
+  //     if (secretInputValue && secretInputValue.length > 1000000) {
+  //       toast({ title: "Processing large secret value..." })
+  //     }
+
+  //     setTimeout(() => {
+  //       try {
+  //         if (editingSecretIndex === -1) {
+  //           if (editSecretName) {
+  //             const newFormData = { ...formData }
+  //             if (!newFormData.env) {
+  //               newFormData.env = []
+  //             }
+
+  //             const newSecret: SecretItem = {
+  //               name: editSecretName,
+  //               vaultRef: {
+  //                 path: editVaultPath,
+  //                 key: editVaultKey,
+  //               },
+  //             }
+
+  //             newFormData.env.push(newSecret)
+  //             setFormData(newFormData)
+
+  //             const newYamlContent = yaml.dump(newFormData)
+  //             setYamlContent(newYamlContent)
+  //             localStorage.setItem(`secrets_editor_${env}`, newYamlContent)
+  //             generateExternalSecretsYaml(newFormData)
+
+  //             if (secretInputValue) {
+  //               try {
+  //                 setSecretValues({
+  //                   ...secretValues,
+  //                   [editSecretName]: secretInputValue,
+  //                 })
+  //                 toast({ title: "Secret value updated locally" })
+  //               } catch (error) {
+  //                 console.error("Error saving secret value:", error)
+  //                 toast({
+  //                   title: "Error: Could not save the secret value. It might be too large.",
+  //                   variant: "destructive",
+  //                 })
+  //               }
+  //             }
+  //           }
+  //         } else if (editingSecretIndex !== null) {
+  //           updateSecretField(editingSecretIndex, "name", editSecretName)
+  //           updateSecretField(editingSecretIndex, "path", editVaultPath)
+  //           updateSecretField(editingSecretIndex, "key", editVaultKey)
+
+  //           if (secretInputValue) {
+  //             try {
+  //               setSecretValues({
+  //                 ...secretValues,
+  //                 [editSecretName]: secretInputValue,
+  //               })
+  //               toast({ title: "Secret value updated locally" })
+  //             } catch (error) {
+  //               console.error("Error saving secret value:", error)
+  //               toast({
+  //                 title: "Error: Could not save the secret value. It might be too large.",
+  //                 variant: "destructive",
+  //               })
+  //             }
+  //           }
+  //         }
+
+  //         closeSecretEditModal()
+  //       } catch (error) {
+  //         console.error("Error in saveSecretChanges:", error)
+  //         toast({
+  //           title: "Error: Could not save changes. Please try again with smaller values.",
+  //           variant: "destructive",
+  //         })
+  //       }
+  //     }, 0)
+  //   } catch (error) {
+  //     console.error("Error in saveSecretChanges outer block:", error)
+  //     toast({ title: "Error: Could not save changes. Please try again with smaller values.", variant: "destructive" })
+  //   }
+  // }
+
+  // const saveSecretToVault = (index: number) => {
+  //   const secret = formData.env[index]
+  //   if (!secret) return
+
+  //   const secretName = secret.name
+  //   const secretValue = secretValues[secretName]
+
+  //   if (!secretValue) {
+  //     toast({ title: "Please update the secret value first", variant: "destructive" })
+  //     return
+  //   }
+
+  //   if (!secret.vaultRef.path || !secret.vaultRef.key) {
+  //     toast({ title: "Please provide both Vault Path and Vault Key", variant: "destructive" })
+  //     return
+  //   }
+
+  //   setTimeout(() => {
+  //     toast({ title: `Secret "${secretName}" saved to vault at ${secret.vaultRef.path}` })
+  //   }, 500)
+  // }
+
+  // const saveSecretChanges = async () => {
+  //   try {
+  //     if (secretInputValue && secretInputValue.length > 1000000) {
+  //       toast({ title: "Processing large secret value..." })
+  //     }
+
+  //     setTimeout(async () => {
+  //       try {
+  //         if (editingSecretIndex === -1) {
+  //           if (editSecretName) {
+  //             const newFormData = { ...formData }
+  //             if (!newFormData.env) {
+  //               newFormData.env = []
+  //             }
+
+  //             const newSecret: SecretItem = {
+  //               name: editSecretName,
+  //               vaultRef: {
+  //                 path: editVaultPath,
+  //                 key: editVaultKey,
+  //               },
+  //             }
+
+  //             newFormData.env.push(newSecret)
+  //             setFormData(newFormData)
+
+  //             const newYamlContent = yaml.dump(newFormData)
+  //             setYamlContent(newYamlContent)
+  //             localStorage.setItem(`secrets_editor_${env}`, newYamlContent)
+  //             generateExternalSecretsYaml(newFormData)
+
+  //             if (secretInputValue) {
+  //               try {
+  //                 setSecretValues({
+  //                   ...secretValues,
+  //                   [editSecretName]: secretInputValue,
+  //                 })
+
+  //                 // Also save to vault if connected
+  //                 if (vaultConnectionStatus === 'success' && editVaultPath && editVaultKey) {
+  //                   try {
+  //                     const result = await window.electronAPI.vault.writeSecret(
+  //                       env,
+  //                       editVaultPath,
+  //                       editVaultKey,
+  //                       secretInputValue
+  //                     )
+
+  //                     if (result.success) {
+  //                       toast({ title: "Secret saved locally and to vault successfully" })
+  //                     } else {
+  //                       toast({ title: "Secret saved locally, but failed to save to vault", variant: "destructive" })
+  //                     }
+  //                   } catch (vaultError: any) {
+  //                     toast({ title: "Secret saved locally, but vault write failed", description: vaultError.message, variant: "destructive" })
+  //                   }
+  //                 } else {
+  //                   toast({ title: "Secret value updated locally" })
+  //                 }
+  //               } catch (error) {
+  //                 console.error("Error saving secret value:", error)
+  //                 toast({
+  //                   title: "Error: Could not save the secret value. It might be too large.",
+  //                   variant: "destructive",
+  //                 })
+  //               }
+  //             }
+  //           }
+  //         } else if (editingSecretIndex !== null) {
+  //           updateSecretField(editingSecretIndex, "name", editSecretName)
+  //           updateSecretField(editingSecretIndex, "path", editVaultPath)
+  //           updateSecretField(editingSecretIndex, "key", editVaultKey)
+
+  //           if (secretInputValue) {
+  //             try {
+  //               setSecretValues({
+  //                 ...secretValues,
+  //                 [editSecretName]: secretInputValue,
+  //               })
+
+  //               // Also save to vault if connected
+  //               if (vaultConnectionStatus === 'success' && editVaultPath && editVaultKey) {
+  //                 try {
+  //                   const result = await window.electronAPI.vault.writeSecret(
+  //                     env,
+  //                     editVaultPath,
+  //                     editVaultKey,
+  //                     secretInputValue
+  //                   )
+
+  //                   if (result.success) {
+  //                     toast({ title: "Secret updated locally and in vault successfully" })
+  //                   } else {
+  //                     toast({ title: "Secret updated locally, but failed to update in vault", variant: "destructive" })
+  //                   }
+  //                 } catch (vaultError: any) {
+  //                   toast({ title: "Secret updated locally, but vault write failed", description: vaultError.message, variant: "destructive" })
+  //                 }
+  //               } else {
+  //                 toast({ title: "Secret value updated locally" })
+  //               }
+  //             } catch (error) {
+  //               console.error("Error saving secret value:", error)
+  //               toast({
+  //                 title: "Error: Could not save the secret value. It might be too large.",
+  //                 variant: "destructive",
+  //               })
+  //             }
+  //           }
+  //         }
+
+  //         closeSecretEditModal()
+  //       } catch (error) {
+  //         console.error("Error in saveSecretChanges:", error)
+  //         toast({
+  //           title: "Error: Could not save changes. Please try again with smaller values.",
+  //           variant: "destructive",
+  //         })
+  //       }
+  //     }, 0)
+  //   } catch (error) {
+  //     console.error("Error in saveSecretChanges outer block:", error)
+  //     toast({ title: "Error: Could not save changes. Please try again with smaller values.", variant: "destructive" })
+  //   }
+  // }
+
+  const saveSecretChanges = async () => {
     try {
       if (secretInputValue && secretInputValue.length > 1000000) {
         toast({ title: "Processing large secret value..." })
       }
 
-      setTimeout(() => {
+      setTimeout(async () => {
         try {
           if (editingSecretIndex === -1) {
             if (editSecretName) {
@@ -518,7 +839,11 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
 
               const newYamlContent = yaml.dump(newFormData)
               setYamlContent(newYamlContent)
+              
+              // Update both localStorage and the source file
               localStorage.setItem(`secrets_editor_${env}`, newYamlContent)
+              await updateSecretsSourceFile(env, newYamlContent)
+              
               generateExternalSecretsYaml(newFormData)
 
               if (secretInputValue) {
@@ -527,7 +852,28 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
                     ...secretValues,
                     [editSecretName]: secretInputValue,
                   })
-                  toast({ title: "Secret value updated locally" })
+
+                  // Also save to vault if connected
+                  if (vaultConnectionStatus === 'success' && editVaultPath && editVaultKey) {
+                    try {
+                      const result = await window.electronAPI.vault.writeSecret(
+                        env,
+                        editVaultPath,
+                        editVaultKey,
+                        secretInputValue
+                      )
+
+                      if (result.success) {
+                        toast({ title: "Secret saved locally, to file, and to vault successfully" })
+                      } else {
+                        toast({ title: "Secret saved locally and to file, but failed to save to vault", variant: "destructive" })
+                      }
+                    } catch (vaultError: any) {
+                      toast({ title: "Secret saved locally and to file, but vault write failed", description: vaultError.message, variant: "destructive" })
+                    }
+                  } else {
+                    toast({ title: "Secret configuration updated and saved to file" })
+                  }
                 } catch (error) {
                   console.error("Error saving secret value:", error)
                   toast({
@@ -542,13 +888,40 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
             updateSecretField(editingSecretIndex, "path", editVaultPath)
             updateSecretField(editingSecretIndex, "key", editVaultKey)
 
+            // Update the source file after field updates
+            const updatedYamlContent = yaml.dump(formData)
+            setYamlContent(updatedYamlContent)
+            localStorage.setItem(`secrets_editor_${env}`, updatedYamlContent)
+            await updateSecretsSourceFile(env, updatedYamlContent)
+
             if (secretInputValue) {
               try {
                 setSecretValues({
                   ...secretValues,
                   [editSecretName]: secretInputValue,
                 })
-                toast({ title: "Secret value updated locally" })
+
+                // Also save to vault if connected
+                if (vaultConnectionStatus === 'success' && editVaultPath && editVaultKey) {
+                  try {
+                    const result = await window.electronAPI.vault.writeSecret(
+                      env,
+                      editVaultPath,
+                      editVaultKey,
+                      secretInputValue
+                    )
+
+                    if (result.success) {
+                      toast({ title: "Secret updated locally, in file, and in vault successfully" })
+                    } else {
+                      toast({ title: "Secret updated locally and in file, but failed to update in vault", variant: "destructive" })
+                    }
+                  } catch (vaultError: any) {
+                    toast({ title: "Secret updated locally and in file, but vault write failed", description: vaultError.message, variant: "destructive" })
+                  }
+                } else {
+                  toast({ title: "Secret configuration updated and saved to file" })
+                }
               } catch (error) {
                 console.error("Error saving secret value:", error)
                 toast({
@@ -559,7 +932,7 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
             }
           }
 
-          closeSecretEditModal()
+          setEditingSecretIndex(null)
         } catch (error) {
           console.error("Error in saveSecretChanges:", error)
           toast({
@@ -574,7 +947,24 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
     }
   }
 
-  const saveSecretToVault = (index: number) => {
+  /**
+   * Update the source secrets.yaml file to persist changes
+   */
+  const updateSecretsSourceFile = async (env: string, yamlContent: string) => {
+    try {
+      // Use the file service to write the updated secrets.yaml
+      await window.electronAPI.writeFile(
+        `src/mock/${env}/secrets.yaml`,
+        yamlContent
+      )
+      console.log(`✅ Updated secrets.yaml file for ${env} environment`)
+    } catch (error) {
+      console.error(`❌ Failed to update secrets.yaml file for ${env}:`, error)
+      // Don't throw - this is a nice-to-have feature
+    }
+  }
+
+  const saveSecretToVault = async (index: number) => {
     const secret = formData.env[index]
     if (!secret) return
 
@@ -591,9 +981,83 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
       return
     }
 
-    setTimeout(() => {
-      toast({ title: `Secret "${secretName}" saved to vault at ${secret.vaultRef.path}` })
-    }, 500)
+    if (vaultConnectionStatus !== 'success') {
+      toast({
+        title: "Vault connection required",
+        description: "Please configure vault connection in settings first",
+        variant: "destructive"
+      })
+      return
+    }
+
+    try {
+      const result = await window.electronAPI.vault.writeSecret(
+        env, // Use env instead of environment
+        secret.vaultRef.path,
+        secret.vaultRef.key,
+        secretValue
+      )
+
+      if (result.success) {
+        toast({ title: `Secret "${secretName}" saved to vault successfully` })
+      } else {
+        toast({
+          title: "Failed to save secret to vault",
+          variant: "destructive"
+        })
+      }
+    } catch (error: any) {
+      toast({
+        title: "Failed to save secret to vault",
+        description: error.message,
+        variant: "destructive"
+      })
+    }
+  }
+
+  const renderVaultStatus = () => {
+    const getStatusIcon = () => {
+      switch (vaultConnectionStatus) {
+        case 'success':
+          return <CheckCircle className="h-4 w-4 text-green-500" />
+        case 'error':
+          return <XCircle className="h-4 w-4 text-red-500" />
+        case 'checking':
+          return <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+        default:
+          return <AlertTriangle className="h-4 w-4 text-yellow-500" />
+      }
+    }
+
+    const getStatusText = () => {
+      switch (vaultConnectionStatus) {
+        case 'success':
+          return 'Vault Connected'
+        case 'error':
+          return 'Vault Disconnected'
+        case 'checking':
+          return 'Checking Vault...'
+        default:
+          return 'Vault Status Unknown'
+      }
+    }
+
+    return (
+      <div className="flex items-center gap-2 px-3 py-2 bg-muted rounded-lg">
+        {getStatusIcon()}
+        <span className="text-sm font-medium">{getStatusText()}</span>
+        {vaultConnectionStatus !== 'success' && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={checkVaultConnection}
+            disabled={vaultConnectionStatus === 'checking'}
+          >
+            Retry
+          </Button>
+        )}
+      </div>
+    )
   }
 
   const closeSecretEditModal = () => {
@@ -733,8 +1197,42 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
   }, [isResizing])
 
   return (
-    <div className="flex flex-col h-screen bg-background overflow-hidden">
-      {/* Header */}
+    <div className="h-full flex flex-col">
+      {/* Add vault status to header */}
+      <div className="flex items-center justify-between p-4 border-b">
+        <div className="flex items-center gap-4">
+          <h2 className="text-lg font-semibold">Secrets Editor - {env.toUpperCase()}</h2>
+          {renderVaultStatus()}
+        </div>
+        <div className="flex items-center gap-2">
+          {/* ... existing header buttons ... */}
+        </div>
+      </div>
+
+      {/* Show vault error alert if needed */}
+      {vaultConnectionStatus === 'error' && vaultError && (
+        <Alert className="m-4 border-red-200 bg-red-50">
+          <XCircle className="h-4 w-4 text-red-500" />
+          <AlertDescription className="text-red-700">
+            {vaultError}
+            {!hasVaultCredentials && (
+              <span className="block mt-1">
+                <Button
+                  variant="link"
+                  className="p-0 h-auto text-red-600 underline"
+                  onClick={() => {
+                    // Navigate to settings - you might need to implement this
+                    window.electronAPI?.openSettings?.()
+                  }}
+                >
+                  Configure Vault in Settings
+                </Button>
+              </span>
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
+
       <div className="flex justify-between items-center bg-card p-4 rounded-t-lg">
         <div>
           <h2 className="text-2xl font-bold text-foreground">Helm Secrets Editor</h2>
@@ -859,13 +1357,12 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
                             return (
                               <tr
                                 key={originalIndex}
-                                className={`border-b border-border hover:bg-muted/30 transition-colors ${
-                                  selectedSecrets.includes(originalIndex)
-                                    ? "bg-primary/10 border-l-4 border-l-primary"
-                                    : index % 2 === 0
-                                      ? "bg-muted/20"
-                                      : "bg-card"
-                                }`}
+                                className={`border-b border-border hover:bg-muted/30 transition-colors ${selectedSecrets.includes(originalIndex)
+                                  ? "bg-primary/10 border-l-4 border-l-primary"
+                                  : index % 2 === 0
+                                    ? "bg-muted/20"
+                                    : "bg-card"
+                                  }`}
                               >
                                 <td className="p-3">
                                   <Checkbox
@@ -975,9 +1472,8 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
 
         {/* Splitter */}
         <div
-          className={`w-1 cursor-col-resize transition-all duration-200 hover:bg-border/50 ${
-            isResizing ? "bg-border" : "bg-transparent"
-          }`}
+          className={`w-1 cursor-col-resize transition-all duration-200 hover:bg-border/50 ${isResizing ? "bg-border" : "bg-transparent"
+            }`}
           onMouseDown={handleMouseDown}
         />
 
@@ -986,7 +1482,7 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
           <Card className="h-full overflow-hidden border border-border">
             <Tabs
               value={activeTab}
-              onValueChange={(value) => setActiveTab(value as TabType)}
+              onValueChange={(value: any) => setActiveTab(value as TabType)}
               className="h-full flex flex-col"
             >
               <div className="flex justify-between items-center p-3 border-b border-border bg-muted/30">
@@ -1086,6 +1582,9 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Edit Secret</DialogTitle>
+            <DialogDescription>
+              Configure secret details and vault integration settings. Ensure your vault path and key are correct for proper secret management.
+            </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
