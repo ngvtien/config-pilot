@@ -28,15 +28,13 @@ import { Textarea } from "@/renderer/components/ui/textarea"
 import { Label } from "@/renderer/components/ui/label"
 import { Checkbox } from "@/renderer/components/ui/checkbox"
 import { Badge } from "@/renderer/components/ui/badge"
-import { Card, CardContent, CardHeader, CardTitle } from "@/renderer/components/ui/card"
+import { Card, CardContent } from "@/renderer/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/renderer/components/ui/tabs"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/renderer/components/ui/dialog"
 import { useToast } from "@/renderer/hooks/use-toast"
 import CodeMirror from "@uiw/react-codemirror"
 import { yaml as yamlLanguage } from "@codemirror/lang-yaml"
-import { json as jsonLanguage } from "@codemirror/lang-json"
-import { oneDark } from "@codemirror/theme-one-dark"
-import { jsonTheme, readOnlyExtensions, jsonReadOnlyExtensions } from "@/renderer/lib/codemirror-themes"
+import { readOnlyExtensions } from "@/renderer/lib/codemirror-themes"
 import { buildConfigPath } from "@/renderer/lib/path-utils"
 import type { ContextData } from "@/shared/types/context-data"
 
@@ -46,13 +44,13 @@ import { Alert, AlertDescription } from "@/renderer/components/ui/alert"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/renderer/components/ui/tooltip"
 import { useDialog } from '@/renderer/hooks/useDialog'
 import { cn } from "@/lib/utils"
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./ui/resizable"
+import { useTheme } from '@/renderer/components/theme-provider'
 
 interface SecretEditorProps {
   initialValue?: string
   onChange?: (value: string) => void
   environment?: string
-  schemaPath?: string
-  layout?: "side-by-side" | "stacked"
   context?: ContextData
   baseDirectory?: string
 }
@@ -66,14 +64,12 @@ interface SecretItem {
   value?: string
 }
 
-type TabType = "schema" | "secrets" | "external-secrets"
+type TabType = "secrets" | "external-secrets"
 
 const SecretsEditor: React.FC<SecretEditorProps> = ({
   initialValue = "",
   onChange,
   environment = "dev",
-  schemaPath = "/src/mock/schema/secrets.schema.json",
-  layout = "side-by-side",
   context,
   baseDirectory = "/opt/config-pilot/configs",
 }) => {
@@ -82,10 +78,6 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
   const [formData, setFormData] = useState<any>({})
   const [isLoading, setIsLoading] = useState(true)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [showYamlEditor, setShowYamlEditor] = useState(false)
-  const [editorHeight, setEditorHeight] = useState("300px")
-  const monacoEditorRef = useRef<any>(null)
-  const [schema, setSchema] = useState<any>(null)
   const [secretValues, setSecretValues] = useState<Record<string, string>>({})
   const [editingSecretIndex, setEditingSecretIndex] = useState<number | null>(null)
   const [secretInputValue, setSecretInputValue] = useState("")
@@ -96,17 +88,13 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
     key: string
     direction: "ascending" | "descending"
   } | null>(null)
-  const [activeTab, setActiveTab] = useState<TabType>("schema")
+  const [activeTab, setActiveTab] = useState<TabType>("secrets")
   const [externalSecretsYaml, setExternalSecretsYaml] = useState("")
 
   // State for the edit modal
   const [editSecretName, setEditSecretName] = useState("")
   const [editVaultPath, setEditVaultPath] = useState("")
   const [editVaultKey, setEditVaultKey] = useState("")
-
-  // State for splitter
-  const [isResizing, setIsResizing] = useState(false)
-  const [leftPanelWidth, setLeftPanelWidth] = useState(66.67) // Default 2/3 (66.67%)
 
   const [vaultConnectionStatus, setVaultConnectionStatus] = useState<'unknown' | 'success' | 'error' | 'checking'>('unknown')
   const [vaultError, setVaultError] = useState<string | null>(null)
@@ -121,11 +109,8 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
 
   const { showConfirm, ConfirmDialog } = useDialog()
 
-  // Load schema when component mounts
-  useEffect(() => {
-    loadSchema()
-  }, [])
-
+  const { theme } = useTheme()
+  
   // Load values when component mounts or environment changes
   useEffect(() => {
     loadValues(environment)
@@ -288,34 +273,6 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
   // Extract values from context for easier use
   const { environment: env, product, customer } = editorContext
 
-  const loadSchema = async () => {
-    try {
-      const savedSchema = localStorage.getItem(`schema_${schemaPath}`)
-      if (savedSchema) {
-        try {
-          const schemaData = JSON.parse(savedSchema)
-          setSchema({ ...schemaData })
-          toast({ title: "Schema refreshed!" })
-          return
-        } catch (error) {
-          console.error("Error parsing saved schema:", error)
-        }
-      }
-
-      const res = await fetch(schemaPath)
-      if (!res.ok) {
-        console.error(`Failed to fetch schema: ${res.status} ${res.statusText}`)
-        return
-      }
-
-      const schemaData = await res.json()
-      setSchema({ ...schemaData })
-      localStorage.setItem(`schema_${schemaPath}`, JSON.stringify(schemaData))
-    } catch (error) {
-      console.error("Error loading schema:", error)
-    }
-  }
-
   const loadValues = async (env: string) => {
     try {
       setIsLoading(true)
@@ -418,18 +375,6 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
     }
   }, [yamlContent, onChange])
 
-  const handleYamlChange = (value: string | undefined) => {
-    if (value === undefined) return
-    setYamlContent(value)
-    try {
-      const parsedValues = yaml.load(value) as any
-      setFormData(parsedValues || {})
-      generateExternalSecretsYaml(parsedValues || {})
-    } catch (e) {
-      console.error("Error parsing YAML:", e)
-    }
-  }
-
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -458,20 +403,10 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
     toast({ title: "Copied to clipboard!" })
   }
 
-  const copyEditorContent = () => {
-    if (monacoEditorRef.current) {
-      const editorValue = monacoEditorRef.current.getValue()
-      copyToClipboard(editorValue)
-    }
-  }
-
   const copyRightPanelContent = () => {
     let contentToCopy = ""
 
     switch (activeTab) {
-      case "schema":
-        contentToCopy = JSON.stringify(schema, null, 2)
-        break
       case "secrets":
         contentToCopy = yamlContent
         break
@@ -507,17 +442,6 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
     a.click()
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
-  }
-
-  const toggleYamlEditor = () => {
-    setShowYamlEditor(!showYamlEditor)
-    if (!showYamlEditor) {
-      setEditorHeight("300px")
-    }
-  }
-
-  const handleEditorResize = () => {
-    setEditorHeight(editorHeight === "300px" ? "500px" : "300px")
   }
 
   const addSecret = () => {
@@ -1065,50 +989,6 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
 
   const filteredSecrets = getSortedAndFilteredSecrets()
 
-  const handleMouseDown = (e: React.MouseEvent) => {
-    e.preventDefault()
-    setIsResizing(true)
-  }
-
-  const handleMouseMove = (e: MouseEvent) => {
-    if (!isResizing) return
-
-    const container = document.querySelector(".splitter-container") as HTMLElement
-    if (!container) return
-
-    const containerRect = container.getBoundingClientRect()
-    const newLeftWidth = ((e.clientX - containerRect.left) / containerRect.width) * 100
-
-    // Constrain between 20% and 80%
-    const constrainedWidth = Math.min(Math.max(newLeftWidth, 20), 80)
-    setLeftPanelWidth(constrainedWidth)
-  }
-
-  const handleMouseUp = () => {
-    setIsResizing(false)
-  }
-
-  useEffect(() => {
-    if (isResizing) {
-      document.addEventListener("mousemove", handleMouseMove)
-      document.addEventListener("mouseup", handleMouseUp)
-      document.body.style.cursor = "col-resize"
-      document.body.style.userSelect = "none"
-    } else {
-      document.removeEventListener("mousemove", handleMouseMove)
-      document.removeEventListener("mouseup", handleMouseUp)
-      document.body.style.cursor = ""
-      document.body.style.userSelect = ""
-    }
-
-    return () => {
-      document.removeEventListener("mousemove", handleMouseMove)
-      document.removeEventListener("mouseup", handleMouseUp)
-      document.body.style.cursor = ""
-      document.body.style.userSelect = ""
-    }
-  }, [isResizing])
-
   /**
    * Handle drag and drop events for certificate files
    */
@@ -1206,17 +1086,6 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
 
   return (
     <div className="h-full flex flex-col">
-      {/* Add vault status to header */}
-      <div className="flex items-center justify-between p-4 border-b">
-        <div className="flex items-center gap-4">
-          <h2 className="text-lg font-semibold">Secrets Editor - {env.toUpperCase()}</h2>
-          {renderVaultStatus()}
-        </div>
-        <div className="flex items-center gap-2">
-          {/* ... existing header buttons ... */}
-        </div>
-      </div>
-
       {/* Show vault error alert if needed */}
       {vaultConnectionStatus === 'error' && vaultError && (
         <Alert className="m-4 border-red-200 bg-red-50">
@@ -1243,7 +1112,12 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
 
       <div className="flex justify-between items-center bg-card p-4 rounded-t-lg">
         <div>
-          <h2 className="text-2xl font-bold text-foreground">Helm Secrets Editor</h2>
+          {/* <h2 className="text-2xl font-bold text-foreground">Secrets Editor</h2> */}
+          <div className="flex items-center gap-4">
+            <h2 className="text-lg font-semibold">Secrets Editor - {env.toUpperCase()}</h2>
+            {renderVaultStatus()}
+          </div>
+
           <p className="text-muted-foreground">
             Editing for{" "}
             <span className="font-medium font-mono text-sm">
@@ -1257,9 +1131,6 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
             Load File
           </Button>
           <input type="file" ref={fileInputRef} className="hidden" accept=".yaml,.yml" onChange={handleFileUpload} />
-          <Button variant="outline" onClick={toggleYamlEditor}>
-            {showYamlEditor ? "Hide YAML" : "Show YAML"}
-          </Button>
           <Button variant="outline" onClick={downloadYaml} className="flex items-center gap-2">
             <Download className="w-4 h-4" />
             Download YAML
@@ -1267,525 +1138,479 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
         </div>
       </div>
 
-      <div className="flex flex-1 overflow-hidden gap-0 p-4 splitter-container">
-        {/* Main content */}
-        <div className="flex flex-col gap-4 overflow-hidden min-w-0 pr-2" style={{ width: `${leftPanelWidth}%` }}>
-          <Card className="flex-1 overflow-hidden">
-            <CardContent className="p-4 h-full flex flex-col">
-              {isLoading ? (
-                <div className="flex items-center justify-center h-full text-gray-500">Loading...</div>
-              ) : (
-                <>
-                  {/* Toolbar */}
-                  <div className="flex justify-between items-center mb-4 p-4 bg-muted/50 rounded-lg">
-                    <div className="flex-1 max-w-md">
-                      <div className="relative">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-                        <Input
-                          type="text"
-                          placeholder="Search secrets..."
-                          value={searchTerm}
-                          onChange={(e) => setSearchTerm(e.target.value)}
-                          className="pl-10"
-                        />
+      {/* Replace the custom splitter implementation with ResizablePanelGroup */}
+      <div className="flex-1 overflow-hidden p-4">
+        <ResizablePanelGroup direction="horizontal" className="h-full">
+          {/* Left Panel - Main content */}
+          <ResizablePanel defaultSize={67} minSize={20} maxSize={80}>
+            <div className="flex flex-col gap-4 overflow-hidden min-w-0 pr-2 h-full">
+              <Card className="flex-1 overflow-hidden">
+                <CardContent className="p-4 h-full flex flex-col">
+                  {isLoading ? (
+                    <div className="flex items-center justify-center h-full text-gray-500">Loading...</div>
+                  ) : (
+                    <>
+                      {/* Toolbar */}
+                      <div className="flex justify-between items-center mb-4 p-4 bg-muted/50 rounded-lg">
+                        <div className="flex-1 max-w-md">
+                          <div className="relative">
+                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                            <Input
+                              type="text"
+                              placeholder="Search secrets..."
+                              value={searchTerm}
+                              onChange={(e) => setSearchTerm(e.target.value)}
+                              className="pl-10"
+                            />
+                          </div>
+                        </div>
+                        <div className="flex gap-3 items-center">
+                          <Button
+                            variant="outline"
+                            size="default"
+                            onClick={checkVaultSync}
+                            disabled={vaultConnectionStatus !== 'success'}
+                            className="flex items-center gap-2 min-w-[120px] h-10 transition-all duration-200 hover:scale-105 hover:shadow-md"
+                          >
+                            {Object.values(secretVaultStatuses).some(s => s === 'checking') ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <CheckCircle className="w-4 h-4" />
+                            )}
+                            Check Sync
+                          </Button>
+
+                          <Button
+                            onClick={addSecret}
+                            size="default"
+                            className="flex items-center gap-2 min-w-[130px] h-10 bg-primary hover:bg-primary/90 transition-all duration-200 hover:scale-105 hover:shadow-lg font-semibold"
+                          >
+                            <Plus className="w-4 h-4" />
+                            Add Secret
+                          </Button>
+
+                          {selectedSecrets.length > 0 && (
+                            <Button
+                              variant="destructive"
+                              size="default"
+                              onClick={removeSelectedSecrets}
+                              className="flex items-center gap-2 min-w-[140px] h-10 transition-all duration-200 hover:scale-105 hover:shadow-lg animate-in slide-in-from-right-2"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                              Delete Selected ({selectedSecrets.length})
+                            </Button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex gap-3 items-center">
-                      <Button
-                        variant="outline"
-                        size="default"
-                        onClick={checkVaultSync}
-                        disabled={vaultConnectionStatus !== 'success'}
-                        className="flex items-center gap-2 min-w-[120px] h-10 transition-all duration-200 hover:scale-105 hover:shadow-md"
-                      >
-                        {Object.values(secretVaultStatuses).some(s => s === 'checking') ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <CheckCircle className="w-4 h-4" />
-                        )}
-                        Check Sync
-                      </Button>
 
-                      <Button
-                        onClick={addSecret}
-                        size="default"
-                        className="flex items-center gap-2 min-w-[130px] h-10 bg-primary hover:bg-primary/90 transition-all duration-200 hover:scale-105 hover:shadow-lg font-semibold"
-                      >
-                        <Plus className="w-4 h-4" />
-                        Add Secret
-                      </Button>
+                      {/* Secrets Table */}
+                      <div className="flex-1 overflow-auto border border-border rounded-lg bg-card">
+                        <TooltipProvider>
+                          <table className="w-full border-collapse">
+                            <thead className="bg-muted sticky top-0 z-10 shadow-sm">
+                              <tr>
+                                <th className="p-3 text-left border-b border-border">
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div className="flex items-center gap-2">
+                                        <Checkbox
+                                          checked={selectedSecrets.length === filteredSecrets.length && filteredSecrets.length > 0}
+                                          onCheckedChange={toggleSelectAll}
+                                        />
+                                        <Info className="w-3 h-3 text-muted-foreground" />
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p className="text-xs">Select/deselect all secrets</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </th>
+                                <th
+                                  className="p-3 text-left border-b border-border cursor-pointer hover:bg-muted/70 select-none transition-colors"
+                                  onClick={() => requestSort("name")}
+                                >
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div className="flex items-center gap-2 font-semibold text-foreground text-sm">
+                                        Secret Key Name
+                                        {getSortIndicator("name")}
+                                        <Info className="w-3 h-3 text-muted-foreground" />
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p className="text-xs">The name of the secret key used in your application. Click to sort.</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </th>
+                                <th
+                                  className="p-3 text-left border-b border-border cursor-pointer hover:bg-muted/70 select-none transition-colors"
+                                  onClick={() => requestSort("path")}
+                                >
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div className="flex items-center gap-2 font-semibold text-foreground text-sm">
+                                        Vault Path
+                                        {getSortIndicator("path")}
+                                        <Info className="w-3 h-3 text-muted-foreground" />
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p className="text-xs">The path in Vault where this secret is stored. Click to sort.</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </th>
+                                <th
+                                  className="p-3 text-left border-b border-border cursor-pointer hover:bg-muted/70 select-none transition-colors"
+                                  onClick={() => requestSort("key")}
+                                >
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div className="flex items-center gap-2 font-semibold text-foreground text-sm">
+                                        Vault Key
+                                        {getSortIndicator("key")}
+                                        <Info className="w-3 h-3 text-muted-foreground" />
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p className="text-xs">The specific key within the Vault path for this secret. Click to sort.</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </th>
+                                <th className="p-3 text-left border-b border-border">
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div className="flex items-center gap-2 font-semibold text-foreground text-sm">
+                                        Status
+                                        <Info className="w-3 h-3 text-muted-foreground" />
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p className="text-xs">Shows whether the secret has a value configured</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </th>
+                                <th className="p-3 text-center border-b border-border">
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div className="flex items-center justify-center gap-2 font-semibold text-foreground text-sm">
+                                        Actions
+                                        <Info className="w-3 h-3 text-muted-foreground" />
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p className="text-xs">Edit, save to Vault, or delete secrets</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {filteredSecrets.length > 0 ? (
+                                filteredSecrets.map((secret: SecretItem, index: number) => {
+                                  const originalIndex = formData.env.findIndex(
+                                    (s: SecretItem) =>
+                                      s.name === secret.name &&
+                                      s.vaultRef?.path === secret.vaultRef?.path &&
+                                      s.vaultRef?.key === secret.vaultRef?.key,
+                                  )
 
-                      {selectedSecrets.length > 0 && (
-                        <Button
-                          variant="destructive"
-                          size="default"
-                          onClick={removeSelectedSecrets}
-                          className="flex items-center gap-2 min-w-[140px] h-10 transition-all duration-200 hover:scale-105 hover:shadow-lg animate-in slide-in-from-right-2"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                          Delete Selected ({selectedSecrets.length})
+                                  return (
+                                    <tr
+                                      key={originalIndex}
+                                      className={`border-b border-border hover:bg-muted/30 transition-colors ${selectedSecrets.includes(originalIndex)
+                                        ? "bg-primary/10 border-l-4 border-l-primary"
+                                        : index % 2 === 0
+                                          ? "bg-muted/20"
+                                          : "bg-card"
+                                        }`}
+                                    >
+                                      <td className="p-3">
+                                        <Checkbox
+                                          checked={selectedSecrets.includes(originalIndex)}
+                                          onCheckedChange={() => toggleSelectSecret(originalIndex)}
+                                        />
+                                      </td>
+                                      <td className="p-3">
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <span className="text-foreground font-medium text-sm font-mono cursor-help">
+                                              {secret.name || <span className="text-muted-foreground italic">No name</span>}
+                                            </span>
+                                          </TooltipTrigger>
+                                          <TooltipContent>
+                                            <p className="text-xs">Secret key: {secret.name || 'Not defined'}</p>
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </td>
+                                      <td className="p-3">
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <span className="text-foreground text-sm font-mono cursor-help">
+                                              {secret.vaultRef?.path || (
+                                                <span className="text-muted-foreground italic">No path</span>
+                                              )}
+                                            </span>
+                                          </TooltipTrigger>
+                                          <TooltipContent>
+                                            <p className="text-xs">Vault path: {secret.vaultRef?.path || 'Not configured'}</p>
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </td>
+                                      <td className="p-3">
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <span className="text-foreground text-sm font-mono cursor-help">
+                                              {secret.vaultRef?.key || <span className="text-muted-foreground italic">No key</span>}
+                                            </span>
+                                          </TooltipTrigger>
+                                          <TooltipContent>
+                                            <p className="text-xs">Vault key: {secret.vaultRef?.key || 'Not configured'}</p>
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </td>
+
+                                      {/* Enhance the existing status rendering*/}
+                                      <td className="p-3">
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <div className="cursor-help">
+                                              {(() => {
+                                                const hasLocalValue = !!secretValues[secret.name]
+                                                const vaultStatus = secretVaultStatuses[secret.name]
+
+                                                // Keep existing logic as primary, add vault sync as secondary indicator
+                                                if (hasLocalValue) {
+                                                  if (vaultStatus === 'checking') {
+                                                    return (
+                                                      <div className="flex items-center gap-1">
+                                                        <Badge className="bg-green-500/10 text-green-700 border-green-500/20 dark:bg-green-500/20 dark:text-green-400 text-xs font-medium">
+                                                          Has Value
+                                                        </Badge>
+                                                        <Loader2 className="w-3 h-3 animate-spin text-blue-500" />
+                                                      </div>
+                                                    )
+                                                  } else if (vaultStatus === 'synced') {
+                                                    return (
+                                                      <Badge className="bg-green-500/10 text-green-700 border-green-500/20 dark:bg-green-500/20 dark:text-green-400 text-xs font-medium">
+                                                        Has Value ✓
+                                                      </Badge>
+                                                    )
+                                                  } else if (vaultStatus === 'out-of-sync') {
+                                                    return (
+                                                      <Badge className="bg-yellow-500/10 text-yellow-700 border-yellow-500/20 dark:bg-yellow-500/20 dark:text-yellow-400 text-xs font-medium">
+                                                        Has Value ⚠
+                                                      </Badge>
+                                                    )
+                                                  } else {
+                                                    // Fallback to existing "Has Value" when vault status unknown
+                                                    return (
+                                                      <Badge className="bg-green-500/10 text-green-700 border-green-500/20 dark:bg-green-500/20 dark:text-green-400 text-xs font-medium">
+                                                        Has Value
+                                                      </Badge>
+                                                    )
+                                                  }
+                                                } else {
+                                                  // Keep existing "No Value" logic unchanged
+                                                  return (
+                                                    <Badge
+                                                      variant="destructive"
+                                                      className="bg-red-500/10 text-red-700 border-red-500/20 dark:bg-red-500/20 dark:text-red-400 text-xs font-medium"
+                                                    >
+                                                      No Value
+                                                    </Badge>
+                                                  )
+                                                }
+                                              })()
+                                              }
+                                            </div>
+                                          </TooltipTrigger>
+                                          <TooltipContent>
+                                            <div className="text-xs space-y-1">
+                                              <p>
+                                                {secretValues[secret.name]
+                                                  ? 'This secret has a configured value'
+                                                  : 'This secret needs a value to be set'}
+                                              </p>
+                                              {secretVaultStatuses[secret.name] && (
+                                                <p className="text-muted-foreground">
+                                                  Vault: {(() => {
+                                                    switch (secretVaultStatuses[secret.name]) {
+                                                      case 'synced': return 'In sync with Vault'
+                                                      case 'out-of-sync': return 'Different from Vault'
+                                                      case 'checking': return 'Checking...'
+                                                      case 'error': return 'Error checking Vault'
+                                                      default: return 'Unknown'
+                                                    }
+                                                  })()}
+                                                </p>
+                                              )}
+                                            </div>
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </td>
+
+                                      {/*// Enhanced action buttons in table with consistent sizing */}
+                                      <td className="p-3">
+                                        <div className="flex justify-center gap-2">
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                onClick={() => openSecretEditModal(originalIndex)}
+                                                className="h-9 w-9 hover:bg-primary/10 hover:text-primary transition-all duration-200 hover:scale-110"
+                                              >
+                                                <Edit className="w-4 h-4" />
+                                              </Button>
+                                            </TooltipTrigger>
+                                            <TooltipContent>
+                                              <p className="text-xs">Edit secret configuration</p>
+                                            </TooltipContent>
+                                          </Tooltip>
+
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                onClick={() => saveSecretToVault(originalIndex)}
+                                                disabled={!secretValues[secret.name]}
+                                                className="h-9 w-9 hover:bg-green-500/10 hover:text-green-600 disabled:opacity-50 transition-all duration-200 hover:scale-110"
+                                              >
+                                                <Lock className="w-4 h-4" />
+                                              </Button>
+                                            </TooltipTrigger>
+                                            <TooltipContent>
+                                              <p className="text-xs">
+                                                {secretValues[secret.name]
+                                                  ? 'Save secret to Vault'
+                                                  : 'No value to save - edit first'}
+                                              </p>
+                                            </TooltipContent>
+                                          </Tooltip>
+
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                onClick={() => removeSecret(originalIndex)}
+                                                className="h-9 w-9 hover:bg-red-500/10 hover:text-red-600 transition-all duration-200 hover:scale-110"
+                                              >
+                                                <Trash2 className="w-4 h-4" />
+                                              </Button>
+                                            </TooltipTrigger>
+                                            <TooltipContent>
+                                              <p className="text-xs">Delete this secret</p>
+                                            </TooltipContent>
+                                          </Tooltip>
+                                        </div>
+                                      </td>
+
+                                    </tr>
+                                  )
+                                })
+                              ) : (
+                                <tr>
+                                  <td colSpan={6} className="p-6 text-center text-muted-foreground italic bg-muted/20 text-sm">
+                                    {searchTerm ? "No secrets match your search" : "No secrets defined yet"}
+                                  </td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </TooltipProvider>
+                      </div>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+
+            </div>
+          </ResizablePanel>
+
+          {/* Resizable Handle */}
+          <ResizableHandle withHandle />
+
+          {/* Right Panel - Tabbed View */}
+          {/* Right Panel - Tabbed View */}
+          <ResizablePanel defaultSize={33} minSize={20} maxSize={80}>
+            <div className="overflow-hidden pl-2 h-full">
+              <Card className="h-full overflow-hidden border border-border">
+                <Tabs
+                  value={activeTab}
+                  onValueChange={(value: any) => setActiveTab(value as TabType)}
+                  className="h-full flex flex-col"
+                >
+                  <div className="flex justify-between items-center p-3 border-b border-border bg-muted/30">
+                    <TabsList className="grid w-auto grid-cols-2">
+                      <TabsTrigger value="secrets">secrets.yaml</TabsTrigger>
+                      <TabsTrigger value="external-secrets">external-secret.yaml</TabsTrigger>
+                    </TabsList>
+                    <div className="flex gap-2">
+                      <Button variant="ghost" size="sm" onClick={copyRightPanelContent} className="hover:bg-muted">
+                        <Copy className="w-4 h-4" />
+                      </Button>
+                      {activeTab === "external-secrets" && (
+                        <Button variant="ghost" size="sm" onClick={downloadExternalSecretsYaml} className="hover:bg-muted">
+                          <Download className="w-4 h-4" />
                         </Button>
                       )}
-
                     </div>
                   </div>
-
-                  {/* Secrets Table */}
-                  <div className="flex-1 overflow-auto border border-border rounded-lg bg-card">
-                    <TooltipProvider>
-                      <table className="w-full border-collapse">
-                        <thead className="bg-muted sticky top-0 z-10 shadow-sm">
-                          <tr>
-                            <th className="p-3 text-left border-b border-border">
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <div className="flex items-center gap-2">
-                                    <Checkbox
-                                      checked={selectedSecrets.length === filteredSecrets.length && filteredSecrets.length > 0}
-                                      onCheckedChange={toggleSelectAll}
-                                    />
-                                    <Info className="w-3 h-3 text-muted-foreground" />
-                                  </div>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p className="text-xs">Select/deselect all secrets</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </th>
-                            <th
-                              className="p-3 text-left border-b border-border cursor-pointer hover:bg-muted/70 select-none transition-colors"
-                              onClick={() => requestSort("name")}
-                            >
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <div className="flex items-center gap-2 font-semibold text-foreground text-sm">
-                                    Secret Key Name
-                                    {getSortIndicator("name")}
-                                    <Info className="w-3 h-3 text-muted-foreground" />
-                                  </div>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p className="text-xs">The name of the secret key used in your application. Click to sort.</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </th>
-                            <th
-                              className="p-3 text-left border-b border-border cursor-pointer hover:bg-muted/70 select-none transition-colors"
-                              onClick={() => requestSort("path")}
-                            >
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <div className="flex items-center gap-2 font-semibold text-foreground text-sm">
-                                    Vault Path
-                                    {getSortIndicator("path")}
-                                    <Info className="w-3 h-3 text-muted-foreground" />
-                                  </div>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p className="text-xs">The path in Vault where this secret is stored. Click to sort.</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </th>
-                            <th
-                              className="p-3 text-left border-b border-border cursor-pointer hover:bg-muted/70 select-none transition-colors"
-                              onClick={() => requestSort("key")}
-                            >
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <div className="flex items-center gap-2 font-semibold text-foreground text-sm">
-                                    Vault Key
-                                    {getSortIndicator("key")}
-                                    <Info className="w-3 h-3 text-muted-foreground" />
-                                  </div>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p className="text-xs">The specific key within the Vault path for this secret. Click to sort.</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </th>
-                            <th className="p-3 text-left border-b border-border">
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <div className="flex items-center gap-2 font-semibold text-foreground text-sm">
-                                    Status
-                                    <Info className="w-3 h-3 text-muted-foreground" />
-                                  </div>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p className="text-xs">Shows whether the secret has a value configured</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </th>
-                            <th className="p-3 text-center border-b border-border">
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <div className="flex items-center justify-center gap-2 font-semibold text-foreground text-sm">
-                                    Actions
-                                    <Info className="w-3 h-3 text-muted-foreground" />
-                                  </div>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p className="text-xs">Edit, save to Vault, or delete secrets</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {filteredSecrets.length > 0 ? (
-                            filteredSecrets.map((secret: SecretItem, index: number) => {
-                              const originalIndex = formData.env.findIndex(
-                                (s: SecretItem) =>
-                                  s.name === secret.name &&
-                                  s.vaultRef?.path === secret.vaultRef?.path &&
-                                  s.vaultRef?.key === secret.vaultRef?.key,
-                              )
-
-                              return (
-                                <tr
-                                  key={originalIndex}
-                                  className={`border-b border-border hover:bg-muted/30 transition-colors ${selectedSecrets.includes(originalIndex)
-                                    ? "bg-primary/10 border-l-4 border-l-primary"
-                                    : index % 2 === 0
-                                      ? "bg-muted/20"
-                                      : "bg-card"
-                                    }`}
-                                >
-                                  <td className="p-3">
-                                    <Checkbox
-                                      checked={selectedSecrets.includes(originalIndex)}
-                                      onCheckedChange={() => toggleSelectSecret(originalIndex)}
-                                    />
-                                  </td>
-                                  <td className="p-3">
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <span className="text-foreground font-medium text-sm font-mono cursor-help">
-                                          {secret.name || <span className="text-muted-foreground italic">No name</span>}
-                                        </span>
-                                      </TooltipTrigger>
-                                      <TooltipContent>
-                                        <p className="text-xs">Secret key: {secret.name || 'Not defined'}</p>
-                                      </TooltipContent>
-                                    </Tooltip>
-                                  </td>
-                                  <td className="p-3">
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <span className="text-foreground text-sm font-mono cursor-help">
-                                          {secret.vaultRef?.path || (
-                                            <span className="text-muted-foreground italic">No path</span>
-                                          )}
-                                        </span>
-                                      </TooltipTrigger>
-                                      <TooltipContent>
-                                        <p className="text-xs">Vault path: {secret.vaultRef?.path || 'Not configured'}</p>
-                                      </TooltipContent>
-                                    </Tooltip>
-                                  </td>
-                                  <td className="p-3">
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <span className="text-foreground text-sm font-mono cursor-help">
-                                          {secret.vaultRef?.key || <span className="text-muted-foreground italic">No key</span>}
-                                        </span>
-                                      </TooltipTrigger>
-                                      <TooltipContent>
-                                        <p className="text-xs">Vault key: {secret.vaultRef?.key || 'Not configured'}</p>
-                                      </TooltipContent>
-                                    </Tooltip>
-                                  </td>
-
-                                  {/* Enhance the existing status rendering*/}
-                                  <td className="p-3">
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <div className="cursor-help">
-                                          {(() => {
-                                            const hasLocalValue = !!secretValues[secret.name]
-                                            const vaultStatus = secretVaultStatuses[secret.name]
-
-                                            // Keep existing logic as primary, add vault sync as secondary indicator
-                                            if (hasLocalValue) {
-                                              if (vaultStatus === 'checking') {
-                                                return (
-                                                  <div className="flex items-center gap-1">
-                                                    <Badge className="bg-green-500/10 text-green-700 border-green-500/20 dark:bg-green-500/20 dark:text-green-400 text-xs font-medium">
-                                                      Has Value
-                                                    </Badge>
-                                                    <Loader2 className="w-3 h-3 animate-spin text-blue-500" />
-                                                  </div>
-                                                )
-                                              } else if (vaultStatus === 'synced') {
-                                                return (
-                                                  <Badge className="bg-green-500/10 text-green-700 border-green-500/20 dark:bg-green-500/20 dark:text-green-400 text-xs font-medium">
-                                                    Has Value ✓
-                                                  </Badge>
-                                                )
-                                              } else if (vaultStatus === 'out-of-sync') {
-                                                return (
-                                                  <Badge className="bg-yellow-500/10 text-yellow-700 border-yellow-500/20 dark:bg-yellow-500/20 dark:text-yellow-400 text-xs font-medium">
-                                                    Has Value ⚠
-                                                  </Badge>
-                                                )
-                                              } else {
-                                                // Fallback to existing "Has Value" when vault status unknown
-                                                return (
-                                                  <Badge className="bg-green-500/10 text-green-700 border-green-500/20 dark:bg-green-500/20 dark:text-green-400 text-xs font-medium">
-                                                    Has Value
-                                                  </Badge>
-                                                )
-                                              }
-                                            } else {
-                                              // Keep existing "No Value" logic unchanged
-                                              return (
-                                                <Badge
-                                                  variant="destructive"
-                                                  className="bg-red-500/10 text-red-700 border-red-500/20 dark:bg-red-500/20 dark:text-red-400 text-xs font-medium"
-                                                >
-                                                  No Value
-                                                </Badge>
-                                              )
-                                            }
-                                          })()
-                                          }
-                                        </div>
-                                      </TooltipTrigger>
-                                      <TooltipContent>
-                                        <div className="text-xs space-y-1">
-                                          <p>
-                                            {secretValues[secret.name]
-                                              ? 'This secret has a configured value'
-                                              : 'This secret needs a value to be set'}
-                                          </p>
-                                          {secretVaultStatuses[secret.name] && (
-                                            <p className="text-muted-foreground">
-                                              Vault: {(() => {
-                                                switch (secretVaultStatuses[secret.name]) {
-                                                  case 'synced': return 'In sync with Vault'
-                                                  case 'out-of-sync': return 'Different from Vault'
-                                                  case 'checking': return 'Checking...'
-                                                  case 'error': return 'Error checking Vault'
-                                                  default: return 'Unknown'
-                                                }
-                                              })()}
-                                            </p>
-                                          )}
-                                        </div>
-                                      </TooltipContent>
-                                    </Tooltip>
-                                  </td>
-
-                                  {/*// Enhanced action buttons in table with consistent sizing */}
-                                  <td className="p-3">
-                                    <div className="flex justify-center gap-2">
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            onClick={() => openSecretEditModal(originalIndex)}
-                                            className="h-9 w-9 hover:bg-primary/10 hover:text-primary transition-all duration-200 hover:scale-110"
-                                          >
-                                            <Edit className="w-4 h-4" />
-                                          </Button>
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                          <p className="text-xs">Edit secret configuration</p>
-                                        </TooltipContent>
-                                      </Tooltip>
-
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            onClick={() => saveSecretToVault(originalIndex)}
-                                            disabled={!secretValues[secret.name]}
-                                            className="h-9 w-9 hover:bg-green-500/10 hover:text-green-600 disabled:opacity-50 transition-all duration-200 hover:scale-110"
-                                          >
-                                            <Lock className="w-4 h-4" />
-                                          </Button>
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                          <p className="text-xs">
-                                            {secretValues[secret.name]
-                                              ? 'Save secret to Vault'
-                                              : 'No value to save - edit first'}
-                                          </p>
-                                        </TooltipContent>
-                                      </Tooltip>
-
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            onClick={() => removeSecret(originalIndex)}
-                                            className="h-9 w-9 hover:bg-red-500/10 hover:text-red-600 transition-all duration-200 hover:scale-110"
-                                          >
-                                            <Trash2 className="w-4 h-4" />
-                                          </Button>
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                          <p className="text-xs">Delete this secret</p>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </div>
-                                  </td>
-
-                                </tr>
-                              )
-                            })
-                          ) : (
-                            <tr>
-                              <td colSpan={6} className="p-6 text-center text-muted-foreground italic bg-muted/20 text-sm">
-                                {searchTerm ? "No secrets match your search" : "No secrets defined yet"}
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </TooltipProvider>
+                  <div className="flex-1 overflow-hidden">
+                    <TabsContent value="secrets" className="h-full m-0">
+                      <div className="h-full overflow-hidden">
+                        <CodeMirror
+                          value={
+                            formData && formData.env ? `env:\n${yaml.dump({ env: formData.env }).substring(5)}` : "env: []"
+                          }
+                          height="100%"
+                          theme={theme}
+                          extensions={[yamlLanguage(), ...readOnlyExtensions]}
+                          basicSetup={{
+                            lineNumbers: true,
+                            foldGutter: true,
+                            dropCursor: false,
+                            allowMultipleSelections: false,
+                            indentOnInput: false,
+                            bracketMatching: true,
+                            closeBrackets: false,
+                            autocompletion: false,
+                            highlightSelectionMatches: false,
+                          }}
+                          className="text-sm"
+                        />
+                      </div>
+                    </TabsContent>
+                    <TabsContent value="external-secrets" className="h-full m-0">
+                      <div className="h-full overflow-hidden">
+                        <CodeMirror
+                          value={externalSecretsYaml || "No external secrets defined"}
+                          height="100%"
+                          theme={theme}
+                          extensions={[yamlLanguage(), ...readOnlyExtensions]}
+                          basicSetup={{
+                            lineNumbers: true,
+                            foldGutter: true,
+                            dropCursor: false,
+                            allowMultipleSelections: false,
+                            indentOnInput: false,
+                            bracketMatching: true,
+                            closeBrackets: false,
+                            autocompletion: false,
+                            highlightSelectionMatches: false,
+                          }}
+                          className="text-sm"
+                        />
+                      </div>
+                    </TabsContent>
                   </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* YAML Editor */}
-          {showYamlEditor && (
-            <Card className="bg-card border border-border overflow-hidden" style={{ height: editorHeight }}>
-              <CardHeader className="bg-muted border-b border-border p-3">
-                <div className="flex justify-between items-center">
-                  <CardTitle className="text-base text-foreground">YAML Editor</CardTitle>
-                  <div className="flex gap-2">
-                    <Button variant="ghost" size="sm" onClick={copyEditorContent} className="hover:bg-muted">
-                      <Copy className="w-4 h-4" />
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={handleEditorResize} className="hover:bg-muted">
-                      {editorHeight === "300px" ? "Expand" : "Collapse"}
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-              <div className="h-full overflow-hidden">
-                <Textarea
-                  value={yamlContent}
-                  onChange={(e) => handleYamlChange(e.target.value)}
-                  className="h-full w-full bg-muted/30 text-foreground font-mono border-none resize-none"
-                  style={{ minHeight: "100%" }}
-                />
-              </div>
-            </Card>
-          )}
-        </div>
-
-        {/* Splitter */}
-        <div
-          className={`w-1 cursor-col-resize transition-all duration-200 hover:bg-border/50 ${isResizing ? "bg-border" : "bg-transparent"
-            }`}
-          onMouseDown={handleMouseDown}
-        />
-
-        {/* Right Panel - Tabbed View */}
-        <div className="overflow-hidden pl-2" style={{ width: `${100 - leftPanelWidth}%` }}>
-          <Card className="h-full overflow-hidden border border-border">
-            <Tabs
-              value={activeTab}
-              onValueChange={(value: any) => setActiveTab(value as TabType)}
-              className="h-full flex flex-col"
-            >
-              <div className="flex justify-between items-center p-3 border-b border-border bg-muted/30">
-                <TabsList className="grid w-auto grid-cols-3">
-                  <TabsTrigger value="schema">Schema</TabsTrigger>
-                  <TabsTrigger value="secrets">secrets.yaml</TabsTrigger>
-                  <TabsTrigger value="external-secrets">external-secret.yaml</TabsTrigger>
-                </TabsList>
-                <div className="flex gap-2">
-                  <Button variant="ghost" size="sm" onClick={copyRightPanelContent} className="hover:bg-muted">
-                    <Copy className="w-4 h-4" />
-                  </Button>
-                  {activeTab === "external-secrets" && (
-                    <Button variant="ghost" size="sm" onClick={downloadExternalSecretsYaml} className="hover:bg-muted">
-                      <Download className="w-4 h-4" />
-                    </Button>
-                  )}
-                </div>
-              </div>
-              <div className="flex-1 overflow-hidden">
-                <TabsContent value="schema" className="h-full m-0">
-                  <div className="h-full overflow-hidden">
-                    <CodeMirror
-                      value={schema ? JSON.stringify(schema, null, 2) : "No schema loaded"}
-                      height="100%"
-                      theme={jsonTheme}
-                      extensions={[jsonLanguage(), ...jsonReadOnlyExtensions]}
-                      basicSetup={{
-                        lineNumbers: true,
-                        foldGutter: true,
-                        dropCursor: false,
-                        allowMultipleSelections: false,
-                        indentOnInput: false,
-                        bracketMatching: true,
-                        closeBrackets: false,
-                        autocompletion: false,
-                        highlightSelectionMatches: false,
-                      }}
-                      className="text-sm"
-                    />
-                  </div>
-                </TabsContent>
-                <TabsContent value="secrets" className="h-full m-0">
-                  <div className="h-full overflow-hidden">
-                    <CodeMirror
-                      value={
-                        formData && formData.env ? `env:\n${yaml.dump({ env: formData.env }).substring(5)}` : "env: []"
-                      }
-                      height="100%"
-                      theme={oneDark}
-                      extensions={[yamlLanguage(), ...readOnlyExtensions]}
-                      basicSetup={{
-                        lineNumbers: true,
-                        foldGutter: true,
-                        dropCursor: false,
-                        allowMultipleSelections: false,
-                        indentOnInput: false,
-                        bracketMatching: true,
-                        closeBrackets: false,
-                        autocompletion: false,
-                        highlightSelectionMatches: false,
-                      }}
-                      className="text-sm"
-                    />
-                  </div>
-                </TabsContent>
-                <TabsContent value="external-secrets" className="h-full m-0">
-                  <div className="h-full overflow-hidden">
-                    <CodeMirror
-                      value={externalSecretsYaml || "No external secrets defined"}
-                      height="100%"
-                      theme={oneDark}
-                      extensions={[yamlLanguage(), ...readOnlyExtensions]}
-                      basicSetup={{
-                        lineNumbers: true,
-                        foldGutter: true,
-                        dropCursor: false,
-                        allowMultipleSelections: false,
-                        indentOnInput: false,
-                        bracketMatching: true,
-                        closeBrackets: false,
-                        autocompletion: false,
-                        highlightSelectionMatches: false,
-                      }}
-                      className="text-sm"
-                    />
-                  </div>
-                </TabsContent>
-              </div>
-            </Tabs>
-          </Card>
-        </div>
+                </Tabs>
+              </Card>
+            </div>
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </div>
 
       {/* Secret Edit Modal */}
