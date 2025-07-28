@@ -1,5 +1,5 @@
-import React, { useRef } from "react"
-import { Upload, Eye, EyeOff, X, Shield, File, Copy, Download } from "lucide-react"
+import React, { useRef, useEffect, useState } from "react"
+import { Upload, Eye, EyeOff, X, Shield, File, Copy, Download, Calendar, User, Hash, AlertTriangle, CheckCircle, Link } from "lucide-react"
 import { Button } from "@/renderer/components/ui/button"
 import { Input } from "@/renderer/components/ui/input"
 import { Textarea } from "@/renderer/components/ui/textarea"
@@ -9,6 +9,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { cn } from "@/lib/utils"
 import { useCertificateAnalysis } from "../hooks/useCertificateAnalysis"
 import { DialogDescription } from "@radix-ui/react-dialog"
+import { SecretItem } from "components/types/secrets"
+import { CertificateLinkingModal } from "./CertificateLinkingModal"
 
 interface SecretEditModalProps {
   isOpen: boolean
@@ -21,6 +23,7 @@ interface SecretEditModalProps {
   env: string
   instance: number
   product: string
+  existingSecrets?: SecretItem[]
   onClose: () => void
   onSave: () => void
   onSecretNameChange: (value: string) => void
@@ -28,6 +31,7 @@ interface SecretEditModalProps {
   onVaultKeyChange: (value: string) => void
   onSecretValueChange: (value: string) => void
   onToggleVisibility: () => void
+  onCreateLinkedSecrets?: (linkedSecrets: any[]) => void
 }
 
 /**
@@ -44,6 +48,7 @@ export const SecretEditModal: React.FC<SecretEditModalProps> = ({
   env,
   instance,
   product,
+  existingSecrets = [],
   onClose,
   onSave,
   onSecretNameChange,
@@ -51,21 +56,36 @@ export const SecretEditModal: React.FC<SecretEditModalProps> = ({
   onVaultKeyChange,
   onSecretValueChange,
   onToggleVisibility,
+  onCreateLinkedSecrets
 }) => {
   const certificateInputRef = useRef<HTMLInputElement>(null)
   const secretValueRef = useRef<HTMLTextAreaElement>(null)
-  
+  const [isLinkingModalOpen, setIsLinkingModalOpen] = useState(false)
+
   const {
     isDragOver,
     fileType,
     fileName,
+    certificateMetadata,
+    analysisResult,
+    isAnalyzing,
     handleDragOver,
     handleDragEnter,
     handleDragLeave,
     handleDrop,
     handleCertificateUpload,
+    analyzeCertificateContent,
     resetCertificateState
   } = useCertificateAnalysis()
+
+  /**
+   * Analyze certificate content when secret value changes and contains certificate data
+   */
+  useEffect(() => {
+    if (secretValue && fileType === 'certificate') {
+      analyzeCertificateContent(secretValue, fileName || undefined)
+    }
+  }, [secretValue, fileType, fileName, analyzeCertificateContent])
 
   /**
    * Handle clear button click
@@ -82,15 +102,62 @@ export const SecretEditModal: React.FC<SecretEditModalProps> = ({
     handleDrop(e, onSecretValueChange)
   }
 
+  /**
+   * Format date for display
+   */
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return 'N/A'
+    try {
+      return new Date(dateString).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      })
+    } catch {
+      return 'Invalid Date'
+    }
+  }
+
+  /**
+   * Check if certificate is expiring soon (within 30 days)
+   */
+  const isExpiringSoon = (expiresAt?: string) => {
+    if (!expiresAt) return false
+    const expiryDate = new Date(expiresAt)
+    const thirtyDaysFromNow = new Date()
+    thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30)
+    return expiryDate <= thirtyDaysFromNow
+  }
+
+  /**
+   * Handle opening certificate linking modal
+   */
+  const handleOpenLinkingModal = () => {
+    if (certificateMetadata) {
+      setIsLinkingModalOpen(true)
+    }
+  }
+
+  /**
+   * Handle linking secrets
+   */
+  const handleLinkSecrets = (linkedSecrets: any[]) => {
+    if (onCreateLinkedSecrets) {
+      onCreateLinkedSecrets(linkedSecrets)
+    }
+    setIsLinkingModalOpen(false)
+  }
+
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+    <>
+      <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit Secret</DialogTitle>
+          <DialogDescription className="text-sm text-muted-foreground">
+            Configure secret details and upload certificate files with automatic metadata detection.
+          </DialogDescription>
         </DialogHeader>
-        <DialogDescription>
-          Edit secret details and values.
-        </DialogDescription>
 
         <div className="space-y-4">
           <div className="space-y-2">
@@ -133,6 +200,174 @@ export const SecretEditModal: React.FC<SecretEditModalProps> = ({
             />
             <p className="text-xs text-gray-500 italic">Keys are automatically converted to lowercase</p>
           </div>
+
+
+          {/* Certificate Metadata Panel - Only show when certificate is detected */}
+          {certificateMetadata && (
+            <div className="border rounded-lg p-4 bg-gradient-to-r from-green-50 to-blue-50 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Shield className="w-4 h-4 text-green-600" />
+                  <h3 className="font-medium text-sm">Certificate Metadata</h3>
+                  {isAnalyzing && (
+                    <Badge variant="secondary" className="text-xs animate-pulse">
+                      Analyzing...
+                    </Badge>
+                  )}
+                </div>
+                <div className="flex items-center gap-1">
+                  {certificateMetadata.expiresAt && (
+                    <Badge
+                      variant={isExpiringSoon(certificateMetadata.expiresAt) ? "destructive" : "secondary"}
+                      className="text-xs"
+                    >
+                      {isExpiringSoon(certificateMetadata.expiresAt) ? (
+                        <AlertTriangle className="w-3 h-3 mr-1" />
+                      ) : (
+                        <CheckCircle className="w-3 h-3 mr-1" />
+                      )}
+                      {isExpiringSoon(certificateMetadata.expiresAt) ? 'Expiring Soon' : 'Valid'}
+                    </Badge>
+                  )}
+                </div>
+              </div>
+
+              {/* Compact metadata grid */}
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="text-xs px-1 py-0">
+                      {certificateMetadata.type}
+                    </Badge>
+                    <Badge variant="outline" className="text-xs px-1 py-0">
+                      {certificateMetadata.format}
+                    </Badge>
+                  </div>
+
+                  {certificateMetadata.subject && (
+                    <div className="flex items-start gap-1">
+                      <User className="w-3 h-3 mt-0.5 text-gray-500 flex-shrink-0" />
+                      <div>
+                        <div className="font-medium text-gray-700">Subject:</div>
+                        <div className="text-gray-600 break-all">{certificateMetadata.subject}</div>
+                      </div>
+                    </div>
+                  )}
+
+                  {certificateMetadata.issuer && (
+                    <div className="flex items-start gap-1">
+                      <Shield className="w-3 h-3 mt-0.5 text-gray-500 flex-shrink-0" />
+                      <div>
+                        <div className="font-medium text-gray-700">Issuer:</div>
+                        <div className="text-gray-600 break-all">{certificateMetadata.issuer}</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  {certificateMetadata.expiresAt && (
+                    <div className="flex items-start gap-1">
+                      <Calendar className="w-3 h-3 mt-0.5 text-gray-500 flex-shrink-0" />
+                      <div>
+                        <div className="font-medium text-gray-700">Expires:</div>
+                        <div className={cn(
+                          "text-gray-600",
+                          isExpiringSoon(certificateMetadata.expiresAt) && "text-red-600 font-medium"
+                        )}>
+                          {formatDate(certificateMetadata.expiresAt)}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {certificateMetadata.fingerprint && (
+                    <div className="flex items-start gap-1">
+                      <Hash className="w-3 h-3 mt-0.5 text-gray-500 flex-shrink-0" />
+                      <div>
+                        <div className="font-medium text-gray-700">Fingerprint:</div>
+                        <div className="text-gray-600 font-mono text-xs break-all">
+                          {certificateMetadata.fingerprint.substring(0, 16)}...
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-3 text-xs">
+                    {certificateMetadata.hasPrivateKey && (
+                      <Badge variant="secondary" className="text-xs">
+                        <Shield className="w-3 h-3 mr-1" />
+                        Has Private Key
+                      </Badge>
+                    )}
+                    {certificateMetadata.isCA && (
+                      <Badge variant="secondary" className="text-xs">
+                        CA Certificate
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Quick actions for certificate linking */}
+              <div className="flex items-center gap-2 pt-2 border-t border-gray-200">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs h-6 px-2"
+                  onClick={handleOpenLinkingModal}
+                >
+                  <Link className="w-3 h-3 mr-1" />
+                  Link Secrets
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs h-6 px-2"
+                  onClick={() => {
+                    if (certificateMetadata.fingerprint) {
+                      navigator.clipboard.writeText(certificateMetadata.fingerprint)
+                    }
+                  }}
+                >
+                  <Copy className="w-3 h-3 mr-1" />
+                  Copy Fingerprint
+                </Button>
+              </div>
+              
+            </div>
+          )}
+
+          {/* Analysis Results - Show warnings/errors */}
+          {analysisResult && !analysisResult.isValid && (
+            <div className="border border-red-200 rounded-lg p-3 bg-red-50">
+              <div className="flex items-center gap-2 mb-2">
+                <AlertTriangle className="w-4 h-4 text-red-600" />
+                <h4 className="font-medium text-sm text-red-800">Certificate Analysis Issues</h4>
+              </div>
+              <ul className="text-xs text-red-700 space-y-1">
+                {analysisResult.errors?.map((error, index) => (
+                  <li key={index}>• {error}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {analysisResult && analysisResult.isValid && analysisResult.warnings && analysisResult.warnings.length > 0 && (
+            <div className="border border-yellow-200 rounded-lg p-3 bg-yellow-50">
+              <div className="flex items-center gap-2 mb-2">
+                <AlertTriangle className="w-4 h-4 text-yellow-600" />
+                <h4 className="font-medium text-sm text-yellow-800">Certificate Warnings</h4>
+              </div>
+              <ul className="text-xs text-yellow-700 space-y-1">
+                {analysisResult.warnings.map((warning, index) => (
+                  <li key={index}>• {warning}</li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {/* Secret Value section */}
           <div className="space-y-2">
@@ -202,16 +437,14 @@ export const SecretEditModal: React.FC<SecretEditModalProps> = ({
               </div>
             </div>
 
-            {/* Enhanced Textarea with Drag & Drop */}
+            {/* Enhanced textarea with drag & drop */}
             <div
               className={cn(
                 "relative border-2 border-dashed rounded-lg transition-all duration-200",
-                isDragOver
-                  ? "border-blue-400 bg-blue-50/50 shadow-lg scale-[1.02]"
-                  : "border-gray-200 hover:border-gray-300",
+                isDragOver ? "border-blue-400 bg-blue-50/50" : "border-gray-200",
                 fileType === 'certificate' && "border-green-200 bg-green-50/30"
               )}
-              onDragEnter={handleDragEnter} 
+              onDragEnter={handleDragEnter}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleFileDrop}
@@ -307,7 +540,25 @@ export const SecretEditModal: React.FC<SecretEditModalProps> = ({
           </Button>
           <Button onClick={onSave}>Save</Button>
         </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+
+      {/* Certificate Linking Modal */}
+      {certificateMetadata && (
+        <CertificateLinkingModal
+          isOpen={isLinkingModalOpen}
+          onClose={() => setIsLinkingModalOpen(false)}
+          certificateMetadata={certificateMetadata}
+          certificateName={secretName}
+          certificateVaultPath={vaultPath}
+          existingSecrets={existingSecrets}
+          customer={customer}
+          env={env}
+          instance={instance}
+          product={product}
+          onLinkSecrets={handleLinkSecrets}
+        />
+      )}
+    </>
   )
 }

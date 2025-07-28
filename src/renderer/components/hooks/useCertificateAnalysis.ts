@@ -1,16 +1,20 @@
 import { useState, useCallback } from "react"
 import { useToast } from "@/renderer/hooks/use-toast"
-import type { FileType } from "../types/secrets"
+import type { FileType, CertificateMetadata, CertificateAnalysisResult } from "../types/secrets"
 import { detectContentType } from "../utils/secrets-utils"
+import { analyzeCertificate, generateCertificateFingerprint } from "../utils/certificate-utils"
 
 /**
- * Custom hook for certificate file handling and analysis
+ * Custom hook for certificate file handling and analysis with enhanced metadata
  */
 export const useCertificateAnalysis = () => {
   const { toast } = useToast()
   const [isDragOver, setIsDragOver] = useState(false)
   const [fileType, setFileType] = useState<FileType>('text')
   const [fileName, setFileName] = useState<string | null>(null)
+  const [certificateMetadata, setCertificateMetadata] = useState<CertificateMetadata | null>(null)
+  const [analysisResult, setAnalysisResult] = useState<CertificateAnalysisResult | null>(null)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
 
   /**
    * Handle drag over events
@@ -22,14 +26,6 @@ export const useCertificateAnalysis = () => {
   }, [])
 
   /**
-   * Handle drag leave events
-   */
-  // const handleDragLeave = useCallback((e: React.DragEvent) => {
-  //   e.preventDefault()
-  //   e.stopPropagation()
-  //   setIsDragOver(false)
-  // }, [])
-  /**
    * Handle drag leave events - improved to prevent flickering
    */
   const handleDragLeave = useCallback((e: React.DragEvent) => {
@@ -37,27 +33,63 @@ export const useCertificateAnalysis = () => {
     e.stopPropagation()
     
     // Only set isDragOver to false if we're actually leaving the drop zone
-    // Check if the related target is outside the current target
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
     const x = e.clientX
     const y = e.clientY
     
-    // If the mouse is still within the bounds of the drop zone, don't hide the overlay
     if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
       return
     }
     
     setIsDragOver(false)
-  }, [])  
+  }, [])
 
   /**
-   * Handle drag enter events - add this new handler
+   * Handle drag enter events
    */
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
     setIsDragOver(true)
   }, [])
+
+  /**
+   * Analyze certificate content and extract metadata
+   */
+  const analyzeCertificateContent = useCallback(async (content: string, fileName?: string) => {
+    setIsAnalyzing(true)
+    try {
+      const result = analyzeCertificate(content, fileName)
+      setAnalysisResult(result)
+      
+      if (result.isValid && result.metadata) {
+        // Generate fingerprint asynchronously
+        const fingerprint = await generateCertificateFingerprint(content)
+        const enhancedMetadata = { ...result.metadata, fingerprint }
+        setCertificateMetadata(enhancedMetadata)
+        setFileType('certificate')
+        
+        toast({
+          title: "Certificate analyzed successfully",
+          description: `Type: ${enhancedMetadata.type}, Format: ${enhancedMetadata.format}`
+        })
+      } else {
+        toast({
+          title: "Certificate analysis failed",
+          description: result.errors?.join(', ') || 'Unknown error',
+          variant: "destructive"
+        })
+      }
+    } catch (error) {
+      toast({
+        title: "Analysis error",
+        description: "Failed to analyze certificate content",
+        variant: "destructive"
+      })
+    } finally {
+      setIsAnalyzing(false)
+    }
+  }, [toast])
 
   /**
    * Handle file drop events
@@ -78,8 +110,11 @@ export const useCertificateAnalysis = () => {
       try {
         const content = await file.text()
         onContentChange(content)
-        setFileType('certificate')
         setFileName(file.name)
+        
+        // Analyze certificate content
+        await analyzeCertificateContent(content, file.name)
+        
         toast({
           title: "Certificate loaded successfully",
           description: `${file.name} (${(file.size / 1024).toFixed(1)} KB)`
@@ -98,7 +133,7 @@ export const useCertificateAnalysis = () => {
         variant: "destructive"
       })
     }
-  }, [toast])
+  }, [toast, analyzeCertificateContent])
 
   /**
    * Handle file input upload
@@ -110,8 +145,11 @@ export const useCertificateAnalysis = () => {
     try {
       const content = await file.text()
       onContentChange(content)
-      setFileType('certificate')
       setFileName(file.name)
+      
+      // Analyze certificate content
+      await analyzeCertificateContent(content, file.name)
+      
       toast({
         title: "Certificate uploaded successfully",
         description: `${file.name} (${(file.size / 1024).toFixed(1)} KB)`
@@ -126,15 +164,19 @@ export const useCertificateAnalysis = () => {
 
     // Reset file input
     e.target.value = ''
-  }, [toast])
+  }, [toast, analyzeCertificateContent])
 
   /**
    * Analyze content and update file type
    */
-  const analyzeContent = useCallback((content: string) => {
+  const analyzeContent = useCallback(async (content: string) => {
     const detectedType = detectContentType(content)
     setFileType(detectedType)
-  }, [])
+    
+    if (detectedType === 'certificate') {
+      await analyzeCertificateContent(content)
+    }
+  }, [analyzeCertificateContent])
 
   /**
    * Reset certificate state
@@ -142,7 +184,10 @@ export const useCertificateAnalysis = () => {
   const resetCertificateState = useCallback(() => {
     setFileType('text')
     setFileName(null)
+    setCertificateMetadata(null)
+    setAnalysisResult(null)
     setIsDragOver(false)
+    setIsAnalyzing(false)
   }, [])
 
   return {
@@ -150,6 +195,9 @@ export const useCertificateAnalysis = () => {
     isDragOver,
     fileType,
     fileName,
+    certificateMetadata,
+    analysisResult,
+    isAnalyzing,
     
     // Actions
     handleDragOver,
@@ -158,6 +206,7 @@ export const useCertificateAnalysis = () => {
     handleDrop,
     handleCertificateUpload,
     analyzeContent,
+    analyzeCertificateContent,
     resetCertificateState
   }
 }
