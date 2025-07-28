@@ -8,7 +8,7 @@ import { Badge } from "@/renderer/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/renderer/components/ui/dialog"
 import { cn } from "@/lib/utils"
 import { useCertificateAnalysis } from "../hooks/useCertificateAnalysis"
-import type { FileType } from "../types/secrets"
+import { DialogDescription } from "@radix-ui/react-dialog"
 
 interface SecretEditModalProps {
   isOpen: boolean
@@ -50,7 +50,7 @@ export const SecretEditModal: React.FC<SecretEditModalProps> = ({
   onVaultPathChange,
   onVaultKeyChange,
   onSecretValueChange,
-  onToggleVisibility
+  onToggleVisibility,
 }) => {
   const certificateInputRef = useRef<HTMLInputElement>(null)
   const secretValueRef = useRef<HTMLTextAreaElement>(null)
@@ -60,6 +60,7 @@ export const SecretEditModal: React.FC<SecretEditModalProps> = ({
     fileType,
     fileName,
     handleDragOver,
+    handleDragEnter,
     handleDragLeave,
     handleDrop,
     handleCertificateUpload,
@@ -67,32 +68,11 @@ export const SecretEditModal: React.FC<SecretEditModalProps> = ({
   } = useCertificateAnalysis()
 
   /**
-   * Handle secret name change with uppercase conversion
-   */
-  const handleSecretNameChange = (value: string) => {
-    onSecretNameChange(value.toUpperCase())
-  }
-
-  /**
-   * Handle vault key change with lowercase conversion
-   */
-  const handleVaultKeyChange = (value: string) => {
-    onVaultKeyChange(value.toLowerCase())
-  }
-
-  /**
    * Handle clear button click
    */
   const handleClear = () => {
     onSecretValueChange('')
     resetCertificateState()
-  }
-
-  /**
-   * Handle certificate file upload
-   */
-  const handleCertUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    handleCertificateUpload(e, onSecretValueChange)
   }
 
   /**
@@ -108,6 +88,9 @@ export const SecretEditModal: React.FC<SecretEditModalProps> = ({
         <DialogHeader>
           <DialogTitle>Edit Secret</DialogTitle>
         </DialogHeader>
+        <DialogDescription>
+          Edit secret details and values.
+        </DialogDescription>
 
         <div className="space-y-4">
           <div className="space-y-2">
@@ -116,7 +99,7 @@ export const SecretEditModal: React.FC<SecretEditModalProps> = ({
               id="secretName"
               type="text"
               value={secretName}
-              onChange={(e) => handleSecretNameChange(e.target.value)}
+              onChange={(e) => onSecretNameChange(e.target.value.toUpperCase())}
               placeholder="DB-PASSWORD"
               className="uppercase"
             />
@@ -144,7 +127,7 @@ export const SecretEditModal: React.FC<SecretEditModalProps> = ({
               id="vaultKey"
               type="text"
               value={vaultKey}
-              onChange={(e) => handleVaultKeyChange(e.target.value)}
+              onChange={(e) => onVaultKeyChange(e.target.value.toLowerCase())}
               placeholder="db_password"
               className="lowercase"
             />
@@ -228,6 +211,7 @@ export const SecretEditModal: React.FC<SecretEditModalProps> = ({
                   : "border-gray-200 hover:border-gray-300",
                 fileType === 'certificate' && "border-green-200 bg-green-50/30"
               )}
+              onDragEnter={handleDragEnter} 
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleFileDrop}
@@ -311,7 +295,7 @@ export const SecretEditModal: React.FC<SecretEditModalProps> = ({
               ref={certificateInputRef}
               type="file"
               accept=".crt,.pem,.pfx,.p12,.cer,.der,.key,.pub,.cert"
-              onChange={handleCertUpload}
+              onChange={(e) => handleCertificateUpload(e, onSecretValueChange)}
               className="hidden"
             />
           </div>

@@ -129,8 +129,9 @@ export const SecretsTable: React.FC<SecretsTableProps> = ({
               <tr
                 key={`${secret.name}-${index}`}
                 className={cn(
-                  "border-t hover:bg-muted/30 transition-colors",
-                  isSelected && "bg-blue-50"
+                  "border-t transition-colors",
+                  "hover:bg-muted/50 dark:hover:bg-muted/80",
+                  isSelected && "bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-700"
                 )}
               >
                 <td className="p-3">
