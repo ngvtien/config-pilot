@@ -1,36 +1,20 @@
 "use client"
 
 import type React from "react"
-import { useRef, useState, useEffect, useCallback } from "react"
+import { useRef, useState, useEffect } from "react"
 import yaml from "js-yaml"
 import {
   Search,
   Plus,
   Trash2,
-  Edit,
-  Lock,
   Copy,
   Download,
   Upload,
-  Eye,
-  EyeOff,
-  ChevronUp,
-  ChevronDown,
-  Loader2,
-  Info,
-  Shield,
-  File,
-  X
-} from "lucide-react"
+  Loader2} from "lucide-react"
 import { Button } from "@/renderer/components/ui/button"
 import { Input } from "@/renderer/components/ui/input"
-import { Textarea } from "@/renderer/components/ui/textarea"
-import { Label } from "@/renderer/components/ui/label"
-import { Checkbox } from "@/renderer/components/ui/checkbox"
-import { Badge } from "@/renderer/components/ui/badge"
 import { Card, CardContent } from "@/renderer/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/renderer/components/ui/tabs"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/renderer/components/ui/dialog"
 import { useToast } from "@/renderer/hooks/use-toast"
 import CodeMirror from "@uiw/react-codemirror"
 import { yaml as yamlLanguage } from "@codemirror/lang-yaml"
@@ -41,11 +25,11 @@ import type { ContextData } from "@/shared/types/context-data"
 import { VaultCredentialManager } from "@/renderer/services/vault-credential-manager"
 import { CheckCircle, XCircle, AlertTriangle } from "lucide-react"
 import { Alert, AlertDescription } from "@/renderer/components/ui/alert"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/renderer/components/ui/tooltip"
 import { useDialog } from '@/renderer/hooks/useDialog'
-import { cn } from "@/lib/utils"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./ui/resizable"
 import { useTheme } from '@/renderer/components/theme-provider'
+import { SecretsTable } from "./secrets/SecretsTable"
+import { SecretEditModal } from "./secrets/SecretEditModal"
 
 interface SecretEditorProps {
   initialValue?: string
@@ -100,12 +84,6 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
   const [vaultError, setVaultError] = useState<string | null>(null)
   const [hasVaultCredentials, setHasVaultCredentials] = useState(false)
   const [secretVaultStatuses, setSecretVaultStatuses] = useState<Record<string, 'checking' | 'synced' | 'out-of-sync' | 'error'>>({})
-
-  const certificateInputRef = useRef<HTMLInputElement>(null)
-  const [isDragOver, setIsDragOver] = useState(false)
-  const [fileType, setFileType] = useState<'text' | 'certificate' | 'binary'>('text')
-  const [fileName, setFileName] = useState<string | null>(null)
-  const secretValueRef = useRef<HTMLTextAreaElement>(null)
 
   const { showConfirm, ConfirmDialog } = useDialog()
 
@@ -453,62 +431,6 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
     setEditVaultKey("")
   }
 
-  /**
-   * Remove a single secret with confirmation
-   * Updates both localStorage, source file, and regenerates external-secret.yaml
-   */
-  const removeSecret = (index: number) => {
-    const secret = formData.env[index]
-    const secretName = secret?.name || 'Unnamed Secret'
-
-    showConfirm({
-      title: 'Delete Secret',
-      message: `Are you sure you want to delete the secret "${secretName}"?\n\nThis action will:\n• Remove it from the secrets configuration\n• Update the secrets.yaml file\n• Regenerate the external-secret.yaml\n\nThis action cannot be undone.`,
-      variant: 'destructive',
-      confirmText: 'Delete Secret',
-      cancelText: 'Cancel',
-      onConfirm: async () => {
-        try {
-          const newFormData = { ...formData }
-          if (newFormData.env && Array.isArray(newFormData.env)) {
-            const secretName = newFormData.env[index]?.name
-            newFormData.env.splice(index, 1)
-
-            const newYamlContent = yaml.dump(newFormData)
-            setYamlContent(newYamlContent)
-            localStorage.setItem(`secrets_editor_${env}`, newYamlContent)
-            setFormData(newFormData)
-
-            // Update the source secrets.yaml file
-            await updateSecretsSourceFile(env, newYamlContent)
-
-            // Regenerate external-secret.yaml
-            generateExternalSecretsYaml(newFormData)
-
-            setSelectedSecrets((prev) => prev.filter((i) => i !== index).map((i) => (i > index ? i - 1 : i)))
-
-            if (secretName) {
-              const newSecretValues = { ...secretValues }
-              delete newSecretValues[secretName]
-              setSecretValues(newSecretValues)
-            }
-
-            toast({
-              title: "Secret deleted successfully",
-              description: "The secret has been removed and files have been updated."
-            })
-          }
-        } catch (error) {
-          console.error('Error deleting secret:', error)
-          toast({
-            title: "Error deleting secret",
-            description: "Failed to delete the secret. Please try again.",
-            variant: "destructive"
-          })
-        }
-      }
-    })
-  }
 
   /**
    * Remove multiple selected secrets with confirmation
@@ -976,113 +898,13 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
     return filteredSecrets
   }
 
-  const getSortIndicator = (key: string) => {
-    if (!sortConfig || sortConfig.key !== key) {
-      return null
-    }
-    return sortConfig.direction === "ascending" ? (
-      <ChevronUp className="w-4 h-4" />
-    ) : (
-      <ChevronDown className="w-4 h-4" />
-    )
-  }
 
   const filteredSecrets = getSortedAndFilteredSecrets()
 
-  /**
-   * Handle drag and drop events for certificate files
-   */
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragOver(true)
-  }, [])
 
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragOver(false)
-  }, [])
 
-  const handleDrop = useCallback(async (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragOver(false)
 
-    const files = Array.from(e.dataTransfer.files)
-    if (files.length === 0) return
 
-    const file = files[0]
-    const supportedExtensions = ['.crt', '.pem', '.pfx', '.p12', '.cer', '.der', '.key', '.pub', '.cert']
-    const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'))
-
-    if (supportedExtensions.includes(fileExtension)) {
-      try {
-        const content = await file.text()
-        setSecretInputValue(content)
-        setFileType('certificate')
-        setFileName(file.name)
-        toast({
-          title: "Certificate loaded successfully",
-          description: `${file.name} (${(file.size / 1024).toFixed(1)} KB)`
-        })
-      } catch (error) {
-        toast({
-          title: "Error reading certificate",
-          description: "Failed to read the certificate file",
-          variant: "destructive"
-        })
-      }
-    } else {
-      toast({
-        title: "Unsupported file type",
-        description: "Please drop a certificate file (.crt, .pem, .pfx, etc.)",
-        variant: "destructive"
-      })
-    }
-  }, [setSecretInputValue, toast])
-
-  /**
-   * Handle file input for certificate upload
-   */
-  const handleCertificateUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    try {
-      const content = await file.text()
-      setSecretInputValue(content)
-      setFileType('certificate')
-      setFileName(file.name)
-      toast({
-        title: "Certificate uploaded successfully",
-        description: `${file.name} (${(file.size / 1024).toFixed(1)} KB)`
-      })
-    } catch (error) {
-      toast({
-        title: "Error reading certificate",
-        description: "Failed to read the certificate file",
-        variant: "destructive"
-      })
-    }
-
-    // Reset file input
-    e.target.value = ''
-  }, [setSecretInputValue, toast])
-
-  /**
-   * Detect content type automatically
-   */
-  const detectContentType = useCallback((value: string) => {
-    if (value.includes('-----BEGIN CERTIFICATE-----') ||
-      value.includes('-----BEGIN PRIVATE KEY-----') ||
-      value.includes('-----BEGIN PUBLIC KEY-----') ||
-      value.includes('-----BEGIN RSA PRIVATE KEY-----')) {
-      setFileType('certificate')
-    } else {
-      setFileType('text')
-    }
-  }, [])
 
   return (
     <div className="h-full flex flex-col">
@@ -1204,322 +1026,49 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
                       </div>
 
                       {/* Secrets Table */}
-                      <div className="flex-1 overflow-auto border border-border rounded-lg bg-card">
-                        <TooltipProvider>
-                          <table className="w-full border-collapse">
-                            <thead className="bg-muted sticky top-0 z-10 shadow-sm">
-                              <tr>
-                                <th className="p-3 text-left border-b border-border">
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <div className="flex items-center gap-2">
-                                        <Checkbox
-                                          checked={selectedSecrets.length === filteredSecrets.length && filteredSecrets.length > 0}
-                                          onCheckedChange={toggleSelectAll}
-                                        />
-                                        <Info className="w-3 h-3 text-muted-foreground" />
-                                      </div>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      <p className="text-xs">Select/deselect all secrets</p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </th>
-                                <th
-                                  className="p-3 text-left border-b border-border cursor-pointer hover:bg-muted/70 select-none transition-colors"
-                                  onClick={() => requestSort("name")}
-                                >
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <div className="flex items-center gap-2 font-semibold text-foreground text-sm">
-                                        Secret Key Name
-                                        {getSortIndicator("name")}
-                                        <Info className="w-3 h-3 text-muted-foreground" />
-                                      </div>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      <p className="text-xs">The name of the secret key used in your application. Click to sort.</p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </th>
-                                <th
-                                  className="p-3 text-left border-b border-border cursor-pointer hover:bg-muted/70 select-none transition-colors"
-                                  onClick={() => requestSort("path")}
-                                >
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <div className="flex items-center gap-2 font-semibold text-foreground text-sm">
-                                        Vault Path
-                                        {getSortIndicator("path")}
-                                        <Info className="w-3 h-3 text-muted-foreground" />
-                                      </div>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      <p className="text-xs">The path in Vault where this secret is stored. Click to sort.</p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </th>
-                                <th
-                                  className="p-3 text-left border-b border-border cursor-pointer hover:bg-muted/70 select-none transition-colors"
-                                  onClick={() => requestSort("key")}
-                                >
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <div className="flex items-center gap-2 font-semibold text-foreground text-sm">
-                                        Vault Key
-                                        {getSortIndicator("key")}
-                                        <Info className="w-3 h-3 text-muted-foreground" />
-                                      </div>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      <p className="text-xs">The specific key within the Vault path for this secret. Click to sort.</p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </th>
-                                <th className="p-3 text-left border-b border-border">
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <div className="flex items-center gap-2 font-semibold text-foreground text-sm">
-                                        Status
-                                        <Info className="w-3 h-3 text-muted-foreground" />
-                                      </div>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      <p className="text-xs">Shows whether the secret has a value configured</p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </th>
-                                <th className="p-3 text-center border-b border-border">
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <div className="flex items-center justify-center gap-2 font-semibold text-foreground text-sm">
-                                        Actions
-                                        <Info className="w-3 h-3 text-muted-foreground" />
-                                      </div>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      <p className="text-xs">Edit, save to Vault, or delete secrets</p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {filteredSecrets.length > 0 ? (
-                                filteredSecrets.map((secret: SecretItem, index: number) => {
-                                  const originalIndex = formData.env.findIndex(
-                                    (s: SecretItem) =>
-                                      s.name === secret.name &&
-                                      s.vaultRef?.path === secret.vaultRef?.path &&
-                                      s.vaultRef?.key === secret.vaultRef?.key,
-                                  )
-
-                                  return (
-                                    <tr
-                                      key={originalIndex}
-                                      className={`border-b border-border hover:bg-muted/30 transition-colors ${selectedSecrets.includes(originalIndex)
-                                        ? "bg-primary/10 border-l-4 border-l-primary"
-                                        : index % 2 === 0
-                                          ? "bg-muted/20"
-                                          : "bg-card"
-                                        }`}
-                                    >
-                                      <td className="p-3">
-                                        <Checkbox
-                                          checked={selectedSecrets.includes(originalIndex)}
-                                          onCheckedChange={() => toggleSelectSecret(originalIndex)}
-                                        />
-                                      </td>
-                                      <td className="p-3">
-                                        <Tooltip>
-                                          <TooltipTrigger asChild>
-                                            <span className="text-foreground font-medium text-sm font-mono cursor-help">
-                                              {secret.name || <span className="text-muted-foreground italic">No name</span>}
-                                            </span>
-                                          </TooltipTrigger>
-                                          <TooltipContent>
-                                            <p className="text-xs">Secret key: {secret.name || 'Not defined'}</p>
-                                          </TooltipContent>
-                                        </Tooltip>
-                                      </td>
-                                      <td className="p-3">
-                                        <Tooltip>
-                                          <TooltipTrigger asChild>
-                                            <span className="text-foreground text-sm font-mono cursor-help">
-                                              {secret.vaultRef?.path || (
-                                                <span className="text-muted-foreground italic">No path</span>
-                                              )}
-                                            </span>
-                                          </TooltipTrigger>
-                                          <TooltipContent>
-                                            <p className="text-xs">Vault path: {secret.vaultRef?.path || 'Not configured'}</p>
-                                          </TooltipContent>
-                                        </Tooltip>
-                                      </td>
-                                      <td className="p-3">
-                                        <Tooltip>
-                                          <TooltipTrigger asChild>
-                                            <span className="text-foreground text-sm font-mono cursor-help">
-                                              {secret.vaultRef?.key || <span className="text-muted-foreground italic">No key</span>}
-                                            </span>
-                                          </TooltipTrigger>
-                                          <TooltipContent>
-                                            <p className="text-xs">Vault key: {secret.vaultRef?.key || 'Not configured'}</p>
-                                          </TooltipContent>
-                                        </Tooltip>
-                                      </td>
-
-                                      {/* Enhance the existing status rendering*/}
-                                      <td className="p-3">
-                                        <Tooltip>
-                                          <TooltipTrigger asChild>
-                                            <div className="cursor-help">
-                                              {(() => {
-                                                const hasLocalValue = !!secretValues[secret.name]
-                                                const vaultStatus = secretVaultStatuses[secret.name]
-
-                                                // Keep existing logic as primary, add vault sync as secondary indicator
-                                                if (hasLocalValue) {
-                                                  if (vaultStatus === 'checking') {
-                                                    return (
-                                                      <div className="flex items-center gap-1">
-                                                        <Badge className="bg-green-500/10 text-green-700 border-green-500/20 dark:bg-green-500/20 dark:text-green-400 text-xs font-medium">
-                                                          Has Value
-                                                        </Badge>
-                                                        <Loader2 className="w-3 h-3 animate-spin text-blue-500" />
-                                                      </div>
-                                                    )
-                                                  } else if (vaultStatus === 'synced') {
-                                                    return (
-                                                      <Badge className="bg-green-500/10 text-green-700 border-green-500/20 dark:bg-green-500/20 dark:text-green-400 text-xs font-medium">
-                                                        Has Value ✓
-                                                      </Badge>
-                                                    )
-                                                  } else if (vaultStatus === 'out-of-sync') {
-                                                    return (
-                                                      <Badge className="bg-yellow-500/10 text-yellow-700 border-yellow-500/20 dark:bg-yellow-500/20 dark:text-yellow-400 text-xs font-medium">
-                                                        Has Value ⚠
-                                                      </Badge>
-                                                    )
-                                                  } else {
-                                                    // Fallback to existing "Has Value" when vault status unknown
-                                                    return (
-                                                      <Badge className="bg-green-500/10 text-green-700 border-green-500/20 dark:bg-green-500/20 dark:text-green-400 text-xs font-medium">
-                                                        Has Value
-                                                      </Badge>
-                                                    )
-                                                  }
-                                                } else {
-                                                  // Keep existing "No Value" logic unchanged
-                                                  return (
-                                                    <Badge
-                                                      variant="destructive"
-                                                      className="bg-red-500/10 text-red-700 border-red-500/20 dark:bg-red-500/20 dark:text-red-400 text-xs font-medium"
-                                                    >
-                                                      No Value
-                                                    </Badge>
-                                                  )
-                                                }
-                                              })()
-                                              }
-                                            </div>
-                                          </TooltipTrigger>
-                                          <TooltipContent>
-                                            <div className="text-xs space-y-1">
-                                              <p>
-                                                {secretValues[secret.name]
-                                                  ? 'This secret has a configured value'
-                                                  : 'This secret needs a value to be set'}
-                                              </p>
-                                              {secretVaultStatuses[secret.name] && (
-                                                <p className="text-muted-foreground">
-                                                  Vault: {(() => {
-                                                    switch (secretVaultStatuses[secret.name]) {
-                                                      case 'synced': return 'In sync with Vault'
-                                                      case 'out-of-sync': return 'Different from Vault'
-                                                      case 'checking': return 'Checking...'
-                                                      case 'error': return 'Error checking Vault'
-                                                      default: return 'Unknown'
-                                                    }
-                                                  })()}
-                                                </p>
-                                              )}
-                                            </div>
-                                          </TooltipContent>
-                                        </Tooltip>
-                                      </td>
-
-                                      {/*// Enhanced action buttons in table with consistent sizing */}
-                                      <td className="p-3">
-                                        <div className="flex justify-center gap-2">
-                                          <Tooltip>
-                                            <TooltipTrigger asChild>
-                                              <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                onClick={() => openSecretEditModal(originalIndex)}
-                                                className="h-9 w-9 hover:bg-primary/10 hover:text-primary transition-all duration-200 hover:scale-110"
-                                              >
-                                                <Edit className="w-4 h-4" />
-                                              </Button>
-                                            </TooltipTrigger>
-                                            <TooltipContent>
-                                              <p className="text-xs">Edit secret configuration</p>
-                                            </TooltipContent>
-                                          </Tooltip>
-
-                                          <Tooltip>
-                                            <TooltipTrigger asChild>
-                                              <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                onClick={() => saveSecretToVault(originalIndex)}
-                                                disabled={!secretValues[secret.name]}
-                                                className="h-9 w-9 hover:bg-green-500/10 hover:text-green-600 disabled:opacity-50 transition-all duration-200 hover:scale-110"
-                                              >
-                                                <Lock className="w-4 h-4" />
-                                              </Button>
-                                            </TooltipTrigger>
-                                            <TooltipContent>
-                                              <p className="text-xs">
-                                                {secretValues[secret.name]
-                                                  ? 'Save secret to Vault'
-                                                  : 'No value to save - edit first'}
-                                              </p>
-                                            </TooltipContent>
-                                          </Tooltip>
-
-                                          <Tooltip>
-                                            <TooltipTrigger asChild>
-                                              <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                onClick={() => removeSecret(originalIndex)}
-                                                className="h-9 w-9 hover:bg-red-500/10 hover:text-red-600 transition-all duration-200 hover:scale-110"
-                                              >
-                                                <Trash2 className="w-4 h-4" />
-                                              </Button>
-                                            </TooltipTrigger>
-                                            <TooltipContent>
-                                              <p className="text-xs">Delete this secret</p>
-                                            </TooltipContent>
-                                          </Tooltip>
-                                        </div>
-                                      </td>
-
-                                    </tr>
-                                  )
-                                })
-                              ) : (
-                                <tr>
-                                  <td colSpan={6} className="p-6 text-center text-muted-foreground italic bg-muted/20 text-sm">
-                                    {searchTerm ? "No secrets match your search" : "No secrets defined yet"}
-                                  </td>
-                                </tr>
-                              )}
-                            </tbody>
-                          </table>
-                        </TooltipProvider>
+                      <div className="flex-1 overflow-auto">
+                        <SecretsTable
+                          secrets={filteredSecrets}
+                          selectedSecrets={selectedSecrets}
+                          sortConfig={sortConfig}
+                          secretValues={secretValues}
+                          secretVaultStatuses={secretVaultStatuses}
+                          onSelectSecret={(index: number) => {
+                            const originalIndex = formData.env.findIndex(
+                              (s: SecretItem) => {
+                                const secret = filteredSecrets[index]
+                                return s.name === secret.name &&
+                                       s.vaultRef?.path === secret.vaultRef?.path &&
+                                       s.vaultRef?.key === secret.vaultRef?.key
+                              }
+                            )
+                            toggleSelectSecret(originalIndex)
+                          }}
+                          onSelectAll={toggleSelectAll}
+                          onSort={requestSort}
+                          onEditSecret={(index: number) => {
+                            const originalIndex = formData.env.findIndex(
+                              (s: SecretItem) => {
+                                const secret = filteredSecrets[index]
+                                return s.name === secret.name &&
+                                       s.vaultRef?.path === secret.vaultRef?.path &&
+                                       s.vaultRef?.key === secret.vaultRef?.key
+                              }
+                            )
+                            openSecretEditModal(originalIndex)
+                          }}
+                          onSaveToVault={(index: number) => {
+                            const originalIndex = formData.env.findIndex(
+                              (s: SecretItem) => {
+                                const secret = filteredSecrets[index]
+                                return s.name === secret.name &&
+                                       s.vaultRef?.path === secret.vaultRef?.path &&
+                                       s.vaultRef?.key === secret.vaultRef?.key
+                              }
+                            )
+                            saveSecretToVault(originalIndex)
+                          }}
+                        />
                       </div>
                     </>
                   )}
@@ -1532,7 +1081,6 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
           {/* Resizable Handle */}
           <ResizableHandle withHandle />
 
-          {/* Right Panel - Tabbed View */}
           {/* Right Panel - Tabbed View */}
           <ResizablePanel defaultSize={33} minSize={20} maxSize={80}>
             <div className="overflow-hidden pl-2 h-full">
@@ -1614,255 +1162,25 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
       </div>
 
       {/* Secret Edit Modal */}
-      <Dialog open={editingSecretIndex !== null} onOpenChange={() => closeSecretEditModal()}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Edit Secret</DialogTitle>
-            <DialogDescription>
-              Configure secret details and vault integration settings. Ensure your vault path and key are correct for proper secret management.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="secretName">Secret Key Name</Label>
-              <Input
-                id="secretName"
-                type="text"
-                value={editSecretName}
-                onChange={(e) => handleSecretNameChange(e.target.value)}
-                placeholder="DB-PASSWORD"
-                className="uppercase"
-              />
-              <p className="text-xs text-gray-500 italic">Secret names are automatically converted to uppercase</p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="vaultPath">Vault Path</Label>
-              <Input
-                id="vaultPath"
-                type="text"
-                value={editVaultPath}
-                onChange={(e) => setEditVaultPath(e.target.value)}
-                placeholder={`kv/${customer}/${env}/${editorContext.instance}/${product}`.toLowerCase()}
-                className="lowercase"
-              />
-              <p className="text-xs text-gray-500 italic">
-                Default: {`kv/${customer}/${env}/${editorContext.instance}/${product}`.toLowerCase()}
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="vaultKey">Vault Key</Label>
-              <Input
-                id="vaultKey"
-                type="text"
-                value={editVaultKey}
-                onChange={(e) => handleVaultKeyChange(e.target.value)}
-                placeholder="db_password"
-                className="lowercase"
-              />
-              <p className="text-xs text-gray-500 italic">Keys are automatically converted to lowercase</p>
-            </div>
-
-            {/* Secret Value section */}
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <Label htmlFor="secretValue" className="flex items-center gap-2">
-                  Secret Value
-                  {fileType === 'certificate' && (
-                    <Badge variant="secondary" className="text-xs">
-                      <Shield className="w-3 h-3 mr-1" />
-                      Certificate
-                    </Badge>
-                  )}
-                  {fileName && (
-                    <Badge variant="outline" className="text-xs">
-                      <File className="w-3 h-3 mr-1" />
-                      {fileName}
-                    </Badge>
-                  )}
-                </Label>
-                <div className="flex items-center gap-2">
-                  {/* Certificate Upload Button */}
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => certificateInputRef.current?.click()}
-                    className="text-xs hover:bg-blue-50 hover:text-blue-600 transition-colors"
-                  >
-                    <Upload className="w-3 h-3 mr-1" />
-                    Upload Cert
-                  </Button>
-
-                  {/* Show/Hide Toggle */}
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={toggleSecretValueVisibility}
-                    className="text-xs"
-                  >
-                    {showSecretValue ? (
-                      <>
-                        <EyeOff className="w-3 h-3 mr-1" />
-                        Hide
-                      </>
-                    ) : (
-                      <>
-                        <Eye className="w-3 h-3 mr-1" />
-                        Show
-                      </>
-                    )}
-                  </Button>
-
-                  {/* Clear Button */}
-                  {secretInputValue && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setSecretInputValue('')
-                        setFileType('text')
-                        setFileName(null)
-                      }}
-                      className="text-xs hover:bg-red-50 hover:text-red-600 transition-colors"
-                    >
-                      <X className="w-3 h-3 mr-1" />
-                      Clear
-                    </Button>
-                  )}
-                </div>
-              </div>
-
-              {/* Enhanced Textarea with Drag & Drop */}
-              <div
-                className={cn(
-                  "relative border-2 border-dashed rounded-lg transition-all duration-200",
-                  isDragOver
-                    ? "border-blue-400 bg-blue-50/50 shadow-lg scale-[1.02]"
-                    : "border-gray-200 hover:border-gray-300",
-                  fileType === 'certificate' && "border-green-200 bg-green-50/30"
-                )}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-              >
-                <Textarea
-                  ref={secretValueRef}
-                  id="secretValue"
-                  value={secretInputValue}
-                  onChange={(e) => {
-                    try {
-                      const newValue = e.target.value
-                      if (newValue.length > 5000000) {
-                        toast({ title: "Warning: Very large input detected. This may cause performance issues." })
-                      }
-                      requestAnimationFrame(() => {
-                        try {
-                          setSecretInputValue(newValue)
-                          detectContentType(newValue)
-                        } catch (error) {
-                          console.error("Error updating secret value:", error)
-                          toast({ title: "Error: The value is too large to process", variant: "destructive" })
-                        }
-                      })
-                    } catch (error) {
-                      console.error("Error in textarea change handler:", error)
-                      toast({ title: "Error processing input", variant: "destructive" })
-                    }
-                  }}
-                  placeholder={isDragOver
-                    ? "Drop your certificate file here..."
-                    : "Enter secret value here or drag & drop a certificate file (.crt, .pem, .pfx, etc.)"
-                  }
-                  rows={secretInputValue.length > 500 ? 8 : 5}
-                  className={cn(
-                    "min-h-[120px] resize-none transition-all duration-200",
-                    showSecretValue ? "" : "font-mono",
-                    isDragOver && "pointer-events-none",
-                    fileType === 'certificate' && "font-mono text-sm"
-                  )}
-                  style={showSecretValue ? {} : ({ WebkitTextSecurity: "disc" } as React.CSSProperties)}
-                />
-
-                {/* Drag Overlay */}
-                {isDragOver && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-blue-50/80 rounded-lg pointer-events-none">
-                    <div className="text-center">
-                      <Upload className="w-8 h-8 mx-auto mb-2 text-blue-500 animate-bounce" />
-                      <p className="text-sm font-medium text-blue-700">Drop certificate file here</p>
-                      <p className="text-xs text-blue-600">Supports .crt, .pem, .pfx, .p12, .cer, .der, .key</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* File Info & Actions */}
-              {secretInputValue && (
-                <div className="flex items-center justify-between text-xs text-muted-foreground bg-muted/30 rounded px-3 py-2">
-                  <div className="flex items-center gap-4">
-                    <span>Size: {(secretInputValue.length / 1024).toFixed(1)} KB</span>
-                    <span>Lines: {secretInputValue.split('\n').length}</span>
-                    {fileType === 'certificate' && (
-                      <span className="text-green-600 font-medium">✓ Certificate format detected</span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => navigator.clipboard.writeText(secretInputValue)}
-                      className="h-6 px-2 text-xs"
-                    >
-                      <Copy className="w-3 h-3 mr-1" />
-                      Copy
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        const blob = new Blob([secretInputValue], { type: 'text/plain' })
-                        const url = URL.createObjectURL(blob)
-                        const a = document.createElement('a')
-                        a.href = url
-                        a.download = fileName || `secret-${editSecretName.toLowerCase()}.txt`
-                        a.click()
-                        URL.revokeObjectURL(url)
-                      }}
-                      className="h-6 px-2 text-xs"
-                    >
-                      <Download className="w-3 h-3 mr-1" />
-                      Save
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {/* Hidden file input for certificate upload */}
-              <input
-                ref={certificateInputRef}
-                type="file"
-                accept=".crt,.pem,.pfx,.p12,.cer,.der,.key,.pub,.cert"
-                onChange={handleCertificateUpload}
-                className="hidden"
-              />
-            </div>
-
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={closeSecretEditModal}>
-              Cancel
-            </Button>
-            <Button onClick={saveSecretChanges}>Save</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <SecretEditModal
+        isOpen={editingSecretIndex !== null}
+        secretName={editSecretName}
+        vaultPath={editVaultPath}
+        vaultKey={editVaultKey}
+        secretValue={secretInputValue}
+        showSecretValue={showSecretValue}
+        customer={customer}
+        env={env}
+        instance={editorContext.instance}
+        product={product}
+        onClose={closeSecretEditModal}
+        onSave={saveSecretChanges}
+        onSecretNameChange={handleSecretNameChange}
+        onVaultPathChange={setEditVaultPath}
+        onVaultKeyChange={handleVaultKeyChange}
+        onSecretValueChange={setSecretInputValue}
+        onToggleVisibility={toggleSecretValueVisibility}
+      />
 
       <ConfirmDialog />
     </div>
