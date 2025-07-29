@@ -44,6 +44,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
       'vault:getCredentials',
       'vault:writeSecret',
       'vault:readSecret',
+      'vault:readAllData',
+      'vault:writeSecretWithMetadata',
+      'vault:readSecretWithMetadata',
       // Secure credential channels
       'credentials:store',
       'credentials:get',
@@ -244,7 +247,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
     writeSecret: (environment: string, path: string, key: string, value: string) =>
       ipcRenderer.invoke('vault:writeSecret', environment, path, key, value),
     readSecret: (environment: string, path: string, key: string) =>
-      ipcRenderer.invoke('vault:readSecret', environment, path, key)
+      ipcRenderer.invoke('vault:readSecret', environment, path, key),
+    readAllData: (environment: string, path: string) => 
+      ipcRenderer.invoke('vault:readAllData', environment, path),        
+    writeSecretWithMetadata: (environment: string, path: string, key: string, value: string, metadata?: any) => 
+      ipcRenderer.invoke('vault:writeSecretWithMetadata', environment, path, key, value, metadata),
+    readSecretWithMetadata: (environment: string, path: string, key: string) => 
+      ipcRenderer.invoke('vault:readSecretWithMetadata', environment, path, key),    
   },
 
   argocd: {

@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useRef, useState, useEffect } from "react"
+import { useRef, useState, useEffect, useMemo, useCallback } from "react"
 import yaml from "js-yaml"
 import {
   Search,
@@ -54,7 +54,7 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { showConfirm, ConfirmDialog } = useDialog()
   const { theme } = useTheme()
-
+  
   // Use provided context or create one from environment prop for backward compatibility
   const editorContext: ContextData = context || {
     environment: environment as any,
@@ -109,20 +109,17 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
     checkVaultConnection,
     loadSecretValuesFromVault,
     saveSecretToVault,
+    saveSecretToVaultWithMetadata,
+    loadSecretWithMetadata,
     checkVaultSync
   } = useVaultIntegration(env)
 
-  // const {
-  //   isDragOver,
-  //   fileType,
-  //   fileName,
-  //   handleDragOver,
-  //   handleDragLeave,
-  //   handleDrop,
-  //   handleCertificateUpload,
-  //   analyzeContent,
-  //   resetCertificateState
-  // } = useCertificateAnalysis()
+  const {
+    resetCertificateState,
+    certificateMetadata,
+    analysisResult,
+    analyzeContent
+  } = useCertificateAnalysis()
 
   // State for the edit modal (preserved from original)
   const [editingSecretIndex, setEditingSecretIndex] = useState<number | null>(null)
@@ -132,52 +129,64 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
   const [editVaultPath, setEditVaultPath] = useState("")
   const [editVaultKey, setEditVaultKey] = useState("")
   const [activeTab, setActiveTab] = useState<TabType>("secrets")
+  
+  // ✅ Add timeout ref for debouncing saves
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  // ✅ Debounced formData for Vault operations
+  const [debouncedFormData, setDebouncedFormData] = useState(formData)
+
+  // ✅ Debounce formData changes to prevent excessive API calls
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedFormData(formData)
+    }, 500) // 500ms debounce
+
+    return () => clearTimeout(timer)
+  }, [formData])
+
+  // ✅ Memoize secrets array to prevent unnecessary re-renders
+  const secretsArray = useMemo(() => {
+    return debouncedFormData?.env || []
+  }, [debouncedFormData])
 
   // Load initial values using the hook's loadValues function
   useEffect(() => {
-    if (formData?.env)
-      { 
-        loadValues(formData?.env)
-      }
+    if (formData?.env) {
+      loadValues(formData?.env)
+    }
   }, [loadValues])
 
-  // Auto-load secret values from Vault when formData is ready and Vault is connected
+  // ✅ Auto-load secret values from Vault when debounced formData is ready and Vault is connected
   useEffect(() => {
-    if (formData?.env && vaultConnectionStatus === 'success') {
-      loadSecretValuesFromVault(formData.env).then(values => {
+    if (secretsArray.length > 0 && vaultConnectionStatus === 'success') {
+      loadSecretValuesFromVault(secretsArray).then(values => {
         setSecretValues(prev => ({ ...prev, ...values }))
       })
     }
-  }, [formData, vaultConnectionStatus, loadSecretValuesFromVault, setSecretValues])
+  }, [secretsArray, vaultConnectionStatus, loadSecretValuesFromVault, setSecretValues])
 
-  // Auto-check sync status when secrets and vault connection are ready
+  // ✅ Auto-check sync status when secrets and vault connection are ready (debounced)
   useEffect(() => {
-    if (formData?.env && vaultConnectionStatus === 'success' && Object.keys(secretValues).length > 0) {
-      checkVaultSync(formData.env, secretValues)
+    if (secretsArray.length > 0 && vaultConnectionStatus === 'success' && Object.keys(secretValues).length > 0) {
+      checkVaultSync(secretsArray, secretValues)
     }
-  }, [formData, vaultConnectionStatus, secretValues, checkVaultSync])
+  }, [secretsArray, vaultConnectionStatus, secretValues, checkVaultSync])
 
-  // Generate external secrets YAML when formData changes
+  // ✅ Generate external secrets YAML when debounced formData changes
   useEffect(() => {
-    if (formData) {
-      const externalYaml = generateExternalSecretsYaml(formData, product, customer, env)
+    if (debouncedFormData) {
+      const externalYaml = generateExternalSecretsYaml(debouncedFormData, product, customer, env)
       setExternalSecretsYaml(externalYaml)
     }
-  }, [formData, product, customer, env, setExternalSecretsYaml])
+  }, [debouncedFormData, product, customer, env, setExternalSecretsYaml])
 
-  // Call onChange when yamlContent changes
+  // ✅ Call onChange when yamlContent changes (keep immediate for UI responsiveness)
   useEffect(() => {
     if (onChange) {
       onChange(yamlContent)
     }
   }, [yamlContent, onChange])
-
-  // // Auto-analyze content when secret value changes
-  // useEffect(() => {
-  //   if (secretInputValue) {
-  //     analyzeContent(secretInputValue)
-  //   }
-  // }, [secretInputValue, analyzeContent])
 
   /**
    * Handle file upload (using hook's loadValues)
@@ -194,7 +203,7 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
         const parsedValues = yaml.load(content) as any
         setFormData(parsedValues || {})
         // Analyze the content type
-        //analyzeContent(content)
+        analyzeContent(content)
       } catch (e) {
         console.error("Error parsing YAML:", e)
       }
@@ -273,7 +282,7 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
   const addSecret = () => {
     // Use the hook's addNewSecret function
     addNewSecret()
-    
+
     // Then open the edit modal for the new secret
     const newIndex = formData.env ? formData.env.length : 0
     setEditingSecretIndex(newIndex)
@@ -312,7 +321,7 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
    */
   const handleSecretNameChange = (index: number, value: string) => {
     updateSecretField(index, "name", value)
-    
+
     // Update YAML content and localStorage
     const updatedFormData = { ...formData }
     if (updatedFormData.env && updatedFormData.env[index]) {
@@ -325,12 +334,21 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
   }
 
   /**
-   * Handle vault key change (using hook's updateSecretField)
+   * Handle vault key change (optimized to reduce redundant operations)
    */
-  const handleVaultKeyChange = (index: number, field: string, value: string) => {
-    updateSecretField(index, field, value)
+  const handleVaultKeyChange = useCallback((index: number, field: string, value: string) => {
+    // ✅ Only update if the value actually changed
+    const currentValue = field === "path" 
+      ? formData?.env?.[index]?.vaultRef?.path 
+      : formData?.env?.[index]?.vaultRef?.key
     
-    // Update YAML content and localStorage
+    if (currentValue === value.toLowerCase()) {
+      return // No change, skip update
+    }
+
+    updateSecretField(index, field, value)
+
+    // ✅ Batch YAML and localStorage updates
     const updatedFormData = { ...formData }
     if (updatedFormData.env && updatedFormData.env[index]) {
       if (field === "path") {
@@ -339,83 +357,89 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
         updatedFormData.env[index].vaultRef.key = value.toLowerCase()
       }
     }
+    
     const updatedYamlContent = yaml.dump(updatedFormData)
     setYamlContent(updatedYamlContent)
-    localStorage.setItem(`secrets_editor_${env}`, updatedYamlContent)
-    updateSecretsSourceFile(env, updatedYamlContent)
-  }
+    
+    // ✅ Debounce localStorage and file updates
+    clearTimeout(saveTimeoutRef.current)
+    saveTimeoutRef.current = setTimeout(() => {
+      localStorage.setItem(`secrets_editor_${env}`, updatedYamlContent)
+      updateSecretsSourceFile(env, updatedYamlContent)
+    }, 300)
+  }, [formData, updateSecretField, env])
+
+  // ✅ Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current)
+      }
+    }
+  }, [])
 
   /**
-   * Open secret edit modal (preserved from original)
-   */
-  const openSecretEditModal = (index: number) => {
-    const secret = formData.env[index]
-    if (!secret) return
-
-    setEditingSecretIndex(index)
-    setEditSecretName(secret.name || "")
-    setEditVaultPath(secret.vaultRef?.path || `kv/${customer}/${env}/${editorContext.instance}/${product}`.toLowerCase())
-    setEditVaultKey(secret.vaultRef?.key || "")
-    setSecretInputValue(secretValues[secret.name] || "")
-    setShowSecretValue(false)
-  }
-
-  /**
-   * Save secret changes (enhanced with content analysis)
+   * Enhanced save secret changes with certificate metadata
    */
   const saveSecretChanges = async () => {
-    if (editingSecretIndex === null) return
+    if (editingSecretIndex === null) return;
 
-    const isNewSecret = editingSecretIndex === -1
-    let newFormData = { ...formData }
+    const isNewSecret = editingSecretIndex === -1;
+    let newFormData = { ...formData };
 
-    if (isNewSecret) {
-      if (!newFormData.env) {
-        newFormData.env = []
-      }
-
-      const newSecret: SecretItem = {
+    // Enhanced Vault saving with metadata
+    if (secretInputValue && editVaultPath && editVaultKey) {
+      const secretToSave: SecretItem = {
         name: editSecretName.toUpperCase(),
         vaultRef: {
           path: editVaultPath.toLowerCase(),
           key: editVaultKey.toLowerCase()
         }
-      }
+      };
 
-      newFormData.env.push(newSecret)
+      // Use certificateMetadata from the hook already destructured at component level
+      // DO NOT call useCertificateAnalysis() here - it violates Rules of Hooks!
+
+      // Save to Vault with metadata if available
+      if (certificateMetadata) {
+        await saveSecretToVaultWithMetadata(secretToSave, secretInputValue, certificateMetadata);
+      } else {
+        await saveSecretToVault(secretToSave, secretInputValue);
+      }
+    }
+
+    closeSecretEditModal();
+    toast({ title: isNewSecret ? "Secret added successfully" : "Secret updated successfully" });
+  };
+
+  /**
+   * Enhanced open secret edit modal with metadata loading
+   */
+  const openSecretEditModal = async (index: number) => {
+    const secret = formData.env[index];
+    if (!secret) return;
+
+    setEditingSecretIndex(index);
+    setEditSecretName(secret.name || "");
+    setEditVaultPath(secret.vaultRef?.path || `kv/${customer}/${env}/${editorContext.instance}/${product}`.toLowerCase());
+    setEditVaultKey(secret.vaultRef?.key || "");
+
+    // Load secret value and metadata from Vault
+    if (secret.vaultRef?.path && secret.vaultRef?.key) {
+      const { value, metadata } = await loadSecretWithMetadata(secret);
+      setSecretInputValue(value || secretValues[secret.name] || "");
+
+      // If metadata exists and it's a certificate, analyze it
+      if (metadata && value) {
+        // Use the existing analyzeContent function from the hook
+        analyzeContent(value, metadata.fileName);
+      }
     } else {
-      if (newFormData.env && newFormData.env[editingSecretIndex]) {
-        newFormData.env[editingSecretIndex] = {
-          ...newFormData.env[editingSecretIndex],
-          name: editSecretName.toUpperCase(),
-          vaultRef: {
-            path: editVaultPath.toLowerCase(),
-            key: editVaultKey.toLowerCase()
-          }
-        }
-      }
+      setSecretInputValue(secretValues[secret.name] || "");
     }
 
-    setFormData(newFormData)
-    const newYamlContent = yaml.dump(newFormData)
-    setYamlContent(newYamlContent)
-    localStorage.setItem(`secrets_editor_${env}`, newYamlContent)
-    await updateSecretsSourceFile(env, newYamlContent)
-
-    if (secretInputValue) {
-      // Analyze the secret content before saving
-      //analyzeContent(secretInputValue)
-      
-      setSecretValues(prev => ({
-        ...prev,
-        [editSecretName.toUpperCase()]: secretInputValue
-      }))
-    }
-
-    closeSecretEditModal()
-    toast({ title: isNewSecret ? "Secret added successfully" : "Secret updated successfully" })
-  }
-  
+    setShowSecretValue(false);
+  };
   /**
    * Save secret to vault (using hook but preserving original behavior)
    */
@@ -771,6 +795,8 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
         vaultKey={editVaultKey}
         secretValue={secretInputValue}
         showSecretValue={showSecretValue}
+        certificateMetadata={certificateMetadata}
+        analysisResult={analysisResult}
         onSecretNameChange={(value) => {
           setEditSecretName(value)
           // Call the hook-based function if editing existing secret
@@ -795,7 +821,7 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
         onSecretValueChange={(value) => {
           setSecretInputValue(value)
           // Analyze content when it changes
-          //analyzeContent(value)
+          analyzeContent(value)
         }}
         onToggleVisibility={toggleSecretValueVisibility}
         onSave={saveSecretChanges}
@@ -803,17 +829,6 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
         customer={customer}
         product={product}
         instance={editorContext.instance}
-        // isDragOver={isDragOver}
-        // fileType={fileType}
-        // fileName={fileName}
-        // onDragOver={handleDragOver}
-        // onDragLeave={handleDragLeave}
-        // onDrop={(e) => handleDrop(e, (content) => {
-        //   setSecretInputValue(content)
-        //   analyzeContent(content)
-        // })}
-        // // Pass the certificate upload handler from the hook
-        // onCertificateUpload={handleCertificateUpload}
       />
 
       {/* Confirmation Dialog */}

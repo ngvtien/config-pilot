@@ -60,17 +60,30 @@ export const useVaultIntegration = (environment: string) => {
     for (const secret of secrets) {
       if (secret.vaultRef?.path && secret.vaultRef?.key && secret.name) {
         try {
-          const result = await window.electronAPI.vault.readSecret(
+          // Try the new method first to handle structured data
+          const structuredResult = await window.electronAPI.vault.readSecretWithMetadata(
             environment,
             secret.vaultRef.path,
             secret.vaultRef.key
           )
 
-          if (result.success && result.value) {
-            newSecretValues[secret.name] = result.value
-            console.log(`✅ Loaded secret value for ${secret.name} from Vault`)
+          if (structuredResult.value) {
+            newSecretValues[secret.name] = structuredResult.value
+            console.log(`✅ Loaded secret value for ${secret.name} from Vault (structured format)`)
           } else {
-            console.log(`ℹ️ No value found in Vault for ${secret.name}`)
+            // Fallback to old method for backwards compatibility
+            const result = await window.electronAPI.vault.readSecret(
+              environment,
+              secret.vaultRef.path,
+              secret.vaultRef.key
+            )
+
+            if (result.success && result.value) {
+              newSecretValues[secret.name] = result.value
+              console.log(`✅ Loaded secret value for ${secret.name} from Vault (legacy format)`)
+            } else {
+              console.log(`ℹ️ No value found in Vault for ${secret.name}`)
+            }
           }
         } catch (error: any) {
           console.error(`❌ Failed to load secret ${secret.name} from Vault:`, error)
@@ -152,14 +165,26 @@ export const useVaultIntegration = (environment: string) => {
     for (const secret of secrets) {
       if (secret.name && secret.vaultRef?.path && secret.vaultRef?.key) {
         try {
-          const result = await window.electronAPI.vault.readSecret(
+          // Use the new method to handle structured data
+          const structuredResult = await window.electronAPI.vault.readSecretWithMetadata(
             environment,
             secret.vaultRef.path,
             secret.vaultRef.key
           )
 
+          let vaultValue = structuredResult.value
+
+          // Fallback to old method if no structured data found
+          if (!vaultValue) {
+            const result = await window.electronAPI.vault.readSecret(
+              environment,
+              secret.vaultRef.path,
+              secret.vaultRef.key
+            )
+            vaultValue = result.success ? result.value : null
+          }
+
           const localValue = localSecretValues[secret.name]
-          const vaultValue = result.success ? result.value : null
 
           if (localValue && vaultValue && localValue === vaultValue) {
             statusUpdates[secret.name] = 'synced'
@@ -177,10 +202,85 @@ export const useVaultIntegration = (environment: string) => {
     setSecretVaultStatuses(prev => ({ ...prev, ...statusUpdates }))
   }, [environment, vaultConnectionStatus])
 
+
   // Check vault connection on mount and environment change
   useEffect(() => {
     checkVaultConnection()
   }, [checkVaultConnection])
+
+  /**
+   * Save secret to Vault with certificate metadata support
+   */
+  const saveSecretToVaultWithMetadata = async (
+    secret: SecretItem,
+    secretValue: string,
+    certificateMetadata?: any
+  ) => {
+    if (!secret.vaultRef?.path || !secret.vaultRef?.key || secret.vaultRef.path.trim() === '') {
+      toast({
+        title: "Vault Configuration Missing",
+        description: "Please configure a valid Vault path and key before saving.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+
+    try {
+      const success = await window.electronAPI.vault.writeSecretWithMetadata(
+        environment,
+        secret.vaultRef.path,
+        secret.vaultRef.key,
+        secretValue,
+        certificateMetadata
+      );
+
+      if (success) {
+        toast({
+          title: "Secret Saved to Vault",
+          description: `Successfully saved ${secret.name} with ${certificateMetadata ? 'metadata' : 'content only'}`
+        });
+
+        // Update vault status
+        setSecretVaultStatuses(prev => ({
+          ...prev,
+          [secret.name]: 'synced'  // ✅ CORRECT! Use 'synced' instead of 'success'
+        }));
+      }
+
+    } catch (error: any) {
+      console.error('Failed to save secret with metadata:', error);
+      toast({
+        title: "Failed to Save Secret",
+        description: error.message || "Unknown error occurred",
+        variant: "destructive"
+      });
+    }
+  };
+
+  /**
+   * Load secret with metadata from Vault
+   */
+  const loadSecretWithMetadata = async (secret: SecretItem) => {
+    if (!secret.vaultRef?.path) return { value: null, metadata: null };
+
+    try {
+      // Use the new readSecretWithMetadata method
+      const result = await window.electronAPI.vault.readSecretWithMetadata(
+        environment,
+        secret.vaultRef.path,
+        secret.vaultRef.key
+      );
+
+      return {
+        value: result.value,
+        metadata: result.metadata || null
+      };
+    } catch (error) {
+      console.error('Failed to load secret with metadata:', error);
+      return { value: null, metadata: null };
+    }
+  };
 
   return {
     // State
@@ -188,11 +288,13 @@ export const useVaultIntegration = (environment: string) => {
     vaultError,
     hasVaultCredentials,
     secretVaultStatuses,
-    
+
     // Actions
     checkVaultConnection,
     loadSecretValuesFromVault,
     saveSecretToVault,
-    checkVaultSync
+    checkVaultSync,
+    saveSecretToVaultWithMetadata,
+    loadSecretWithMetadata,
   }
 }

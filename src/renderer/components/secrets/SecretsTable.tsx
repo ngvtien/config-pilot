@@ -63,6 +63,17 @@ export const SecretsTable: React.FC<SecretsTableProps> = ({
     }
 
     const config = statusConfig[status]
+    
+    // Add safety check for unexpected status values
+    if (!config) {
+      console.warn(`Unknown vault status: ${status}`);
+      return (
+        <Badge variant="secondary" className="text-xs">
+          Unknown
+        </Badge>
+      )
+    }
+    
     return (
       <Badge variant={config.variant} className="text-xs">
         {config.text}

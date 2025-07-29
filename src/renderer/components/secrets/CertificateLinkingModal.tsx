@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Checkbox } from "@/renderer/components/ui/checkbox"
 import { cn } from "@/lib/utils"
 import type { CertificateMetadata, SecretItem } from "../types/secrets"
-import { suggestRelatedSecretNames } from "../utils/certificate-utils"
+import { suggestRelatedSecretNames } from '../utils/certificate-utils'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/renderer/components/ui/select"
 
 interface RelatedSecret {

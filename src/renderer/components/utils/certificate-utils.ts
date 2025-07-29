@@ -32,7 +32,7 @@ const extractCertificateMetadata = (content: string, fileName?: string): Certifi
     hasPrivateKey: detectPrivateKey(content),
     isCA: false, // Will be enhanced with actual parsing
     requiresPassword: detectPasswordRequirement(content),
-    aliases: []
+    //aliases: []
   }
 
   // Extract certificate details for PEM format

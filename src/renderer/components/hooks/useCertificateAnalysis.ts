@@ -31,16 +31,16 @@ export const useCertificateAnalysis = () => {
   const handleDragLeave = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    
+
     // Only set isDragOver to false if we're actually leaving the drop zone
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
     const x = e.clientX
     const y = e.clientY
-    
+
     if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
       return
     }
-    
+
     setIsDragOver(false)
   }, [])
 
@@ -61,14 +61,14 @@ export const useCertificateAnalysis = () => {
     try {
       const result = analyzeCertificate(content, fileName)
       setAnalysisResult(result)
-      
+
       if (result.isValid && result.metadata) {
         // Generate fingerprint asynchronously
         const fingerprint = await generateCertificateFingerprint(content)
         const enhancedMetadata = { ...result.metadata, fingerprint }
         setCertificateMetadata(enhancedMetadata)
         setFileType('certificate')
-        
+
         toast({
           title: "Certificate analyzed successfully",
           description: `Type: ${enhancedMetadata.type}, Format: ${enhancedMetadata.format}`
@@ -111,10 +111,10 @@ export const useCertificateAnalysis = () => {
         const content = await file.text()
         onContentChange(content)
         setFileName(file.name)
-        
+
         // Analyze certificate content
         await analyzeCertificateContent(content, file.name)
-        
+
         toast({
           title: "Certificate loaded successfully",
           description: `${file.name} (${(file.size / 1024).toFixed(1)} KB)`
@@ -146,10 +146,10 @@ export const useCertificateAnalysis = () => {
       const content = await file.text()
       onContentChange(content)
       setFileName(file.name)
-      
+
       // Analyze certificate content
       await analyzeCertificateContent(content, file.name)
-      
+
       toast({
         title: "Certificate uploaded successfully",
         description: `${file.name} (${(file.size / 1024).toFixed(1)} KB)`
@@ -172,7 +172,7 @@ export const useCertificateAnalysis = () => {
   const analyzeContent = useCallback(async (content: string) => {
     const detectedType = detectContentType(content)
     setFileType(detectedType)
-    
+
     if (detectedType === 'certificate') {
       await analyzeCertificateContent(content)
     }
@@ -190,6 +190,20 @@ export const useCertificateAnalysis = () => {
     setIsAnalyzing(false)
   }, [])
 
+  /**
+   * Set external certificate metadata (for loaded certificates)
+   */
+  const setExternalCertificateMetadata = useCallback((metadata: CertificateMetadata | null) => {
+    setCertificateMetadata(metadata)
+  }, [])
+
+  /**
+   * Set external analysis result (for loaded certificates)
+   */
+  const setExternalAnalysisResult = useCallback((result: CertificateAnalysisResult | null) => {
+    setAnalysisResult(result)
+  }, [])
+
   return {
     // State
     isDragOver,
@@ -198,7 +212,7 @@ export const useCertificateAnalysis = () => {
     certificateMetadata,
     analysisResult,
     isAnalyzing,
-    
+
     // Actions
     handleDragOver,
     handleDragEnter,
@@ -207,6 +221,8 @@ export const useCertificateAnalysis = () => {
     handleCertificateUpload,
     analyzeContent,
     analyzeCertificateContent,
-    resetCertificateState
+    resetCertificateState,
+    setCertificateMetadata: setExternalCertificateMetadata,
+    setAnalysisResult: setExternalAnalysisResult    
   }
 }

@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { cn } from "@/lib/utils"
 import { useCertificateAnalysis } from "../hooks/useCertificateAnalysis"
 import { DialogDescription } from "@radix-ui/react-dialog"
-import { SecretItem } from "components/types/secrets"
+import type { CertificateAnalysisResult, CertificateMetadata, SecretItem } from "../types/secrets"
 import { CertificateLinkingModal } from "./CertificateLinkingModal"
 
 interface SecretEditModalProps {
@@ -24,6 +24,8 @@ interface SecretEditModalProps {
   instance: number
   product: string
   existingSecrets?: SecretItem[]
+  certificateMetadata?: CertificateMetadata | null,
+  analysisResult?: CertificateAnalysisResult | null,
   onClose: () => void
   onSave: () => void
   onSecretNameChange: (value: string) => void
@@ -49,6 +51,8 @@ export const SecretEditModal: React.FC<SecretEditModalProps> = ({
   instance,
   product,
   existingSecrets = [],
+  certificateMetadata: externalCertificateMetadata,
+  analysisResult: externalAnalysisResult,
   onClose,
   onSave,
   onSecretNameChange,
@@ -66,8 +70,8 @@ export const SecretEditModal: React.FC<SecretEditModalProps> = ({
     isDragOver,
     fileType,
     fileName,
-    certificateMetadata,
-    analysisResult,
+    certificateMetadata: internalCertificateMetadata,
+    analysisResult: internalAnalysisResult,
     isAnalyzing,
     handleDragOver,
     handleDragEnter,
@@ -78,6 +82,9 @@ export const SecretEditModal: React.FC<SecretEditModalProps> = ({
     resetCertificateState
   } = useCertificateAnalysis()
 
+    // 🆕 ADD: Use external metadata if provided, otherwise use internal
+  const certificateMetadata = externalCertificateMetadata || internalCertificateMetadata
+  const analysisResult = externalAnalysisResult || internalAnalysisResult
   /**
    * Analyze certificate content when secret value changes and contains certificate data
    */
