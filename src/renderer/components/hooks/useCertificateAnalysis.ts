@@ -57,6 +57,12 @@ export const useCertificateAnalysis = () => {
    * Analyze certificate content and extract metadata
    */
   const analyzeCertificateContent = useCallback(async (content: string, fileName?: string) => {
+    // Pre-check: Only analyze if content looks like a certificate
+    if (detectContentType(content) !== 'certificate') {
+      // Silently skip analysis for non-certificate content
+      return
+    }
+
     setIsAnalyzing(true)
     try {
       const result = analyzeCertificate(content, fileName)
@@ -74,6 +80,7 @@ export const useCertificateAnalysis = () => {
           description: `Type: ${enhancedMetadata.type}, Format: ${enhancedMetadata.format}`
         })
       } else {
+        // Only show error toast if content was expected to be a certificate
         toast({
           title: "Certificate analysis failed",
           description: result.errors?.join(', ') || 'Unknown error',
@@ -90,7 +97,7 @@ export const useCertificateAnalysis = () => {
       setIsAnalyzing(false)
     }
   }, [toast])
-
+  
   /**
    * Handle file drop events
    */

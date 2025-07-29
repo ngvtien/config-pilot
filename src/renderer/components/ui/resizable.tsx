@@ -192,11 +192,11 @@ const ResizableHandle = React.forwardRef<HTMLDivElement, ResizableHandleProps>(
             }
           }
         }, [ref])}
-        className={cn(
-          "relative flex items-center justify-center bg-border transition-colors hover:bg-accent",
+                className={cn(
+          "relative flex items-center justify-center bg-border-200 transition-colors hover:bg-accent",
           direction === "horizontal"
-            ? "w-px cursor-col-resize"
-            : "h-px cursor-row-resize",
+            ? "w-2 cursor-col-resize"
+            : "h-2 cursor-row-resize",
           isDragging && "bg-accent",
           className
         )}

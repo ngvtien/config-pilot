@@ -78,7 +78,7 @@ export const useSecretsManager = (environment: string, initialValue: string) => 
   }, [initialValue])
 
   /**
-   * Add a new secret to the configuration
+   * Add new secret (modified to not auto-persist)
    */
   const addNewSecret = useCallback(() => {
     const newSecret: SecretItem = {
@@ -89,20 +89,19 @@ export const useSecretsManager = (environment: string, initialValue: string) => 
       }
     }
 
+    // ✅ FIXED: Only update local state, don't persist until user saves
     const updatedFormData = {
       ...formData,
       env: [...(formData.env || []), newSecret]
     }
 
     setFormData(updatedFormData)
-    const updatedYamlContent = yaml.dump(updatedFormData)
-    setYamlContent(updatedYamlContent)
-    localStorage.setItem(`secrets_editor_${environment}`, updatedYamlContent)
-    updateSecretsSourceFile(environment, updatedYamlContent)
+    // ✅ Don't update YAML content or persist until user explicitly saves
+    // const updatedYamlContent = yaml.dump(updatedFormData)
+    // setYamlContent(updatedYamlContent)
 
-    toast({ title: "New secret added" })
-  }, [formData, environment, toast])
-
+    toast({ title: "New secret template created", description: "Fill in details and save to persist" })
+  }, [formData, toast])
   /**
    * Remove selected secrets
    */
@@ -163,10 +162,10 @@ export const useSecretsManager = (environment: string, initialValue: string) => 
     setSortConfig,
     externalSecretsYaml,
     setExternalSecretsYaml,
-    
+
     // Actions
     loadValues,
-    addNewSecret,
+    //addNewSecret,
     removeSelectedSecrets,
     updateSecretField
   }

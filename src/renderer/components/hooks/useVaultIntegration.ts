@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useToast } from "@/renderer/hooks/use-toast"
 import { VaultCredentialManager } from "@/renderer/services/vault-credential-manager"
-import type { VaultConnectionStatus, SecretVaultStatus, SecretItem } from "../types/secrets"
+import type { VaultConnectionStatus, SecretVaultStatus, SecretItem, CertificateMetadata } from "../types/secrets"
 
 /**
  * Custom hook for Vault integration and secret synchronization
@@ -208,56 +208,66 @@ export const useVaultIntegration = (environment: string) => {
     checkVaultConnection()
   }, [checkVaultConnection])
 
-  /**
-   * Save secret to Vault with certificate metadata support
-   */
-  const saveSecretToVaultWithMetadata = async (
-    secret: SecretItem,
-    secretValue: string,
-    certificateMetadata?: any
-  ) => {
-    if (!secret.vaultRef?.path || !secret.vaultRef?.key || secret.vaultRef.path.trim() === '') {
-      toast({
-        title: "Vault Configuration Missing",
-        description: "Please configure a valid Vault path and key before saving.",
-        variant: "destructive"
-      });
-      return;
-    }
-
-
-    try {
-      const success = await window.electronAPI.vault.writeSecretWithMetadata(
-        environment,
-        secret.vaultRef.path,
-        secret.vaultRef.key,
-        secretValue,
-        certificateMetadata
-      );
-
-      if (success) {
-        toast({
-          title: "Secret Saved to Vault",
-          description: `Successfully saved ${secret.name} with ${certificateMetadata ? 'metadata' : 'content only'}`
-        });
-
-        // Update vault status
-        setSecretVaultStatuses(prev => ({
-          ...prev,
-          [secret.name]: 'synced'  // ✅ CORRECT! Use 'synced' instead of 'success'
-        }));
+/**
+ * Enhanced save function with better PFX metadata handling
+ */
+const saveSecretToVaultWithMetadata = async (
+  secret: SecretItem,
+  secretValue: string,
+  certificateMetadata?: CertificateMetadata
+) => {
+  try {
+    // Enhanced metadata preparation for Vault
+    const vaultMetadata: Record<string, string> = {}
+    
+    if (certificateMetadata) {
+      // Convert all metadata to Vault-compatible strings
+      vaultMetadata.cert_type = certificateMetadata.type || 'UNKNOWN'
+      vaultMetadata.cert_format = certificateMetadata.format || 'UNKNOWN'
+      vaultMetadata.file_name = certificateMetadata.fileName || ''
+      vaultMetadata.file_size = certificateMetadata.fileSize?.toString() || '0'
+      vaultMetadata.uploaded_at = certificateMetadata.uploadedAt
+      vaultMetadata.has_private_key = certificateMetadata.hasPrivateKey.toString()
+      vaultMetadata.requires_password = certificateMetadata.requiresPassword.toString()
+      
+      // PFX-specific metadata
+      if (certificateMetadata.format === 'PKCS12') {
+        vaultMetadata.chain_length = certificateMetadata.chainLength?.toString() || '1'
+        vaultMetadata.aliases = JSON.stringify(certificateMetadata.aliases || [])
+        vaultMetadata.pkcs12_analyzed = 'true'
       }
-
-    } catch (error: any) {
-      console.error('Failed to save secret with metadata:', error);
-      toast({
-        title: "Failed to Save Secret",
-        description: error.message || "Unknown error occurred",
-        variant: "destructive"
-      });
+      
+      // Optional fields (only if present)
+      if (certificateMetadata.expiresAt) {
+        vaultMetadata.expires_at = certificateMetadata.expiresAt
+      }
+      if (certificateMetadata.issuer) {
+        vaultMetadata.issuer = certificateMetadata.issuer
+      }
+      if (certificateMetadata.subject) {
+        vaultMetadata.subject = certificateMetadata.subject
+      }
+      if (certificateMetadata.fingerprint) {
+        vaultMetadata.fingerprint = certificateMetadata.fingerprint
+      }
     }
-  };
-
+    
+    // Save to Vault with metadata
+    await window.electronAPI.vault.writeSecretWithMetadata(
+      environment,
+      secret.vaultRef.path,
+      secret.vaultRef.key,
+      secretValue,
+      vaultMetadata
+    )
+    
+    console.log('✅ PFX certificate saved to Vault with enhanced metadata')
+    
+  } catch (error) {
+    console.error('❌ Failed to save PFX certificate to Vault:', error)
+    throw error
+  }
+}
   /**
    * Load secret with metadata from Vault
    */

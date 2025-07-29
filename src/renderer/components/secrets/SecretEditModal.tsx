@@ -11,6 +11,7 @@ import { useCertificateAnalysis } from "../hooks/useCertificateAnalysis"
 import { DialogDescription } from "@radix-ui/react-dialog"
 import type { CertificateAnalysisResult, CertificateMetadata, SecretItem } from "../types/secrets"
 import { CertificateLinkingModal } from "./CertificateLinkingModal"
+import { detectContentType } from "@/renderer/components/utils/secrets-utils"
 
 interface SecretEditModalProps {
   isOpen: boolean
@@ -85,15 +86,20 @@ export const SecretEditModal: React.FC<SecretEditModalProps> = ({
     // 🆕 ADD: Use external metadata if provided, otherwise use internal
   const certificateMetadata = externalCertificateMetadata || internalCertificateMetadata
   const analysisResult = externalAnalysisResult || internalAnalysisResult
+
   /**
    * Analyze certificate content when secret value changes and contains certificate data
    */
   useEffect(() => {
-    if (secretValue && fileType === 'certificate') {
+    // Only analyze if content actually looks like a certificate
+    if (secretValue && detectContentType(secretValue) === 'certificate') {
       analyzeCertificateContent(secretValue, fileName || undefined)
+    } else {
+      // Reset certificate state for non-certificate content
+      resetCertificateState()
     }
-  }, [secretValue, fileType, fileName, analyzeCertificateContent])
-
+  }, [secretValue, fileName, analyzeCertificateContent, resetCertificateState])
+  
   /**
    * Handle clear button click
    */
@@ -210,7 +216,7 @@ export const SecretEditModal: React.FC<SecretEditModalProps> = ({
 
 
           {/* Certificate Metadata Panel - Only show when certificate is detected */}
-          {certificateMetadata && (
+          {certificateMetadata && detectContentType(secretValue) === 'certificate' && (
             <div className="border rounded-lg p-4 bg-gradient-to-r from-green-50 to-blue-50 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -347,8 +353,8 @@ export const SecretEditModal: React.FC<SecretEditModalProps> = ({
             </div>
           )}
 
-          {/* Analysis Results - Show warnings/errors */}
-          {analysisResult && !analysisResult.isValid && (
+          {/* Analysis Results - Show warnings/errors only for certificate content */}
+          {analysisResult && detectContentType(secretValue) === 'certificate' && !analysisResult.isValid && (
             <div className="border border-red-200 rounded-lg p-3 bg-red-50">
               <div className="flex items-center gap-2 mb-2">
                 <AlertTriangle className="w-4 h-4 text-red-600" />
@@ -362,7 +368,7 @@ export const SecretEditModal: React.FC<SecretEditModalProps> = ({
             </div>
           )}
 
-          {analysisResult && analysisResult.isValid && analysisResult.warnings && analysisResult.warnings.length > 0 && (
+          {analysisResult && detectContentType(secretValue) === 'certificate' && analysisResult.isValid && analysisResult.warnings && analysisResult.warnings.length > 0 && (
             <div className="border border-yellow-200 rounded-lg p-3 bg-yellow-50">
               <div className="flex items-center gap-2 mb-2">
                 <AlertTriangle className="w-4 h-4 text-yellow-600" />

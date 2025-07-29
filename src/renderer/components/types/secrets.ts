@@ -17,7 +17,7 @@ export interface SecretItem {
  */
 export interface CertificateMetadata {
   type: 'PEM' | 'DER' | 'PKCS12' | 'JKS' | 'UNKNOWN'
-  format: 'X.509' | 'PKCS#1' | 'PKCS#8' | 'UNKNOWN'
+  format: 'X.509' | 'PKCS#1' | 'PKCS#8' | 'PKCS12' | 'UNKNOWN'
   fileName?: string
   fileSize?: number
   uploadedAt: string
@@ -33,6 +33,7 @@ export interface CertificateMetadata {
   signatureAlgorithm?: string
   requiresPassword: boolean
   aliases?: string[]
+  chainLength?: number
   relatedSecrets?: {
     privateKeyPath?: string
     passwordPath?: string

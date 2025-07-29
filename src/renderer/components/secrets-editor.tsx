@@ -54,7 +54,7 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { showConfirm, ConfirmDialog } = useDialog()
   const { theme } = useTheme()
-  
+
   // Use provided context or create one from environment prop for backward compatibility
   const editorContext: ContextData = context || {
     environment: environment as any,
@@ -118,7 +118,8 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
     resetCertificateState,
     certificateMetadata,
     analysisResult,
-    analyzeContent
+    analyzeContent,
+    setCertificateMetadata
   } = useCertificateAnalysis()
 
   // State for the edit modal (preserved from original)
@@ -129,7 +130,11 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
   const [editVaultPath, setEditVaultPath] = useState("")
   const [editVaultKey, setEditVaultKey] = useState("")
   const [activeTab, setActiveTab] = useState<TabType>("secrets")
-  
+
+  // ✅ NEW: Add state for draft (unsaved) secrets
+  const [draftSecrets, setDraftSecrets] = useState<SecretItem[]>([])
+  const [isDraftMode, setIsDraftMode] = useState(false)
+
   // ✅ Add timeout ref for debouncing saves
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
@@ -277,20 +282,35 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
   }
 
   /**
-   * Add secret (using hook's addNewSecret)
+   * Add secret (completely rewritten to prevent backend calls)
    */
   const addSecret = () => {
-    // Use the hook's addNewSecret function
-    addNewSecret()
+    // ✅ Create draft secret without touching formData
+    const draftSecret: SecretItem = {
+      name: "",
+      vaultRef: {
+        path: `secret/${customer}/${env}/${editorContext.instance}/${product}`.toLowerCase(),
+        key: ""
+      }
+    }
 
-    // Then open the edit modal for the new secret
-    const newIndex = formData.env ? formData.env.length : 0
-    setEditingSecretIndex(newIndex)
+    // ✅ Add to draft state only
+    setDraftSecrets(prev => [...prev, draftSecret])
+    setIsDraftMode(true)
+
+    // ✅ Set editing state for the draft secret
+    const draftIndex = draftSecrets.length
+    setEditingSecretIndex(-1) // Use -1 to indicate draft mode
     setSecretInputValue("")
     setShowSecretValue(false)
     setEditSecretName("")
-    setEditVaultPath(`secret/${customer}/${env}/${editorContext.instance}/${product}`.toLowerCase())
+    setEditVaultPath(draftSecret.vaultRef.path)
     setEditVaultKey("")
+
+    toast({
+      title: "New secret draft created",
+      description: "Fill in details and save to add to configuration"
+    })
   }
 
   /**
@@ -338,10 +358,10 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
    */
   const handleVaultKeyChange = useCallback((index: number, field: string, value: string) => {
     // ✅ Only update if the value actually changed
-    const currentValue = field === "path" 
-      ? formData?.env?.[index]?.vaultRef?.path 
+    const currentValue = field === "path"
+      ? formData?.env?.[index]?.vaultRef?.path
       : formData?.env?.[index]?.vaultRef?.key
-    
+
     if (currentValue === value.toLowerCase()) {
       return // No change, skip update
     }
@@ -357,10 +377,10 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
         updatedFormData.env[index].vaultRef.key = value.toLowerCase()
       }
     }
-    
+
     const updatedYamlContent = yaml.dump(updatedFormData)
     setYamlContent(updatedYamlContent)
-    
+
     // ✅ Debounce localStorage and file updates
     clearTimeout(saveTimeoutRef.current)
     saveTimeoutRef.current = setTimeout(() => {
@@ -379,15 +399,65 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
   }, [])
 
   /**
-   * Enhanced save secret changes with certificate metadata
+   * Enhanced save secret changes (rewritten to handle drafts properly)
    */
   const saveSecretChanges = async () => {
-    if (editingSecretIndex === null) return;
+    if (editingSecretIndex === null) return
 
-    const isNewSecret = editingSecretIndex === -1;
-    let newFormData = { ...formData };
+    const isNewSecret = editingSecretIndex === -1
+    let newFormData = { ...formData }
 
-    // Enhanced Vault saving with metadata
+    // ✅ FIXED: Handle draft secrets properly
+    if (isNewSecret && isDraftMode) {
+      // ✅ This is a draft secret being saved for the first time
+      const newSecret: SecretItem = {
+        name: editSecretName.toUpperCase(),
+        vaultRef: {
+          path: editVaultPath.toLowerCase(),
+          key: editVaultKey.toLowerCase()
+        }
+      }
+      
+      // ✅ Add to real formData (this will trigger effects, but that's expected for saved secrets)
+      if (!newFormData.env) newFormData.env = []
+      newFormData.env.push(newSecret)
+      
+      // ✅ Clear draft state
+      setDraftSecrets([])
+      setIsDraftMode(false)
+      
+    } else if (!isNewSecret) {
+      // ✅ Existing secret being updated
+      if (newFormData.env && newFormData.env[editingSecretIndex]) {
+        newFormData.env[editingSecretIndex] = {
+          ...newFormData.env[editingSecretIndex],
+          name: editSecretName.toUpperCase(),
+          vaultRef: {
+            path: editVaultPath.toLowerCase(),
+            key: editVaultKey.toLowerCase()
+          }
+        }
+      }
+    }
+
+    // ✅ Now persist everything (only for actually saved secrets)
+    setFormData(newFormData)
+    const updatedYamlContent = yaml.dump(newFormData)
+    setYamlContent(updatedYamlContent)
+    
+    // ✅ Persist to localStorage and file
+    localStorage.setItem(`secrets_editor_${env}`, updatedYamlContent)
+    await updateSecretsSourceFile(env, updatedYamlContent)
+
+    // ✅ Update secretValues state
+    if (secretInputValue && editSecretName) {
+      setSecretValues(prev => ({
+        ...prev,
+        [editSecretName.toUpperCase()]: secretInputValue
+      }))
+    }
+
+    // ✅ Save to Vault
     if (secretInputValue && editVaultPath && editVaultKey) {
       const secretToSave: SecretItem = {
         name: editSecretName.toUpperCase(),
@@ -395,22 +465,18 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
           path: editVaultPath.toLowerCase(),
           key: editVaultKey.toLowerCase()
         }
-      };
+      }
 
-      // Use certificateMetadata from the hook already destructured at component level
-      // DO NOT call useCertificateAnalysis() here - it violates Rules of Hooks!
-
-      // Save to Vault with metadata if available
       if (certificateMetadata) {
-        await saveSecretToVaultWithMetadata(secretToSave, secretInputValue, certificateMetadata);
+        await saveSecretToVaultWithMetadata(secretToSave, secretInputValue, certificateMetadata)
       } else {
-        await saveSecretToVault(secretToSave, secretInputValue);
+        await saveSecretToVault(secretToSave, secretInputValue)
       }
     }
 
-    closeSecretEditModal();
-    toast({ title: isNewSecret ? "Secret added successfully" : "Secret updated successfully" });
-  };
+    closeSecretEditModal()
+    toast({ title: "Secret saved successfully" })
+  }
 
   /**
    * Enhanced open secret edit modal with metadata loading
@@ -505,16 +571,26 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
   }
 
   /**
-   * Close secret edit modal (preserved from original)
+   * Close secret edit modal (enhanced to handle draft cleanup)
    */
   const closeSecretEditModal = () => {
+    // ✅ Clean up draft state if canceling a new secret
+    if (editingSecretIndex === -1 && isDraftMode) {
+      setDraftSecrets([])
+      setIsDraftMode(false)
+      toast({ 
+        title: "Draft discarded", 
+        description: "New secret was not saved" 
+      })
+    }
+    
     setEditingSecretIndex(null)
     setSecretInputValue("")
     setShowSecretValue(false)
     setEditSecretName("")
     setEditVaultPath("")
     setEditVaultKey("")
-    resetCertificateState()
+    setCertificateMetadata(null)
   }
 
   /**
@@ -566,50 +642,53 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
   }
 
   /**
-   * Get sorted and filtered secrets (preserved from original)
+   * Get sorted and filtered secrets including drafts
    */
   const getSortedAndFilteredSecrets = () => {
-    if (!formData.env || !Array.isArray(formData.env)) return []
+    // ✅ Combine real secrets with draft secrets
+    const realSecrets = formData.env || []
+    const allSecrets = isDraftMode ? [...realSecrets, ...draftSecrets] : realSecrets
+    
+    if (!Array.isArray(allSecrets)) return []
 
-    const filteredSecrets = formData.env.filter((secret: SecretItem) => {
-      if (!searchTerm) return true
-
-      const searchLower = searchTerm.toLowerCase()
-      return (
-        (secret.name && secret.name.toLowerCase().includes(searchLower)) ||
-        (secret.vaultRef?.path && secret.vaultRef.path.toLowerCase().includes(searchLower)) ||
-        (secret.vaultRef?.key && secret.vaultRef.key.toLowerCase().includes(searchLower))
-      )
+    const filteredSecrets = allSecrets.filter((secret: SecretItem) => {
+      // ✅ Add null checks to prevent TypeError
+      if (!secret || !searchTerm) return !!secret
+      
+      const nameMatch = secret.name?.toLowerCase().includes(searchTerm.toLowerCase()) || false
+      const pathMatch = secret.vaultRef?.path?.toLowerCase().includes(searchTerm.toLowerCase()) || false
+      const keyMatch = secret.vaultRef?.key?.toLowerCase().includes(searchTerm.toLowerCase()) || false
+      
+      return nameMatch || pathMatch || keyMatch
     })
 
-    if (sortConfig) {
-      filteredSecrets.sort((a: any, b: any) => {
-        let aValue, bValue
+    // ✅ Add null check for sortConfig before accessing its properties
+    if (!sortConfig || !sortConfig.key) return filteredSecrets
 
-        if (sortConfig.key === "name") {
-          aValue = a.name || ""
-          bValue = b.name || ""
-        } else if (sortConfig.key === "path") {
-          aValue = a.vaultRef?.path || ""
-          bValue = b.vaultRef?.path || ""
-        } else if (sortConfig.key === "key") {
-          aValue = a.vaultRef?.key || ""
-          bValue = b.vaultRef?.key || ""
-        } else {
+    return [...filteredSecrets].sort((a, b) => {
+      let aValue: string
+      let bValue: string
+
+      switch (sortConfig.key) {
+        case 'name':
+          aValue = a?.name || ''
+          bValue = b?.name || ''
+          break
+        case 'path':
+          aValue = a?.vaultRef?.path || ''
+          bValue = b?.vaultRef?.path || ''
+          break
+        case 'key':
+          aValue = a?.vaultRef?.key || ''
+          bValue = b?.vaultRef?.key || ''
+          break
+        default:
           return 0
-        }
+      }
 
-        if (aValue < bValue) {
-          return sortConfig.direction === "ascending" ? -1 : 1
-        }
-        if (aValue > bValue) {
-          return sortConfig.direction === "ascending" ? 1 : -1
-        }
-        return 0
-      })
-    }
-
-    return filteredSecrets
+      const comparison = aValue.localeCompare(bValue)
+      return sortConfig.direction === 'asc' ? comparison : -comparison
+    })
   }
 
   const filteredSecrets = getSortedAndFilteredSecrets()
@@ -730,7 +809,7 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
           <ResizablePanel defaultSize={40} minSize={30}>
             <div className="h-full flex flex-col">
               <div className="border-b">
-                <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as TabType)}>
+                <Tabs value={activeTab} onValueChange={(value: any) => setActiveTab(value as TabType)}>
                   <div className="flex items-center justify-between px-4 py-2">
                     <TabsList>
                       <TabsTrigger value="secrets">Secrets YAML</TabsTrigger>
