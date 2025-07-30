@@ -29,6 +29,7 @@ import { GitRepository, GitValidationResult, GitCredentials } from '../shared/ty
 //import { GitAuthService } from './services/git-auth-service';
 //import { UnifiedGitService } from './services/unified-git-service';
 import { ProductComponentService } from './services/product-component-service'
+import { Environment } from "@/shared/types/context-data";
 
 const execPromise = util.promisify(exec)
 
@@ -1066,6 +1067,52 @@ export function setupIpcHandlers(): void {
     }
   })
 
+  ipcMain.handle("vault:readAllData", async (_event, environment: string, path: string) => {
+    try {
+      const vaultService = new VaultService();
+      return await vaultService.readAllData(environment as Environment, path);
+    } catch (error: any) {
+      console.error('Failed to read all vault data:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("vault:writeSecretWithMetadata", async (
+    _event,
+    environment: string,
+    path: string,
+    key: string,
+    value: string,
+    metadata?: any
+  ) => {
+    try {
+      const vaultService = new VaultService();
+      return await vaultService.writeSecretWithMetadata(
+        environment as Environment,
+        path,
+        key,
+        value,
+        metadata
+      );
+    } catch (error: any) {
+      console.error('Failed to write secret with metadata:', error);
+      throw error;
+    }
+  });
+
+  /**
+   * Read secret with metadata from Vault
+   */
+  ipcMain.handle("vault:readSecretWithMetadata", async (_event, environment: string, path: string, key: string) => {
+    try {
+      const vaultService = new VaultService();
+      return await vaultService.readSecretWithMetadata(environment as Environment, path, key);
+    } catch (error: any) {
+      console.error('Failed to read secret with metadata:', error);
+      throw error;
+    }
+  });
+    
   // ArgoCD handlers
   ipcMain.handle("argocd:testConnection", async (_event, environment: string, url: string, token: string, insecureSkipTLSVerify?: boolean) => {
     try {

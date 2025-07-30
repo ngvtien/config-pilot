@@ -54,11 +54,11 @@ export function VaultConfigurationSection({ context, settings, onSettingsChange,
     const newConfigs = { ...environmentConfigs }
 
     for (const env of ENVIRONMENTS) {
-      // Load URL from settings
-      const envConfig = settings.environments?.[env]
-      if (envConfig?.vault?.url) {
-        newConfigs[env].url = envConfig.vault.url
-        newConfigs[env].namespace = envConfig.vault.namespace || ''
+      // ✅ Fix: Use correct property path
+      const envConfig = settings.vaultConfigurations?.[env]
+      if (envConfig?.url) {
+        newConfigs[env].url = envConfig.url
+        newConfigs[env].namespace = envConfig.namespace || ''
       }
 
       // Check for stored credentials
@@ -70,10 +70,11 @@ export function VaultConfigurationSection({ context, settings, onSettingsChange,
   }
 
   const loadCurrentEnvironmentConfiguration = async () => {
-    const envConfig = settings.environments?.[currentEnvironment]
-    if (envConfig?.vault?.url) {
-      updateEnvironmentConfig(currentEnvironment, 'url', envConfig.vault.url)
-      updateEnvironmentConfig(currentEnvironment, 'namespace', envConfig.vault.namespace || '')
+    // ✅ Fix: Use correct property path
+    const envConfig = settings.vaultConfigurations?.[currentEnvironment]
+    if (envConfig?.url) {
+      updateEnvironmentConfig(currentEnvironment, 'url', envConfig.url)
+      updateEnvironmentConfig(currentEnvironment, 'namespace', envConfig.namespace || '')
     }
 
     // Check for stored credentials
@@ -95,18 +96,23 @@ export function VaultConfigurationSection({ context, settings, onSettingsChange,
     const config = environmentConfigs[env]
 
     try {
-      // Update settings
+      // Check if URL changed from stored credentials
+      const existingCreds = await vaultCredManager.getCredentials(env)
+      if (existingCreds && existingCreds.url !== config.url) {
+        // Clear old credentials if URL changed
+        await vaultCredManager.deleteCredentials(env)
+        console.log(`Cleared old credentials due to URL change: ${existingCreds.url} -> ${config.url}`)
+      }
+
+      // ✅ Fix: Update correct property structure
       const updatedSettings = {
         ...settings,
-        environments: {
-          ...settings.environments,
+        vaultConfigurations: {
+          ...settings.vaultConfigurations,
           [env]: {
-            ...settings.environments?.[env],
-            vault: {
-              url: config.url,
-              namespace: config.namespace || undefined,
-              authMethod: 'token' as const
-            }
+            url: config.url,
+            namespace: config.namespace || undefined,
+            authMethod: 'token' as const
           }
         }
       }
@@ -221,6 +227,25 @@ export function VaultConfigurationSection({ context, settings, onSettingsChange,
             value={config.url}
             onChange={(e) => updateEnvironmentConfig(currentEnvironment, 'url', e.target.value)}
           />
+          
+          {/*
+          <Input
+            id={`vault-url-${currentEnvironment}`}
+            placeholder={
+              currentEnvironment === 'dev'
+                ? 'http://localhost:9201 (API port, not 9200)'
+                : `https://vault-${currentEnvironment}.company.com`
+            }
+            value={config.url}
+            onChange={(e) => updateEnvironmentConfig(currentEnvironment, 'url', e.target.value)}
+          />
+          */}
+
+          {currentEnvironment === 'dev' && (
+            <p className="text-sm text-muted-foreground">
+              💡 For local development: Use port <strong>9201</strong> for API calls, port 9200 is for the web UI
+            </p>
+          )}
         </div>
 
         <div className="space-y-2">
