@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/renderer/components/ui/select'
 import { Textarea } from '@/renderer/components/ui/textarea'
 import { Switch } from '@/renderer/components/ui/switch'
-import { Trash2, Edit, Plus, Download, Upload, Building2 } from 'lucide-react'
+import { Trash2, Edit, Plus, Download, Upload, Building2, Loader2 } from 'lucide-react'
 import type { Customer, CustomerGitOpsConfig, CustomerGitOpsResult } from '@/shared/types/customer'
 import { createNewCustomer, validateCustomer } from '@/shared/types/customer'
 import { useDialog } from '@/renderer/hooks/useDialog'
@@ -712,40 +712,50 @@ export function CustomerManagementPage({ onNavigateBack }: CustomerManagementPag
                         <Button variant="outline" onClick={() => setShowGitOpsDialog(false)}>
                             Cancel
                         </Button>
+
                         <Button 
                             onClick={async () => {
                                 if (editingCustomer && gitOpsConfig.serverId) {
                                     setGitOpsLoading(true)
                                     try {
-                                        await window.electronAPI?.customer?.setupGitOps(editingCustomer.id, gitOpsConfig)
+                                        const result = await window.electronAPI?.customer?.setupGitOps(editingCustomer.id, gitOpsConfig)
                                         await loadCustomers()
                                         setShowGitOpsDialog(false)
 
-                                        // Replace the basic alert with a detailed success message
-                                        const successMessage = `
-                                        ✅ **GitOps Setup Completed Successfully!**
+                                        // Show detailed success message with actual values
+                                        const repositoryUrl = result?.repository?.url || `${gitOpsConfig.gitBaseUrl}/${editingCustomer.name}/gitops.git`
+                                        const createdBranches = result?.branches || ['dev', 'sit', 'uat', 'prod']
+                                        
+                                        const successMessage = `✅ **GitOps Setup Completed Successfully!**\n\n**Customer:** ${editingCustomer.displayName || editingCustomer.name}\n**Repository:** ${repositoryUrl}\n**Branches Created:** ${createdBranches.join(', ')}\n\n🎉 Your customer environment is ready for GitOps deployments!`
 
-                                        **Customer:** ${editingCustomer.displayName || editingCustomer.name}
-                                        **Repository:** ${gitOpsRepoUrl}
-                                        **Branches Created:** ${branchResult.createdBranches.join(', ')}
-
-                                        🎉 Your customer environment is ready for GitOps deployments!
-                                        `;
-
-                                        await showAlert('GitOps Setup Complete', successMessage, 'success');
-
-                                        //await showAlert('GitOps Setup Complete', 'GitOps repository has been created successfully.')
+                                        showAlert({
+                                            title: 'GitOps Setup Complete',
+                                            message: successMessage,
+                                            variant: 'success'
+                                        })
                                     } catch (error: any) {
-                                        await showAlert('GitOps Setup Failed', error.message)
+                                        showAlert({
+                                            title: 'GitOps Setup Failed',
+                                            message: error.message,
+                                            variant: 'error'
+                                        })
                                     } finally {
                                         setGitOpsLoading(false)
                                     }
                                 }
                             }}
                             disabled={!gitOpsConfig.serverId || gitOpsLoading}
+                            className="min-w-[120px]"
                         >
-                            {gitOpsLoading ? 'Setting up...' : 'Setup GitOps'}
-                        </Button>
+                            {gitOpsLoading ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Setting up...
+                                </>
+                            ) : (
+                                'Setup GitOps'
+                            )}
+                        </Button>                        
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
