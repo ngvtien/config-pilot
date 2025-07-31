@@ -1044,7 +1044,8 @@ export function EnhancedProductManagementPage({ onNavigateBack }: EnhancedProduc
                                                   className="h-5 w-5 p-0 text-red-600 hover:text-red-700"
                                                 >
                                                   <XCircle className="h-3 w-3" />
-                                                </Button>                                              </TooltipTrigger>
+                                                </Button>
+                                              </TooltipTrigger>
                                               <TooltipContent>
                                                 <p>Remove invalid repository URL</p>
                                               </TooltipContent>
@@ -1450,8 +1451,6 @@ export function EnhancedProductManagementPage({ onNavigateBack }: EnhancedProduc
                   />
                 </div>
               </div>
-
-              { /* end keep */}
 
               <div className="space-y-2">
                 <div className="flex items-center gap-1">
