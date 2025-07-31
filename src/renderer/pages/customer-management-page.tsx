@@ -14,6 +14,7 @@ import { Trash2, Edit, Plus, Download, Upload, Building2 } from 'lucide-react'
 import type { Customer } from '@/shared/types/customer'
 import { createNewCustomer, validateCustomer } from '@/shared/types/customer'
 import { useDialog } from '@/renderer/hooks/useDialog'
+import { GitRepositoryService } from '@/renderer/services/git-repository.service'
 
 interface CustomerManagementPageProps {
     onNavigateBack?: () => void
@@ -83,27 +84,109 @@ export function CustomerManagementPage({ onNavigateBack }: CustomerManagementPag
     }
 
     /**
+     * Smart GitOps setup function - follows product management pattern
+     * Uses GitRepositoryService.createRepository directly like handleAddNewRepository
+     */
+    const setupCustomerGitOps = async (customerName: string): Promise<boolean> => {
+        console.log(`🚀 Starting GitOps setup for customer: ${customerName}`);
+
+        try {
+            const repoName = customerName.toLowerCase().replace(/\s+/g, '-');
+            console.log(`📝 Generated repository name: ${repoName}`);
+
+            // Check if repository already exists
+            console.log(`🔍 Checking for existing repositories...`);
+            const existingRepos = await GitRepositoryService.getRepositories();
+            console.log(`📊 Found ${existingRepos.length} existing repositories`);
+
+            const repoExists = existingRepos.some(repo => repo.name === repoName);
+            console.log(`🔎 Repository exists check: ${repoExists}`);
+
+            if (repoExists) {
+                console.log(`✅ Repository already exists for customer: ${customerName}`);
+                return true;
+            }
+
+            // Create repository using the same pattern as product management
+            const repoData = {
+                name: repoName,
+                description: `GitOps repository for customer ${customerName}`,
+                isPrivate: false
+            } as any;
+
+            console.log(`🏗️ Creating repository with data:`, repoData);
+            const newRepo = await GitRepositoryService.createRepository(repoData);
+            console.log(`✅ Repository created:`, newRepo);
+
+            // Test connection to the newly created repository
+            console.log(`🔗 Testing connection to repository: ${newRepo.url}`);
+            const connectionTest = await GitRepositoryService.testConnection(newRepo.url);
+            console.log(`🔗 Connection test result: ${connectionTest}`);
+
+            if (!connectionTest) {
+                console.warn(`⚠️ Connection test failed for repository: ${newRepo.url}`);
+                // Continue anyway as the repo might still be initializing
+            }
+
+            // Create environment branches
+            console.log(`🌿 Creating environment branches for: ${newRepo.url}`);
+            const branchResult = await window.electronAPI?.git?.createEnvironmentBranches(newRepo.url, ['dev', 'uat', 'prod']);
+            console.log(`🌿 Branch creation result:`, branchResult);
+
+            console.log(`🎉 GitOps setup completed successfully for customer: ${customerName}`);
+            return true;
+        } catch (error: any) {
+            console.error(`❌ GitOps setup failed for customer ${customerName}:`, error);
+            console.error(`❌ Error details:`, {
+                message: error?.message,
+                stack: error?.stack,
+                name: error?.name
+            });
+            return false;
+        }
+    };
+
+    /**
      * Handle saving customer (create or update)
      */
     const handleSaveCustomer = async () => {
+        console.log(`💾 Starting customer save process...`);
+
         const validation = validateCustomer(formData)
         if (!validation.isValid) {
+            console.warn(`❌ Customer validation failed:`, validation.errors);
             setErrors(validation.errors)
             return
         }
 
+        console.log(`✅ Customer validation passed`);
+
         try {
             if (editingCustomer) {
-                // Update existing customer
+                console.log(`📝 Updating existing customer:`, editingCustomer.id);
                 await window.electronAPI?.customer?.updateCustomer(editingCustomer.id, formData)
+                console.log(`✅ Customer updated successfully`);
             } else {
-                // Create new customer
+                console.log(`➕ Creating new customer:`, formData.name);
                 await window.electronAPI?.customer?.createCustomer(formData as Omit<Customer, 'id' | 'createdAt' | 'updatedAt'>)
+                console.log(`✅ Customer created successfully`);
             }
+
+            // Setup GitOps for ANY customer (new or existing) - follows product pattern
+            console.log(`🔧 Starting GitOps setup...`);
+            const gitOpsResult = await setupCustomerGitOps(formData.name);
+            console.log(`🔧 GitOps setup result: ${gitOpsResult}`);
 
             setIsDialogOpen(false)
             await loadCustomers()
+            console.log(`🎉 Customer save process completed successfully`);
         } catch (error: any) {
+            console.error(`❌ Customer save failed:`, error);
+            console.error(`❌ Error details:`, {
+                message: error?.message,
+                stack: error?.stack,
+                name: error?.name
+            });
             setErrors([error.message || 'Failed to save customer'])
         }
     }
@@ -111,27 +194,27 @@ export function CustomerManagementPage({ onNavigateBack }: CustomerManagementPag
     /**
      * Handle deleting a customer
      */
-    const handleDeleteCustomer = async (customer: Customer) => 
+    const handleDeleteCustomer = async (customer: Customer) =>
         showConfirm({
-          title: 'Delete Customer',
-          message: `Are you sure you want to delete customer "${customer.displayName || customer.name}"?`,
-          variant: 'destructive',
-          confirmText: 'Delete',
-          cancelText: 'Cancel',
-          onConfirm: async () => {
-            try {
-                await window.electronAPI?.customer?.deleteCustomer(customer.id)
-                await loadCustomers()
-            } catch (error: any) {
-                showAlert({
-                  title: 'Error',
-                  message: `Failed to delete customer: ${error.message}`,
-                  variant: 'error'
-                })
+            title: 'Delete Customer',
+            message: `Are you sure you want to delete customer "${customer.displayName || customer.name}"?`,
+            variant: 'destructive',
+            confirmText: 'Delete',
+            cancelText: 'Cancel',
+            onConfirm: async () => {
+                try {
+                    await window.electronAPI?.customer?.deleteCustomer(customer.id)
+                    await loadCustomers()
+                } catch (error: any) {
+                    showAlert({
+                        title: 'Error',
+                        message: `Failed to delete customer: ${error.message}`,
+                        variant: 'error'
+                    })
+                }
             }
-        }
-    });
-    
+        });
+
 
     /**
      * Handle exporting customers
@@ -142,16 +225,16 @@ export function CustomerManagementPage({ onNavigateBack }: CustomerManagementPag
             if (filePath) {
                 await window.electronAPI?.customer?.exportCustomers(filePath)
                 showAlert({
-                  title: 'Success',
-                  message: 'Customers exported successfully!',
-                  variant: 'success'
+                    title: 'Success',
+                    message: 'Customers exported successfully!',
+                    variant: 'success'
                 })
             }
         } catch (error: any) {
             showAlert({
-              title: 'Error',
-              message: `Failed to export customers: ${error.message}`,
-              variant: 'error'
+                title: 'Error',
+                message: `Failed to export customers: ${error.message}`,
+                variant: 'error'
             })
         }
     }
@@ -166,16 +249,16 @@ export function CustomerManagementPage({ onNavigateBack }: CustomerManagementPag
                 await window.electronAPI?.customer?.importCustomers(filePath, 'merge')
                 await loadCustomers()
                 showAlert({
-                  title: 'Success',
-                  message: 'Customers imported successfully!',
-                  variant: 'success'
+                    title: 'Success',
+                    message: 'Customers imported successfully!',
+                    variant: 'success'
                 })
             }
         } catch (error: any) {
             showAlert({
-              title: 'Error',
-              message: `Failed to import customers: ${error.message}`,
-              variant: 'error'
+                title: 'Error',
+                message: `Failed to import customers: ${error.message}`,
+                variant: 'error'
             })
         }
     }

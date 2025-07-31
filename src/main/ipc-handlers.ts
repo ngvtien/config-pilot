@@ -253,9 +253,9 @@ export function registerUnifiedGitHandlers() {
     }
   });
 
-  ipcMain.handle('git:createEnvironmentBranches', async (_, repositoryUrl: string, environments: string[]): Promise<{ success: boolean; createdBranches: string[]; errors: any[] }> => {
+  ipcMain.handle('git:createEnvironmentBranches', async (_, repositoryUrl: string, environments: string[], serverId?: string): Promise<{ success: boolean; createdBranches: string[]; errors: any[] }> => {
     try {
-      const result = await gitService.createEnvironmentBranches(repositoryUrl, environments);
+      const result = await gitService.createEnvironmentBranches(repositoryUrl, environments, serverId);
       return result;
     } catch (error: any) {
       console.error('Failed to create environment branches:', error);
@@ -288,6 +288,44 @@ export function registerUnifiedGitHandlers() {
       return { success: false, error: error.message };
     }
   });
+
+  // Add this after the existing handlers in registerUnifiedGitHandlers
+  ipcMain.handle('git:checkAuth', async (_, url: string): Promise<"success" | "failed"> => {
+    try {
+      return await gitService.checkGitAuth(url);
+    } catch (error: any) {
+      console.error('Failed to check Git auth:', error);
+      return "failed";
+    }
+  });
+
+  ipcMain.handle('git:removeServer', async (_, serverId: string): Promise<boolean> => {
+    try {
+      return gitService.removeServer(serverId);
+    } catch (error: any) {
+      console.error('Failed to remove server:', error);
+      throw new Error(`Failed to remove server: ${error.message}`);
+    }
+  });
+
+  ipcMain.handle('git:cleanupDuplicateServers', async (): Promise<{ removed: number; kept: number; duplicateGroups: any[] }> => {
+    try {
+      return gitService.cleanupDuplicateServers();
+    } catch (error: any) {
+      console.error('Failed to cleanup duplicate servers:', error);
+      throw new Error(`Failed to cleanup duplicate servers: ${error.message}`);
+    }
+  });
+
+  ipcMain.handle('git:getDuplicateServers', async (): Promise<{ baseUrl: string; servers: any[]; count: number }[]> => {
+    try {
+      return gitService.getDuplicateServers();
+    } catch (error: any) {
+      console.error('Failed to get duplicate servers:', error);
+      throw new Error(`Failed to get duplicate servers: ${error.message}`);
+    }
+  });
+
 
 }
 
@@ -1112,7 +1150,7 @@ export function setupIpcHandlers(): void {
       throw error;
     }
   });
-    
+
   // ArgoCD handlers
   ipcMain.handle("argocd:testConnection", async (_event, environment: string, url: string, token: string, insecureSkipTLSVerify?: boolean) => {
     try {

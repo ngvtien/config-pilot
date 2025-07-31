@@ -36,7 +36,7 @@ export const SimpleRepositoryInput: React.FC<SimpleRepositoryInputProps> = ({
     const [createdBranches, setCreatedBranches] = useState<string[]>([]);
     const [validationError, setValidationError] = useState<string>('');
     const [isRepositoryCreated, setIsRepositoryCreated] = useState(false);
-    
+
     // Use refs to track timeouts and prevent race conditions
     const validationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const revalidationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -112,7 +112,7 @@ export const SimpleRepositoryInput: React.FC<SimpleRepositoryInputProps> = ({
         if (!value) return;
 
         setIsCreatingRepo(true);
-        
+
         // Clear any pending validation timeouts to prevent race conditions
         if (validationTimeoutRef.current) {
             clearTimeout(validationTimeoutRef.current);
@@ -152,6 +152,8 @@ export const SimpleRepositoryInput: React.FC<SimpleRepositoryInputProps> = ({
 
                 targetServer = await window.electronAPI?.git?.saveServer(serverConfig);
                 console.log('Created server configuration:', targetServer);
+            } else {
+                console.log('Using existing server configuration:', targetServer);
             }
 
             // Create repository configuration with server ID
@@ -172,10 +174,10 @@ export const SimpleRepositoryInput: React.FC<SimpleRepositoryInputProps> = ({
             // Wait for repository creation to complete
             await new Promise(resolve => setTimeout(resolve, 2000));
 
-            // Step 2: Create environment branches
+            // Step 2: Create environment branches with serverId
             console.log('🌿 Creating environment branches...');
             const environments = ['dev', 'sit', 'uat', 'prod'];
-            const branchResult = await window.electronAPI?.git?.createEnvironmentBranches(value, environments);
+            const branchResult = await window.electronAPI?.git?.createEnvironmentBranches(value, environments, targetServer.id);
 
             if (!branchResult?.success) {
                 throw new Error(`Failed to create environment branches: ${branchResult?.errors?.join(', ') || 'Unknown error'}`);

@@ -176,6 +176,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       'git:saveRepository',
       'git:removeRepository',
       'git:validateRepository',
+      'git:checkAuth',
 
       // Git authentication
       // 'git-auth:getServers',
@@ -188,6 +189,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
       'git:createRepository',
       'git:createEnvironmentBranches',
       'git:setDefaultBranch',
+      'git:removeServer',
+      'git:cleanupDuplicateServers',
+      'git:getDuplicateServers',
 
     ]
     if (validChannels.includes(channel)) {
@@ -248,12 +252,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke('vault:writeSecret', environment, path, key, value),
     readSecret: (environment: string, path: string, key: string) =>
       ipcRenderer.invoke('vault:readSecret', environment, path, key),
-    readAllData: (environment: string, path: string) => 
-      ipcRenderer.invoke('vault:readAllData', environment, path),        
-    writeSecretWithMetadata: (environment: string, path: string, key: string, value: string, metadata?: any) => 
+    readAllData: (environment: string, path: string) =>
+      ipcRenderer.invoke('vault:readAllData', environment, path),
+    writeSecretWithMetadata: (environment: string, path: string, key: string, value: string, metadata?: any) =>
       ipcRenderer.invoke('vault:writeSecretWithMetadata', environment, path, key, value, metadata),
-    readSecretWithMetadata: (environment: string, path: string, key: string) => 
-      ipcRenderer.invoke('vault:readSecretWithMetadata', environment, path, key),    
+    readSecretWithMetadata: (environment: string, path: string, key: string) =>
+      ipcRenderer.invoke('vault:readSecretWithMetadata', environment, path, key),
   },
 
   argocd: {
@@ -454,7 +458,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
     resolveMergeConflicts: (resolvedFiles: string[]) => ipcRenderer.invoke('git:resolveMergeConflicts', resolvedFiles),
     abortMerge: () => ipcRenderer.invoke('git:abortMerge'),
     prepareMergeRequest: (sourceBranch: string, targetBranch: string, title: string, description?: string) => ipcRenderer.invoke('git:prepareMergeRequest', sourceBranch, targetBranch, title, description),
-    createEnvironmentBranches: (repositoryUrl: string, environments: string[]) => ipcRenderer.invoke('git:createEnvironmentBranches', repositoryUrl, environments),
-    setDefaultBranch: (repositoryUrl: string, branchName: string) => ipcRenderer.invoke('git:setDefaultBranch', repositoryUrl, branchName)
+    createEnvironmentBranches: (repositoryUrl: string, environments: string[], serverId?: string) => ipcRenderer.invoke('git:createEnvironmentBranches', repositoryUrl, environments, serverId),
+    setDefaultBranch: (repositoryUrl: string, branchName: string) => ipcRenderer.invoke('git:setDefaultBranch', repositoryUrl, branchName),
+    checkGitAuth: (url: string) => ipcRenderer.invoke('git:checkAuth', url),
+
+    removeServer: (serverId: string) => ipcRenderer.invoke('git:removeServer', serverId),
+    cleanupDuplicateServers: () => ipcRenderer.invoke('git:cleanupDuplicateServers'),
+    getDuplicateServers: () => ipcRenderer.invoke('git:getDuplicateServers'),
+
   },
 })

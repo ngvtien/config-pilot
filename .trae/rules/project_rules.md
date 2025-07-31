@@ -1,5 +1,6 @@
 - Be pragmatic
 - Do not overengineer the solution
+- Do not hard code any values
 - Always check current codebase to avoid reinventing the wheel or bloatin up the codebase
 - Practice TDD
 - Comment on code

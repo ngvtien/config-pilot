@@ -18,10 +18,12 @@ import {
   Palette,
   Code,
   RefreshCw,
-  Server
+  Server,
+  Trash2,
+  AlertTriangle,
 } from "lucide-react"
 import { Badge } from "@/renderer/components/ui/badge"
-import { Alert, AlertDescription } from "@/renderer/components/ui/alert"
+import { Alert, AlertDescription, AlertTitle } from "@/renderer/components/ui/alert"
 import { AuthenticationModal } from "@/renderer/components/authentication-modal"
 import { useTheme } from "@/renderer/components/theme-provider"
 import { useZoom } from "@/renderer/hooks/use-zoom"
@@ -129,6 +131,10 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
 
   // Replace the local zoom state with the global zoom hook
   const { zoomLevel, setZoomLevel, increaseZoom, decreaseZoom, resetZoom } = useZoom()
+
+  const [isCleaningUp, setIsCleaningUp] = useState(false)
+  const [duplicateServers, setDuplicateServers] = useState<any[]>([])
+  const [showDuplicates, setShowDuplicates] = useState(false)
 
   const {
     showAlert,
@@ -260,6 +266,48 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
     loadConfigs();
   }, []);
 
+  // Load settings from localStorage on mount
+  useEffect(() => {
+    const loadInitialData = async () => {
+      const savedSettings = localStorage.getItem("configpilot_settings");
+      let initialRepos: GitRepository[] = [];
+
+      // Try to load real repositories first
+      const realRepos = await getRealRepositories();
+      if (realRepos.length > 0) {
+        initialRepos = realRepos;
+      }
+
+      if (savedSettings) {
+        try {
+          const settingsData = JSON.parse(savedSettings);
+          setLocalSettings((prev) => ({
+            ...prev,
+            ...settingsData,
+            gitRepositories: settingsData.gitRepositories || initialRepos,
+          }));
+        } catch (e) {
+          console.error("Error parsing saved settings:", e);
+          // Fallback to real repositories if available
+          if (initialRepos.length > 0) {
+            setLocalSettings((prev) => ({
+              ...prev,
+              gitRepositories: initialRepos,
+            }));
+          }
+        }
+      } else if (initialRepos.length > 0) {
+        // No saved settings, use real repositories
+        setLocalSettings((prev: any) => ({
+          ...prev,
+          gitRepositories: initialRepos,
+        }));
+      }
+    };
+
+    loadInitialData();
+  }, [context.environment]);
+
   const handleSettingChange = (key: keyof SettingsData, value: any) => {
     const updatedSettings = { ...localSettings, [key]: value }
     setLocalSettings(updatedSettings)
@@ -295,22 +343,21 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
     // Update status to checking
     const updatedRepos = localSettings.gitRepositories.map((repo) =>
       repo.id === repoId ? { ...repo, authStatus: "checking" as const } : repo,
-    )
-    handleSettingChange("gitRepositories", updatedRepos)
+    );
+    handleSettingChange("gitRepositories", updatedRepos);
 
-    const repo = localSettings.gitRepositories.find((r) => r.id === repoId)
-    if (!repo) return
+    const repo = localSettings.gitRepositories.find((r) => r.id === repoId);
+    if (!repo) return;
 
     try {
-      let authResult: "success" | "failed" = "failed"
+      let authResult: "success" | "failed" = "failed";
 
       if (typeof window !== "undefined" && window.electronAPI?.checkGitAuth) {
-        // Electron environment - use actual git commands
-        authResult = await window.electronAPI.checkGitAuth(repo.url)
+        // Always use actual git commands - remove simulation
+        authResult = await window.electronAPI.checkGitAuth(repo.url);
       } else {
-        // Web environment - simulate the check
-        await new Promise((resolve) => setTimeout(resolve, 2000)) // Simulate network delay
-        authResult = Math.random() > 0.8 ? "success" : "failed"
+        console.warn('Git authentication check not available - running in web mode');
+        authResult = "failed";
       }
 
       // Update the repository with auth result
@@ -523,6 +570,58 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
     </button>
   )
 
+  // Add a function to get real repositories
+  const getRealRepositories = async (): Promise<GitRepository[]> => {
+    if (typeof window !== "undefined" && window.electronAPI?.git?.getRepositories) {
+      try {
+        const repos = await window.electronAPI.git.getRepositories();
+        return repos || [];
+      } catch (error) {
+        console.error('Failed to load real repositories:', error);
+        return [];
+      }
+    }
+    return [];
+  }
+
+  /**
+   * Check for duplicate Git servers
+   */
+  const checkDuplicateServers = async () => {
+    try {
+      const duplicates = await (window as any).electronAPI?.git?.getDuplicateServers();
+      setDuplicateServers(duplicates || []);
+      setShowDuplicates(true);
+    } catch (error) {
+      console.error('Error checking duplicates:', error);
+    }
+  };
+
+  /**
+   * Clean up duplicate Git servers
+   */
+  const cleanupDuplicateServers = async () => {
+    setIsCleaningUp(true);
+    try {
+      const result = await (window as any).electronAPI?.git?.cleanupDuplicateServers();
+      // Refresh the duplicates list
+      await checkDuplicateServers();
+      // Show success message
+      showAlert({
+        title: "Cleanup Completed",
+        message: `Removed: ${result?.removed || 0} servers\nKept: ${result?.kept || 0} servers`,
+      });
+    } catch (error) {
+      console.error('Error during cleanup:', error);
+      showAlert({
+        title: "Cleanup Failed",
+        message: "Please check the console for more details.",
+      });
+    } finally {
+      setIsCleaningUp(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -552,16 +651,69 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
           <TabsTrigger value="helm-oci">Helm OCI</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="repositories" className="space-y-4">
-          {/* Git Repositories content - keeping existing code */}
-          <div className="border rounded-lg p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <GitBranch className="h-5 w-5" />
-              <h3 className="text-lg font-semibold">Git Repositories</h3>
+        <TabsContent value="repositories" className="space-y-6">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-medium">Git Server Management</h3>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={checkDuplicateServers}
+                  className="flex items-center gap-2"
+                >
+                  <AlertTriangle className="h-4 w-4" />
+                  Check Duplicates
+                </Button>
+                {duplicateServers.length > 0 && (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={cleanupDuplicateServers}
+                    disabled={isCleaningUp}
+                    className="flex items-center gap-2"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    {isCleaningUp ? 'Cleaning...' : 'Cleanup Servers'}
+                  </Button>
+                )}
+              </div>
             </div>
-            <p className="text-sm text-muted-foreground mb-4">
-              Configure Git repositories for separation of duties (SoD) based on user roles.
-            </p>
+
+            {/* Duplicate Servers Alert */}
+            {showDuplicates && duplicateServers.length > 0 && (
+              <Alert className="border-orange-200 bg-orange-50">
+                <AlertTriangle className="h-4 w-4 text-orange-600" />
+                <AlertTitle className="text-orange-800">Duplicate Servers Found</AlertTitle>
+                <AlertDescription className="text-orange-700">
+                  <div className="mt-2 space-y-1">
+                    {duplicateServers.map((group, index) => (
+                      <div key={index} className="text-sm">
+                        <strong>{group.baseUrl}</strong>: {group.count} duplicates
+                        <div className="ml-4 text-xs text-gray-600">
+                          {group.servers.map((server: any, serverIndex: number) => (
+                            <div key={serverIndex}>
+                              ID: {server.id} | Provider: {server.provider || 'undefined'} |
+                              Created: {new Date(server.createdAt).toLocaleDateString()}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {showDuplicates && duplicateServers.length === 0 && (
+              <Alert className="border-green-200 bg-green-50">
+                <CheckCircle className="h-4 w-4 text-green-600" />
+                <AlertTitle className="text-green-800">No Duplicates Found</AlertTitle>
+                <AlertDescription className="text-green-700">
+                  All Git servers are unique. No cleanup needed.
+                </AlertDescription>
+              </Alert>
+            )}
 
             {/* Base Host URL */}
             <div className="mb-4">
@@ -1051,7 +1203,7 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
               repositoryName: authModalRepo.name,
               newStatus: 'success'
             });
-                // Update repository auth status
+            // Update repository auth status
             const updatedRepos = localSettings.gitRepositories.map((repo) =>
               repo.id === authModalRepo.id
                 ? {

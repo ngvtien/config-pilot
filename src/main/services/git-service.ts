@@ -1067,17 +1067,39 @@ The ApplicationSet uses GitDirectoryGenerator to automatically discover applicat
     /**
      * Create environment branches with GitOps structure
      */
-    async createEnvironmentBranches(repositoryUrl: string, environments: string[]): Promise<{ success: boolean; createdBranches: string[]; errors: any[] }> {
+    async createEnvironmentBranches(repositoryUrl: string, environments: string[], serverId?: string): Promise<{ success: boolean; createdBranches: string[]; errors: any[] }> {
         const createdBranches: string[] = [];
         const errors: any[] = [];
 
         try {
-            // Clone repository to temporary location
+            // Get credentials for the server
+            let credentials: GitServerCredentials | undefined;
+            if (serverId) {
+                const { server, credentials: serverCreds } = this.getServerAndCredentials(repositoryUrl, serverId);
+                credentials = serverCreds;
+            }
+
+            // Clone repository to temporary location with credentials
             const tempDir = path.join(os.tmpdir(), `gitops-setup-${Date.now()}`);
-            await this.cloneRepository(repositoryUrl, tempDir);
+            await this.cloneRepository(repositoryUrl, tempDir, serverId);
 
             // Switch to temp directory
             const tempGit = simpleGit(tempDir);
+
+            // Configure credentials for the temp git instance if we have them
+            if (credentials) {
+                // Convert GitServerCredentials to GitCredentials format
+                const gitCredentials: GitCredentials = {
+                    username: credentials.username,
+                    password: credentials.token || credentials.password || '',
+                    token: credentials.token,
+                    method: 'token', // Add required method property
+                    url: repositoryUrl, // Add required url property  
+                    repoId: serverId || 'unknown' // Add required repoId property
+                };
+                const authenticatedUrl = this.buildAuthenticatedUrl(repositoryUrl, gitCredentials);
+                await tempGit.addRemote('authenticated-origin', authenticatedUrl);
+            }
 
             for (const env of environments) {
                 try {
@@ -1106,8 +1128,9 @@ The ApplicationSet uses GitDirectoryGenerator to automatically discover applicat
                     await tempGit.add('.');
                     await tempGit.commit(`Initialize ${env} environment structure`);
 
-                    // Push branch
-                    await tempGit.push('origin', env);
+                    // Push branch using authenticated remote if available
+                    const remote = credentials ? 'authenticated-origin' : 'origin';
+                    await tempGit.push(remote, env);
 
                     createdBranches.push(env);
                 } catch (error: any) {
@@ -1133,7 +1156,6 @@ The ApplicationSet uses GitDirectoryGenerator to automatically discover applicat
             };
         }
     }
-
     /**
      * Authenticate with a Git server
      */
@@ -1233,6 +1255,174 @@ The ApplicationSet uses GitDirectoryGenerator to automatically discover applicat
             };
         }
     }
+
+    /**
+     * Simple Git authentication check for a given URL
+     * Returns "success" or "failed" based on basic connectivity
+     */
+    async checkGitAuth(url: string): Promise<"success" | "failed"> {
+        try {
+            console.log(`[GitService] Checking Git auth for URL: ${url}`);
+
+            // Parse the URL to get server information
+            const parsed = gitUrlParse(url);
+            if (!parsed || !parsed.source) {
+                console.log(`[GitService] Invalid URL format: ${url}`);
+                return "failed";
+            }
+
+            // Try to find a matching server configuration
+            const servers = this.getServers();
+            const matchingServer = servers.find(server => {
+                const serverHost = new URL(server.baseUrl).hostname;
+                return serverHost === parsed.source;
+            });
+
+            if (!matchingServer) {
+                console.log(`[GitService] No server configuration found for ${parsed.source}`);
+                return "failed";
+            }
+
+            // Use existing validateRepositoryAccess method
+            const result = await this.validateRepositoryAccess(url, matchingServer.id);
+
+            console.log(`[GitService] Validation result:`, result);
+            return result.isValid ? "success" : "failed";
+
+        } catch (error: any) {
+            console.error(`[GitService] Error checking Git auth for ${url}:`, error);
+            return "failed";
+        }
+    }
+
+
+    /**
+     * Remove a server by ID
+     * @param serverId Server ID to remove
+     * @returns boolean indicating success
+     */
+    removeServer(serverId: string): boolean {
+        const servers = this.getServers();
+        const initialLength = servers.length;
+        const filteredServers = servers.filter(s => s.id !== serverId);
+
+        if (filteredServers.length < initialLength) {
+            this.store.set('servers', filteredServers);
+
+            // Also clean up associated credentials
+            const credentials = this.store.get('credentials', {});
+            delete credentials[serverId];
+            this.store.set('credentials', credentials);
+
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Clean up duplicate servers based on baseUrl
+     * Keeps the most recent server (by updatedAt) for each unique baseUrl
+     * @returns Object with cleanup statistics
+     */
+    cleanupDuplicateServers(): { removed: number; kept: number; duplicateGroups: any[] } {
+        const servers = this.getServers();
+        const serverGroups = new Map<string, GitServerConfig[]>();
+
+        // Group servers by baseUrl
+        servers.forEach(server => {
+            const baseUrl = server.baseUrl;
+            if (!serverGroups.has(baseUrl)) {
+                serverGroups.set(baseUrl, []);
+            }
+            serverGroups.get(baseUrl)!.push(server);
+        });
+
+        const serversToKeep: GitServerConfig[] = [];
+        const duplicateGroups: any[] = [];
+        let removedCount = 0;
+
+        // For each group, keep only the best server
+        serverGroups.forEach((groupServers, baseUrl) => {
+            if (groupServers.length > 1) {
+                // Sort by preference: 
+                // 1. Has provider defined
+                // 2. Most recent updatedAt
+                // 3. Most recent createdAt
+                const sortedServers = groupServers.sort((a, b) => {
+                    // Prefer servers with provider defined
+                    if (a.provider && !b.provider) return -1;
+                    if (!a.provider && b.provider) return 1;
+
+                    // Then by updatedAt (most recent first)
+                    const aUpdated = new Date(a.updatedAt || a.createdAt).getTime();
+                    const bUpdated = new Date(b.updatedAt || b.createdAt).getTime();
+                    return bUpdated - aUpdated;
+                });
+
+                const keepServer = sortedServers[0];
+                const removeServers = sortedServers.slice(1);
+
+                serversToKeep.push(keepServer);
+                removedCount += removeServers.length;
+
+                duplicateGroups.push({
+                    baseUrl,
+                    kept: keepServer,
+                    removed: removeServers
+                });
+            } else {
+                serversToKeep.push(groupServers[0]);
+            }
+        });
+
+        // Update the store with cleaned servers
+        this.store.set('servers', serversToKeep);
+
+        // Clean up orphaned credentials
+        const credentials = this.store.get('credentials', {});
+        const validServerIds = new Set(serversToKeep.map(s => s.id));
+        const cleanedCredentials: Record<string, string> = {};
+
+        Object.entries(credentials).forEach(([serverId, cred]) => {
+            if (validServerIds.has(serverId)) {
+                cleanedCredentials[serverId] = cred as string; // Add type assertion
+            }
+        });
+
+        this.store.set('credentials', cleanedCredentials);
+
+        return {
+            removed: removedCount,
+            kept: serversToKeep.length,
+            duplicateGroups
+        };
+    }
+
+    /**
+     * Get duplicate servers grouped by baseUrl
+     * @returns Array of duplicate groups
+     */
+    getDuplicateServers(): { baseUrl: string; servers: GitServerConfig[]; count: number }[] {
+        const servers = this.getServers();
+        const serverGroups = new Map<string, GitServerConfig[]>();
+
+        servers.forEach(server => {
+            const baseUrl = server.baseUrl;
+            if (!serverGroups.has(baseUrl)) {
+                serverGroups.set(baseUrl, []);
+            }
+            serverGroups.get(baseUrl)!.push(server);
+        });
+
+        return Array.from(serverGroups.entries())
+            .filter(([_, groupServers]) => groupServers.length > 1)
+            .map(([baseUrl, groupServers]) => ({
+                baseUrl,
+                servers: groupServers,
+                count: groupServers.length
+            }));
+    }
+
 }
 
 // Export singleton instance
