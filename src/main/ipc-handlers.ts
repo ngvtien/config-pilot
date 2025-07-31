@@ -90,7 +90,7 @@ export function registerUnifiedGitHandlers() {
     }
   });
 
-  ipcMain.handle('git:validateRepositoryAccess', async (_, url: string, serverId: string): Promise<GitValidationResult> => {
+  ipcMain.handle('git:validateRepositoryAccess', async (_, url: string, serverId?: string): Promise<GitValidationResult> => {
     try {
       return await gitService.validateRepositoryAccess(url, serverId);
     } catch (error: any) {

@@ -436,7 +436,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     // Repository Management
     getRepositories: () => ipcRenderer.invoke('git:getRepositories'),
     saveRepository: (repository: any) => ipcRenderer.invoke('git:saveRepository', repository),
-    validateRepositoryAccess: (url: string, serverId: string) => ipcRenderer.invoke('git:validateRepositoryAccess', url, serverId),
+    validateRepositoryAccess: (url: string, serverId?: string) => ipcRenderer.invoke('git:validateRepositoryAccess', url, serverId),
     createRepository: (config: any, serverId: string) => ipcRenderer.invoke('git:createRepository', config, serverId),
 
     // Health Check

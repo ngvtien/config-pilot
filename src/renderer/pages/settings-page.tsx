@@ -102,6 +102,23 @@ const getEnvironmentAwareRepositories = (environment: string): GitRepository[] =
   },
 ]
 
+/**
+ * Helper function to preserve authentication status when updating repositories
+ * Only resets auth status if the repository URL actually changed
+ */
+const preserveAuthStatus = (newRepo: GitRepository, existingRepo?: GitRepository): GitRepository => {
+  if (!existingRepo) return newRepo
+
+  // Only reset auth status if the URL actually changed
+  const shouldResetAuth = newRepo.url !== existingRepo.url
+
+  return {
+    ...newRepo,
+    authStatus: shouldResetAuth ? "unknown" : existingRepo.authStatus,
+    lastAuthCheck: shouldResetAuth ? undefined : existingRepo.lastAuthCheck
+  }
+}
+
 export function SettingsPage({ context, onContextChange, settings, onSettingsChange }: SettingsPageProps) {
   const generateDefaultNamespace = (context: ContextData) => {
     if (context.instance > 0) {
@@ -213,10 +230,8 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
           newUrl = `${localContext.baseHostUrl}/${context.product}/${context.environment}/cluster-platform-resources.git`
         }
 
-        // Reset auth status when URL changes
-        const authStatus = newUrl !== repo.url ? "unknown" : repo.authStatus
-
-        return { ...repo, url: newUrl, authStatus }
+        // Use helper function to preserve auth status
+        return preserveAuthStatus({ ...repo, url: newUrl }, repo)
       })
 
       // Only update if URLs actually changed
@@ -236,6 +251,9 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
         ? {
           ...existingRepo,
           permissions: envRepo.permissions,
+          // Preserve existing auth status and lastAuthCheck
+          authStatus: existingRepo.authStatus,
+          lastAuthCheck: existingRepo.lastAuthCheck
         }
         : envRepo
     })
@@ -268,46 +286,31 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
 
   // Load settings from localStorage on mount
   useEffect(() => {
-    const loadInitialData = async () => {
-      const savedSettings = localStorage.getItem("configpilot_settings");
-      let initialRepos: GitRepository[] = [];
+    const savedSettings = localStorage.getItem("configpilot_settings")
+    if (savedSettings) {
+      try {
+        const settingsData = JSON.parse(savedSettings)
+        setLocalSettings((prev) => {
+          const defaultRepos = getEnvironmentAwareRepositories(context.environment)
+          const savedRepos = settingsData.gitRepositories || defaultRepos
 
-      // Try to load real repositories first
-      const realRepos = await getRealRepositories();
-      if (realRepos.length > 0) {
-        initialRepos = realRepos;
-      }
+          // Merge saved repositories with defaults, preserving auth status
+          const mergedRepos = defaultRepos.map((defaultRepo, index) => {
+            const savedRepo = savedRepos[index]
+            return savedRepo ? preserveAuthStatus(defaultRepo, savedRepo) : defaultRepo
+          })
 
-      if (savedSettings) {
-        try {
-          const settingsData = JSON.parse(savedSettings);
-          setLocalSettings((prev) => ({
+          return {
             ...prev,
             ...settingsData,
-            gitRepositories: settingsData.gitRepositories || initialRepos,
-          }));
-        } catch (e) {
-          console.error("Error parsing saved settings:", e);
-          // Fallback to real repositories if available
-          if (initialRepos.length > 0) {
-            setLocalSettings((prev) => ({
-              ...prev,
-              gitRepositories: initialRepos,
-            }));
+            gitRepositories: mergedRepos,
           }
-        }
-      } else if (initialRepos.length > 0) {
-        // No saved settings, use real repositories
-        setLocalSettings((prev: any) => ({
-          ...prev,
-          gitRepositories: initialRepos,
-        }));
+        })
+      } catch (e) {
+        console.error("Error parsing saved settings:", e)
       }
-    };
-
-    loadInitialData();
-  }, [context.environment]);
-
+    }
+  }, [context.environment])
   const handleSettingChange = (key: keyof SettingsData, value: any) => {
     const updatedSettings = { ...localSettings, [key]: value }
     setLocalSettings(updatedSettings)

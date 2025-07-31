@@ -16,7 +16,9 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/rend
 import {
   Trash2, Edit, Plus, Download, Upload, Package, GitBranch,
   ChevronDown, ChevronRight, Component, Settings, Eye, EyeOff,
-  Info, HelpCircle, RefreshCw, Search, Filter
+  Info, HelpCircle, RefreshCw, Search, Filter,
+  AlertTriangle, CheckCircle, XCircle,
+  Loader2
 } from 'lucide-react'
 import type { Product } from '@/shared/types/product'
 import type { ProductComponent } from '@/shared/types/product-component'
@@ -81,14 +83,50 @@ export function EnhancedProductManagementPage({ onNavigateBack }: EnhancedProduc
   const { repositories, loading, error } = useRepositorySelector('developer')
   const { showConfirm, showAlert, AlertDialog, ConfirmDialog } = useDialog()
 
+  const [repositoryValidationStatus, setRepositoryValidationStatus] = useState<Record<string, 'validating' | 'valid' | 'invalid' | 'unknown'>>({})
+  const [isValidatingRepositories, setIsValidatingRepositories] = useState(false)
+
+  useEffect(() => {
+    // Auto-validate repositories when components are loaded
+    if (Object.keys(components).length > 0 && !isLoading) {
+      // Small delay to ensure UI is ready
+      const timer = setTimeout(() => {
+        validateAllRepositories()
+      }, 1000)
+
+      return () => clearTimeout(timer)
+    }
+  }, [components, isLoading])
+
   // Load data on component mount
   useEffect(() => {
     loadData()
   }, [])
 
-  /**
-   * Load all products and their components with enhanced error handling
-   */
+  // Add useEffect to validate repositories when components change
+  useEffect(() => {
+    const validateNewComponents = async () => {
+      const allComponents = Object.values(components).flat()
+      const newValidationStatus = { ...repositoryValidationStatus }
+
+      for (const component of allComponents) {
+        if (component.metadata?.gitOps?.repositoryUrl && !repositoryValidationStatus[component.id]) {
+          newValidationStatus[component.id] = 'validating'
+          setRepositoryValidationStatus({ ...newValidationStatus })
+
+          const status = await validateComponentRepository(component)
+          newValidationStatus[component.id] = status
+          setRepositoryValidationStatus({ ...newValidationStatus })
+        }
+      }
+    }
+
+    if (Object.keys(components).length > 0) {
+      validateNewComponents()
+    }
+  }, [components])
+
+  // Add automatic validation when data is loaded
   const loadData = async () => {
     setIsLoading(true)
     try {
@@ -425,6 +463,95 @@ export function EnhancedProductManagementPage({ onNavigateBack }: EnhancedProduc
   }
 
 
+  /**
+   * Validates a component's repository URL by checking actual repository existence
+   * @param component - The product component to validate
+   * @returns Promise resolving to validation status
+   */
+  const validateComponentRepository = async (component: ProductComponent): Promise<'valid' | 'invalid' | 'unknown'> => {
+    // Fix: Access the correct repository URL path
+    if (!component.metadata?.gitOps?.repositoryUrl) return 'unknown'
+
+    try {
+      console.log(`Validating repository: ${component.metadata.gitOps.repositoryUrl}`)
+      // Use validateRepositoryAccess instead of checkGitAuth for proper repository validation
+      const result = await window.electronAPI?.git?.validateRepositoryAccess(component.metadata.gitOps.repositoryUrl)
+      console.log(`Validation result for ${component.metadata.gitOps.repositoryUrl}:`, result)
+      return result?.isValid ? 'valid' : 'invalid'
+    } catch (error) {
+      console.error(`Error validating repository ${component.metadata.gitOps.repositoryUrl}:`, error)
+      return 'invalid'
+    }
+  }
+
+  // Fix the validateAllRepositories function (around line 449)
+  const validateAllRepositories = async () => {
+    setIsValidatingRepositories(true)
+    const newValidationStatus: Record<string, 'validating' | 'valid' | 'invalid' | 'unknown'> = {}
+
+    // Get all components from all products - THIS WAS THE BUG!
+    const allComponents = Object.values(components).flat()
+
+    // Set all to validating state first
+    allComponents.forEach(component => {
+      if (component.metadata?.gitOps?.repositoryUrl) {
+        newValidationStatus[component.id] = 'validating'
+      }
+    })
+    setRepositoryValidationStatus(newValidationStatus)
+
+    // Validate each repository
+    for (const component of allComponents) {
+      if (component.metadata?.gitOps?.repositoryUrl) {
+        const status = await validateComponentRepository(component)
+        newValidationStatus[component.id] = status
+        setRepositoryValidationStatus({ ...newValidationStatus })
+      }
+    }
+
+    setIsValidatingRepositories(false)
+  }
+
+
+  // Add function to remove invalid repository from component
+  const removeInvalidRepository = async (component: ProductComponent) => {
+    try {
+      const updates = {
+        metadata: {
+          ...component.metadata,
+          gitOps: {
+            ...component.metadata?.gitOps,
+            repositoryUrl: undefined  // Only clears the repository URL
+          }
+        }
+      }
+
+      // Fix: Pass component.id as first parameter and updates as second parameter
+      await window.electronAPI?.productComponent?.updateComponent(component.id, updates)
+      await loadData()
+
+      // Remove from validation status
+      const newStatus = { ...repositoryValidationStatus }
+      delete newStatus[component.id]
+      setRepositoryValidationStatus(newStatus)
+
+      // Add success message
+      showAlert({
+        title: 'Success',
+        message: 'Invalid repository reference removed successfully',
+        variant: 'success'
+      })
+
+    } catch (error: any) {
+      console.error('Failed to remove invalid repository:', error)
+      showAlert({
+        title: 'Error',
+        message: `Failed to remove invalid repository: ${error.message}`,
+        variant: 'error'
+      })
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -493,6 +620,27 @@ export function EnhancedProductManagementPage({ onNavigateBack }: EnhancedProduc
               </TooltipTrigger>
               <TooltipContent>
                 <p>Create a new product container</p>
+              </TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={validateAllRepositories}
+                  disabled={isValidatingRepositories}
+                >
+                  {isValidatingRepositories ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                  )}
+                  Validate Repos
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Validate all component repositories to check if they're accessible</p>
               </TooltipContent>
             </Tooltip>
           </div>
@@ -799,27 +947,135 @@ export function EnhancedProductManagementPage({ onNavigateBack }: EnhancedProduc
                                       </Badge>
                                     </div>
                                   )}
-                                  {component.metadata?.gitOps?.repositoryUrl && (
+                                  {component.metadata?.gitOps?.repositoryUrl ? (
+                                    <div className="flex items-center justify-between text-xs">
+                                      <span className="text-gray-600 dark:text-gray-400">Repository:</span>
+                                      <div className="flex items-center gap-1">
+                                        {/* Repository validation status indicator */}
+                                        {repositoryValidationStatus[component.id] === 'validating' && (
+                                          <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
+                                        )}
+                                        {repositoryValidationStatus[component.id] === 'valid' && (
+                                          <CheckCircle className="h-3 w-3 text-green-500" />
+                                        )}
+                                        {repositoryValidationStatus[component.id] === 'invalid' && (
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <XCircle className="h-3 w-3 text-red-500 cursor-help" />
+                                            </TooltipTrigger>
+                                            <TooltipContent>
+                                              <p>Repository is not accessible or doesn't exist</p>
+                                            </TooltipContent>
+                                          </Tooltip>
+                                        )}
+
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <a
+                                              href={component.metadata.gitOps.repositoryUrl}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className={`truncate max-w-20 ${repositoryValidationStatus[component.id] === 'invalid'
+                                                ? 'text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300'
+                                                : 'text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300'
+                                                }`}
+                                            >
+                                              <GitBranch className="h-3 w-3 inline mr-1" />
+                                              {component.metadata.gitOps.repositoryUrl.split('/').pop()}
+                                            </a>
+                                          </TooltipTrigger>
+                                          <TooltipContent>
+                                            <p>{repositoryValidationStatus[component.id] === 'invalid'
+                                              ? 'Repository not accessible - click to attempt opening anyway'
+                                              : 'Open repository in new tab'}</p>
+                                          </TooltipContent>
+                                        </Tooltip>
+
+                                        {/* Action buttons for invalid repositories */}
+                                        {repositoryValidationStatus[component.id] === 'invalid' && (
+                                          <div className="flex gap-1 ml-1">
+                                            <Tooltip>
+                                              <TooltipTrigger asChild>
+                                                <Button
+                                                  variant="ghost"
+                                                  size="sm"
+                                                  onClick={() => validateComponentRepository(component).then(status =>
+                                                    setRepositoryValidationStatus(prev => ({ ...prev, [component.id]: status }))
+                                                  )}
+                                                  className="h-5 w-5 p-0"
+                                                >
+                                                  <RefreshCw className="h-3 w-3" />
+                                                </Button>
+                                              </TooltipTrigger>
+                                              <TooltipContent>
+                                                <p>Re-validate repository</p>
+                                              </TooltipContent>
+                                            </Tooltip>
+
+                                            <Tooltip>
+                                              <TooltipTrigger asChild>
+                                                <Button
+                                                  variant="ghost"
+                                                  size="sm"
+                                                  onClick={async () => {
+                                                    // First remove the invalid repository URL from database
+                                                    await removeInvalidRepository(component);
+
+                                                    // Manually clear the repository URL from the local component state
+                                                    const clearedComponent = {
+                                                      ...component,
+                                                      metadata: {
+                                                        ...component.metadata,
+                                                        gitOps: {
+                                                          ...component.metadata?.gitOps,
+                                                          repositoryUrl: undefined
+                                                        }
+                                                      }
+                                                    };
+
+                                                    // Then open the edit dialog with the cleared component
+                                                    setDialogMode('component');
+                                                    setDialogAction('edit');
+                                                    setEditingComponent(clearedComponent);
+                                                    setSelectedProductForComponent(clearedComponent.parentProduct);
+                                                    setComponentFormData(clearedComponent);
+                                                    setErrors([]);
+                                                  }}
+                                                  className="h-5 w-5 p-0 text-red-600 hover:text-red-700"
+                                                >
+                                                  <XCircle className="h-3 w-3" />
+                                                </Button>                                              </TooltipTrigger>
+                                              <TooltipContent>
+                                                <p>Remove invalid repository URL</p>
+                                              </TooltipContent>
+                                            </Tooltip>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    // Create repository section for components without repositories
                                     <div className="flex items-center justify-between text-xs">
                                       <span className="text-gray-600 dark:text-gray-400">Repository:</span>
                                       <Tooltip>
                                         <TooltipTrigger asChild>
-                                          <a
-                                            href={component.metadata.gitOps.repositoryUrl}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 truncate max-w-24"
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => handleEditComponent(component)}
+                                            className="h-6 text-xs px-2"
                                           >
-                                            <GitBranch className="h-3 w-3 inline mr-1" />
-                                            {component.metadata.gitOps.repositoryUrl.split('/').pop()}
-                                          </a>
+                                            <Plus className="h-3 w-3 mr-1" />
+                                            Create Repo
+                                          </Button>
                                         </TooltipTrigger>
                                         <TooltipContent>
-                                          <p>Open repository in new tab</p>
+                                          <p>Create Git repository and environment branches for this component</p>
                                         </TooltipContent>
                                       </Tooltip>
                                     </div>
                                   )}
+
                                   <div className="flex items-center justify-between text-xs">
                                     <span className="text-gray-600 dark:text-gray-400">Status:</span>
                                     <Tooltip>
