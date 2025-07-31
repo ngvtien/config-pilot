@@ -1,11 +1,65 @@
 import { GitServerConfig, GitServerCredentials, GitServerValidationResult } from '../../../shared/types/git-repository';
 import gitUrlParse from 'git-url-parse';
+import { BitbucketProviderInterface, CreateOrganizationConfig, CreateProjectConfig, GitProviderInterface } from './git-provider-interface';
 
 /**
  * Bitbucket on-premise provider implementation for simple authentication
  * Supports personal access tokens and basic authentication
  */
-export class BitbucketProvider {
+export class BitbucketProvider implements BitbucketProviderInterface {
+
+  /**
+   * Create project in Bitbucket Server
+   */
+  async createOrganization(server: GitServerConfig, credentials: GitServerCredentials, config: CreateProjectConfig): Promise<any> {
+    try {
+      const apiUrl = `${server.baseUrl}/rest/api/1.0/projects`;
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      };
+
+      // Add authentication header
+      if (credentials.method === 'token' && credentials.token && credentials.username) {
+        const auth = Buffer.from(`${credentials.username}:${credentials.token}`).toString('base64');
+        headers['Authorization'] = `Basic ${auth}`;
+      } else if (credentials.method === 'credentials' && credentials.username && credentials.password) {
+        const auth = Buffer.from(`${credentials.username}:${credentials.password}`).toString('base64');
+        headers['Authorization'] = `Basic ${auth}`;
+      } else {
+        throw new Error('Invalid authentication method or missing credentials');
+      }
+
+      console.log(`Creating Bitbucket project at ${apiUrl}`);
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          key: config.key,
+          name: config.name,
+          description: config.description || '',
+          public: config.public !== false // Default to public unless explicitly set to false
+        })
+      });
+
+      if (response.ok) {
+        const projectData = await response.json();
+        console.log('Bitbucket project created successfully:', projectData.key);
+        return projectData;
+      } else if (response.status === 409) {
+        // Project already exists
+        const errorText = await response.text();
+        throw new Error(`Project '${config.key}' already exists`);
+      } else {
+        const errorText = await response.text();
+        throw new Error(`Failed to create project: ${response.status} ${response.statusText} - ${errorText}`);
+      }
+    } catch (error: any) {
+      throw new Error(`Bitbucket project creation failed: ${error.message}`);
+    }
+  }
+  
   /**
    * Test authentication with Bitbucket server using app password or credentials
    */

@@ -1,11 +1,66 @@
 import { GitServerConfig, GitServerCredentials, GitServerValidationResult } from '../../../shared/types/git-repository';
 import gitUrlParse from 'git-url-parse';
+import { GitProviderInterface, CreateOrganizationConfig, CreateProjectConfig, GiteaProviderInterface } from './git-provider-interface';
 
 /**
  * Gitea provider implementation for simple authentication
  * Supports personal access tokens and basic authentication
  */
-export class GiteaProvider {
+export class GiteaProvider implements GiteaProviderInterface {
+
+  /**
+ * Create organization in Gitea
+ */
+  async createOrganization(server: GitServerConfig, credentials: GitServerCredentials, config: CreateOrganizationConfig): Promise<any> {
+    try {
+      const apiUrl = `${server.baseUrl}/api/v1/orgs`;
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      };
+
+      // Add authentication header
+      if (credentials.method === 'token' && credentials.token) {
+        headers['Authorization'] = `token ${credentials.token}`;
+      } else if (credentials.method === 'credentials' && credentials.username && credentials.password) {
+        const auth = Buffer.from(`${credentials.username}:${credentials.password}`).toString('base64');
+        headers['Authorization'] = `Basic ${auth}`;
+      } else {
+        throw new Error('Invalid authentication method or missing credentials');
+      }
+
+      console.log(`Creating Gitea organization at ${apiUrl}`);
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          username: config.name,
+          full_name: config.displayName || config.name,
+          description: config.description || '',
+          website: config.website || '',
+          location: config.location || '',
+          visibility: config.visibility || 'public'
+        })
+      });
+
+      if (response.ok) {
+        const orgData = await response.json();
+        console.log('Gitea organization created successfully:', orgData.username);
+        return orgData;
+      } else if (response.status === 409) {
+        // Organization already exists
+        const errorText = await response.text();
+        throw new Error(`Organization '${config.name}' already exists`);
+      } else {
+        const errorText = await response.text();
+        throw new Error(`Failed to create organization: ${response.status} ${response.statusText} - ${errorText}`);
+      }
+    } catch (error: any) {
+      throw new Error(`Gitea organization creation failed: ${error.message}`);
+    }
+  }
+
   /**
    * Test authentication with Gitea server using token or credentials
    */
@@ -252,7 +307,7 @@ export class GiteaProvider {
    */
   async setDefaultBranch(owner: string, repo: string, branchName: string, server: GitServerConfig, credentials: GitServerCredentials): Promise<void> {
     const apiUrl = `${server.baseUrl}/api/v1/repos/${owner}/${repo}`;
-    
+
     const response = await fetch(apiUrl, {
       method: 'PATCH',
       headers: {
@@ -261,7 +316,7 @@ export class GiteaProvider {
       },
       body: JSON.stringify({ default_branch: branchName })
     });
-    
+
     if (!response.ok) {
       throw new Error(`Failed to set default branch: ${response.status}`);
     }

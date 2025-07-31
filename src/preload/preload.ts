@@ -134,6 +134,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
       'customer:importCustomers',
       'customer:showSaveDialog',
       'customer:showOpenDialog',
+      'customer:createCustomerWithGitOps',
+      'customer:setupGitOps',
+      'customer:getAvailableGitServers',
 
       // Produc management      
       'product:initialize',
@@ -401,7 +404,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
     exportCustomers: (filePath: string) => ipcRenderer.invoke('customer:exportCustomers', filePath),
     importCustomers: (filePath: string, mergeMode: 'replace' | 'merge') => ipcRenderer.invoke('customer:importCustomers', filePath, mergeMode),
     showSaveDialog: () => ipcRenderer.invoke('customer:showSaveDialog'),
-    showOpenDialog: () => ipcRenderer.invoke('customer:showOpenDialog')
+    showOpenDialog: () => ipcRenderer.invoke('customer:showOpenDialog'),
+    createCustomerWithGitOps: (customer: any, gitOpsConfig: any) => ipcRenderer.invoke('customer:createCustomerWithGitOps', customer, gitOpsConfig),
+    setupGitOps: (customerId: string, gitOpsConfig: any) => ipcRenderer.invoke('customer:setupGitOps', customerId, gitOpsConfig),
+    getAvailableGitServers: () => ipcRenderer.invoke('customer:getAvailableGitServers')
   },
 
   product: {

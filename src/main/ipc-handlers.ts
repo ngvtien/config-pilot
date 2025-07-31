@@ -1686,4 +1686,32 @@ export function registerCustomerHandlers() {
     })
     return result.canceled ? null : result.filePaths[0]
   })
+
+  // Create customer with GitOps integration
+  ipcMain.handle('customer:createCustomerWithGitOps', async (_, customer, gitOpsConfig) => {
+    try {
+      return await CustomerService.createCustomerWithGitOps(customer, gitOpsConfig)
+    } catch (error: any) {
+      throw new Error(error.message)
+    }
+  })
+
+  // Setup GitOps for existing customer
+  ipcMain.handle('customer:setupGitOps', async (_, customerId: string, gitOpsConfig) => {
+    try {
+      return await CustomerService.setupCustomerGitOps(customerId, gitOpsConfig)
+    } catch (error: any) {
+      throw new Error(error.message)
+    }
+  })
+
+  // Get available Git servers for GitOps setup
+  ipcMain.handle('customer:getAvailableGitServers', async () => {
+    try {
+      return await gitService.getServers()
+    } catch (error: any) {
+      throw new Error(error.message)
+    }
+  })
+
 }

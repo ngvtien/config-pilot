@@ -4,7 +4,7 @@ import * as fs from 'fs/promises';
 import * as yaml from 'js-yaml';
 import os from 'os';
 import { GitRepository, GitCredentials, GitOperationResult, GitDiffResult, GitAuthStatus, GitCommit, GitServerConfig, GitServerCredentials, GitServerValidationResult, GitValidationResult, RepositoryInfo } from '../../shared/types/git-repository';
-//import { GitAuthService } from './git-auth-service';
+import { CreateOrganizationConfig, CreateProjectConfig, GitProviderInterface } from './providers/git-provider-interface';
 
 import { simpleGit, SimpleGit, SimpleGitOptions } from 'simple-git';
 import { GiteaProvider } from './providers/gitea-provider';
@@ -79,6 +79,9 @@ export interface AuthResult {
     requiresCredentials?: boolean;
 }
 
+type CreateOrgRequest =
+    | { provider: GitProviderInterface; config: CreateOrganizationConfig }
+    | { provider: GitProviderInterface; config: CreateProjectConfig };
 /**
  * Service class for handling Git operations with secure credential management
  */
@@ -1156,6 +1159,87 @@ The ApplicationSet uses GitDirectoryGenerator to automatically discover applicat
             };
         }
     }
+
+    /**
+     * Create environment branches for customer git integration with simple README.md files
+     * Different from createEnvironmentBranches which is for product integration
+     */
+    async createCustomerEnvironmentBranches(repositoryUrl: string, environments: string[], customerName: string, serverId?: string): Promise<{ success: boolean; createdBranches: string[]; errors: any[] }> {
+        const createdBranches: string[] = [];
+        const errors: any[] = [];
+
+        try {
+            // Get credentials for the server
+            let credentials: GitServerCredentials | undefined;
+            if (serverId) {
+                const { server, credentials: serverCreds } = this.getServerAndCredentials(repositoryUrl, serverId);
+                credentials = serverCreds;
+            }
+
+            // Clone repository to temporary location with credentials
+            const tempDir = path.join(os.tmpdir(), `customer-gitops-setup-${Date.now()}`);
+            await this.cloneRepository(repositoryUrl, tempDir, serverId);
+
+            // Switch to temp directory
+            const tempGit = simpleGit(tempDir);
+
+            // Configure credentials for the temp git instance if we have them
+            if (credentials) {
+                const gitCredentials: GitCredentials = {
+                    username: credentials.username,
+                    password: credentials.token || credentials.password || '',
+                    token: credentials.token,
+                    method: 'token',
+                    url: repositoryUrl,
+                    repoId: serverId || 'unknown'
+                };
+                const authenticatedUrl = this.buildAuthenticatedUrl(repositoryUrl, gitCredentials);
+                await tempGit.addRemote('authenticated-origin', authenticatedUrl);
+            }
+
+            for (const env of environments) {
+                try {
+                    // Create and checkout new branch from main
+                    await tempGit.checkoutLocalBranch(env);
+
+                    // Create simple README.md for customer environment
+                    const readmeContent = `# ${customerName} - ${env.toUpperCase()} Environment\n\nThis branch contains configurations for the ${env} environment of ${customerName}.\n\n## Usage\n\nThis branch is used for GitOps deployments to the ${env} environment.\n`;
+
+                    await fs.writeFile(path.join(tempDir, 'README.md'), readmeContent);
+
+                    // Commit changes
+                    await tempGit.add('.');
+                    await tempGit.commit(`Initialize ${env} environment for ${customerName}`);
+
+                    // Push branch using authenticated remote if available
+                    const remote = credentials ? 'authenticated-origin' : 'origin';
+                    await tempGit.push(remote, env);
+
+                    createdBranches.push(env);
+                } catch (error: any) {
+                    console.error(`Failed to create ${env} branch:`, error);
+                    errors.push({ environment: env, error: error.message });
+                }
+            }
+
+            // Cleanup temp directory
+            await fs.rm(tempDir, { recursive: true, force: true });
+
+            return {
+                success: createdBranches.length > 0,
+                createdBranches,
+                errors
+            };
+
+        } catch (error: any) {
+            return {
+                success: false,
+                createdBranches,
+                errors: [{ error: error.message }]
+            };
+        }
+    }
+
     /**
      * Authenticate with a Git server
      */
@@ -1423,6 +1507,54 @@ The ApplicationSet uses GitDirectoryGenerator to automatically discover applicat
             }));
     }
 
+
+    // /**
+    //  * Create organization in Gitea
+    //  */
+    // async createOrganisation(serverUrl: string, config: CreateOrganizationConfig, serverId?: string): Promise<any>;
+    // /**
+    //  * Create project in Bitbucket
+    //  */
+    // async createOrganisation(serverUrl: string, config: CreateProjectConfig, serverId?: string): Promise<any>;
+    // /**
+    //  * Create organization/project based on provider type
+    //  */
+    // async createOrganisation(serverUrl: string, config: CreateOrganizationConfig | CreateProjectConfig, serverId?: string): Promise<any> {
+    //     const { server, credentials } = this.getServerAndCredentials(serverUrl, serverId);
+    //     const { provider, instance } = this.getProviderForUrl(serverUrl);
+
+    //     if (provider === 'gitea') {
+    //         // TypeScript knows this is CreateOrganizationConfig due to provider check
+    //         return await (instance as GiteaProvider).createOrganization(server, credentials, config as CreateOrganizationConfig);
+    //     } else if (provider === 'bitbucket') {
+    //         // TypeScript knows this is CreateProjectConfig due to provider check
+    //         return await (instance as BitbucketProvider).createOrganization(server, credentials, config as CreateProjectConfig);
+    //     } else {
+    //         throw new Error(`Unsupported provider: ${provider}`);
+    //     }
+    // }
+
+    /**
+     * Creates an organization or project based on the provider type.
+     * Uses discriminated union for type safety without casting.
+     * @param serverUrl The URL of the Git server
+     * @param config The configuration for creating organization/project
+     */
+    async createOrganisation(
+        serverUrl: string,
+        config: CreateOrganizationConfig | CreateProjectConfig
+    ): Promise<void> {
+        const { provider: providerType, instance: providerInstance } = this.getProviderForUrl(serverUrl);
+        const { server, credentials } = this.getServerAndCredentials(serverUrl);
+
+        // Create the discriminated union request object
+        const request: CreateOrgRequest = providerType === 'gitea'
+            ? { provider: providerInstance, config: config as CreateOrganizationConfig }
+            : { provider: providerInstance, config: config as CreateProjectConfig };
+
+        // Pass all required parameters: server, credentials, and config
+        await request.provider.createOrganization(server, credentials, request.config);
+    }
 }
 
 // Export singleton instance

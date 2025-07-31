@@ -14,7 +14,37 @@ export interface Customer {
     region?: string
     tier?: 'basic' | 'premium' | 'enterprise'
     tags?: string[]
+    gitOps?: {
+      repositoryUrl?: string
+      serverId?: string
+      environments?: string[]
+      setupDate?: string
+    }
   }
+}
+
+/**
+ * GitOps setup configuration for customer
+ */
+export interface CustomerGitOpsConfig {
+  serverId: string
+  gitBaseUrl: string
+  createGitOpsRepo: boolean
+  environments?: string[] // defaults to ['dev', 'sit', 'uat', 'prod']
+}
+
+/**
+ * Result of GitOps repository creation
+ */
+export interface CustomerGitOpsResult {
+  success: boolean
+  repository?: {
+    url: string
+    name: string
+  }
+  branches?: string[]
+  errors?: string[]
+  message?: string
 }
 
 export interface CustomerListResponse {
