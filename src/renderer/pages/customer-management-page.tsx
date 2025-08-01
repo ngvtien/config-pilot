@@ -48,8 +48,21 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
 
     const [repositoryValidationStatus, setRepositoryValidationStatus] = useState<Record<string, 'validating' | 'valid' | 'invalid' | 'unknown'>>({})
 
+    const [gitOpsFormData, setGitOpsFormData] = useState<{
+        repositoryUrl: string
+        serverId: string
+        environments: string[]
+    }>({ repositoryUrl: '', serverId: '', environments: [] })
+
+    const [isTestingConnection, setIsTestingConnection] = useState(false)
+    const [connectionTestResult, setConnectionTestResult] = useState<{
+        status: 'idle' | 'testing' | 'success' | 'error'
+        message?: string
+        suggestedUrl?: string
+    }>({ status: 'idle' })
 
 
+    // Add repository validation function
     // Add repository validation function
     const validateCustomerRepository = async (customer: Customer) => {
         if (!customer.metadata?.gitOps?.repositoryUrl) return
@@ -60,19 +73,23 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
         }))
 
         try {
-            const isValid = await GitRepositoryService.testConnection(customer.metadata.gitOps.repositoryUrl)
+            // Pass the serverId from customer's GitOps metadata
+            const isValid = await GitRepositoryService.testConnection(
+                customer.metadata.gitOps.repositoryUrl,
+                customer.metadata.gitOps.serverId
+            )
             setRepositoryValidationStatus(prev => ({
                 ...prev,
                 [customer.id]: isValid ? 'valid' : 'invalid'
             }))
         } catch (error) {
+            console.error('Repository validation error:', error)
             setRepositoryValidationStatus(prev => ({
                 ...prev,
                 [customer.id]: 'invalid'
             }))
         }
     }
-
     // Add validation for all customers
     const validateAllCustomerRepositories = async () => {
         const customersWithRepos = customers.filter(c => c.metadata?.gitOps?.repositoryUrl)
@@ -227,13 +244,168 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
     }
 
     /**
-     * Handle editing an existing customer
+     * Handle editing an existing customer - enhanced with GitOps data
      */
     const handleEditCustomer = (customer: Customer) => {
         setEditingCustomer(customer)
         setFormData({ ...customer })
+
+        // Initialize GitOps form data
+        setGitOpsFormData({
+            repositoryUrl: customer.metadata?.gitOps?.repositoryUrl || '',
+            serverId: customer.metadata?.gitOps?.serverId || '',
+            environments: customer.metadata?.gitOps?.environments || ['dev', 'sit', 'uat', 'prod']
+        })
+
         setErrors([])
+        setConnectionTestResult({ status: 'idle' })
         setIsDialogOpen(true)
+    }
+
+    /**
+     * Test repository connection with enhanced feedback
+     */
+    const handleTestConnection = async () => {
+        if (!gitOpsFormData.repositoryUrl) {
+            setConnectionTestResult({
+                status: 'error',
+                message: 'Please enter a repository URL'
+            })
+            return
+        }
+
+        setIsTestingConnection(true)
+        setConnectionTestResult({ status: 'testing' })
+
+        try {
+            const isValid = await GitRepositoryService.testConnection(
+                gitOpsFormData.repositoryUrl,
+                gitOpsFormData.serverId
+            )
+
+            if (isValid) {
+                setConnectionTestResult({
+                    status: 'success',
+                    message: 'Repository connection successful!'
+                })
+            } else {
+                // Generate suggested URL based on current context
+                const suggestedUrl = context?.baseHostUrl
+                    ? `${context.baseHostUrl}/${formData.name || 'customer'}/gitops.git`
+                    : `http://localhost:9080/${formData.name || 'customer'}/gitops.git`
+
+                setConnectionTestResult({
+                    status: 'error',
+                    message: 'Repository not accessible or doesn\'t exist',
+                    suggestedUrl
+                })
+            }
+        } catch (error: any) {
+            setConnectionTestResult({
+                status: 'error',
+                message: error.message || 'Connection test failed'
+            })
+        } finally {
+            setIsTestingConnection(false)
+        }
+    }
+
+    /**
+     * Auto-fix repository URL using suggested URL
+     */
+    const handleAutoFixUrl = () => {
+        if (connectionTestResult.suggestedUrl) {
+            setGitOpsFormData({
+                ...gitOpsFormData,
+                repositoryUrl: connectionTestResult.suggestedUrl
+            })
+            setConnectionTestResult({ status: 'idle' })
+        }
+    }
+
+    /**
+     * Enhanced save customer with GitOps URL updates
+     */
+    const handleSaveCustomerEnhanced = async () => {
+        console.log(`💾 Starting enhanced customer save process...`)
+
+        const validation = validateCustomer(formData)
+        if (!validation.isValid) {
+            console.warn(`❌ Customer validation failed:`, validation.errors)
+            setErrors(validation.errors)
+            return
+        }
+
+        // Set loading state at the start
+        setGitOpsLoading(true)
+        setErrors([]) // Clear any previous errors
+
+        try {
+            // Prepare customer data with updated GitOps configuration
+            const customerData: Customer = {
+                ...formData,
+                id: editingCustomer?.id || crypto.randomUUID(),
+                createdAt: editingCustomer?.createdAt || new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                metadata: {
+                    ...formData.metadata,
+                    gitOps: gitOpsFormData.repositoryUrl ? {
+                        repositoryUrl: gitOpsFormData.repositoryUrl,
+                        serverId: gitOpsFormData.serverId,
+                        environments: gitOpsFormData.environments,
+                        setupDate: editingCustomer?.metadata?.gitOps?.setupDate || new Date().toISOString()
+                    } : undefined
+                }
+            }
+
+            let createdCustomer: Customer | null = null;
+
+            if (editingCustomer) {
+                const { id, createdAt, ...updates } = customerData
+                await window.electronAPI?.customer?.updateCustomer(editingCustomer.id, updates)
+                console.log(`✅ Customer updated successfully`)
+                createdCustomer = editingCustomer;
+            } else {
+                const result = await window.electronAPI?.customer?.createCustomer(customerData)
+                console.log(`✅ Customer created successfully`)
+                createdCustomer = result;
+
+                // 🔧 ADD THIS: Create GitOps repository if URL is provided
+                if (gitOpsFormData.repositoryUrl && createdCustomer) {
+                    console.log(`🚀 Creating GitOps repository for new customer: ${createdCustomer.name}`);
+                    try {
+                        await setupCustomerGitOps(createdCustomer.name);
+                        console.log(`✅ GitOps repository created successfully`);
+                    } catch (gitOpsError: any) {
+                        console.error(`❌ GitOps setup failed:`, gitOpsError);
+                        // Don't fail the entire customer creation, just log the error
+                    }
+                }
+            }
+
+            await loadCustomers()
+            setIsDialogOpen(false)
+            setEditingCustomer(null)
+            setFormData({})
+            setGitOpsFormData({ repositoryUrl: '', serverId: '', environments: [] })
+
+            // Trigger repository validation for the updated customer
+            setTimeout(() => {
+                if (createdCustomer && createdCustomer.id) {
+                    const customer = customers.find(c => c.id === createdCustomer.id)
+                    if (customer) {
+                        validateCustomerRepository(customer)
+                    }
+                }
+            }, 500)
+
+        } catch (error: any) {
+            console.error(`❌ Failed to save customer:`, error)
+            setErrors([error.message || 'Failed to save customer'])
+        } finally{
+            // Always clear loading state
+            setGitOpsLoading(false)
+        }
     }
 
     /**
@@ -250,7 +422,7 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
             // Find the customer by name to get the ID
             const allCustomers = await window.electronAPI?.customer?.getAllCustomers();
             const customer = allCustomers?.customers?.find((c: Customer) => c.name === customerName);
-            
+
             if (!customer) {
                 throw new Error(`Customer '${customerName}' not found`);
             }
@@ -261,10 +433,32 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
                 gitBaseUrl: context?.baseHostUrl || ''
             };
 
+            // // Use the correct localhost server configuration
+            // const gitServerConfig = {
+            //     serverId: 'http://localhost:9080',  // Use the actual server ID
+            //     gitBaseUrl: 'http://localhost:9080' // Use the correct base URL
+            // };
+
             console.log(`🏗️ Setting up GitOps with config:`, gitServerConfig);
             const result = await window.electronAPI?.customer?.setupGitOps(customer.id, gitServerConfig);
             console.log(`✅ GitOps setup completed:`, result);
 
+            // 🔧 UPDATE: Use the returned updatedCustomer to refresh local state
+            if (result?.updatedCustomer) {
+                // Update the customers list with the updated customer data
+                setCustomers(prevCustomers =>
+                    prevCustomers.map(c =>
+                        c.id === result.updatedCustomer.id ? result.updatedCustomer : c
+                    )
+                );
+
+                // If this customer is currently being edited, update the editing state too
+                if (editingCustomer?.id === result.updatedCustomer.id) {
+                    setEditingCustomer(result.updatedCustomer);
+                }
+
+                console.log(`✅ Updated customer state with repository URL: ${result.updatedCustomer.metadata?.gitOps?.repositoryUrl}`);
+            }
             return true;
 
         } catch (error: any) {
@@ -825,57 +1019,157 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
                             <Label htmlFor="isActive">Active Customer</Label>
                         </div>
 
-                        {/* GitOps Setup Section */}
+                        {/* Enhanced GitOps Configuration Section */}
                         <div className="border-t pt-4">
                             <div className="flex items-center space-x-2 mb-4">
                                 <Switch
                                     id="enableGitOps"
-                                    checked={gitOpsConfig.createGitOpsRepo}
-                                    onCheckedChange={(checked) =>
-                                        setGitOpsConfig({ ...gitOpsConfig, createGitOpsRepo: checked })
-                                    }
+                                    checked={!!gitOpsFormData.repositoryUrl}
+                                    onCheckedChange={(checked) => {
+                                        if (!checked) {
+                                            setGitOpsFormData({ repositoryUrl: '', serverId: '', environments: [] })
+                                            setConnectionTestResult({ status: 'idle' })
+                                        } else {
+                                            // Initialize with default values
+                                            const defaultUrl = context?.baseHostUrl
+                                                ? `${context.baseHostUrl}/${formData.name || 'customer'}/gitops.git`
+                                                : ''
+                                            setGitOpsFormData({
+                                                repositoryUrl: defaultUrl,
+                                                serverId: context?.baseHostUrl ? generateServerId(context.baseHostUrl) : '',
+                                                environments: ['dev', 'sit', 'uat', 'prod']
+                                            })
+                                        }
+                                    }}
                                 />
                                 <Label htmlFor="enableGitOps" className="font-medium">
-                                    Setup GitOps Repository
+                                    GitOps Repository Configuration
                                 </Label>
                             </div>
 
-                            {/* {gitOpsConfig.createGitOpsRepo && (
+                            {gitOpsFormData.repositoryUrl && (
                                 <div className="space-y-4 pl-6 border-l-2 border-blue-200">
+                                    {/* Repository URL Input */}
                                     <div className="space-y-2">
-                                        <Label htmlFor="gitServer">Git Server *</Label>
-                                        <Select
-                                            value={gitOpsConfig.serverId}
-                                            onValueChange={(value) => {
-                                                const server = gitServers.find(s => s.id === value)
-                                                setGitOpsConfig({
-                                                    ...gitOpsConfig,
-                                                    serverId: value,
-                                                    gitBaseUrl: server?.baseUrl || ''
-                                                })
-                                            }}
-                                        >
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Select Git server" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {gitServers.map((server) => (
-                                                    <SelectItem key={server.id} value={server.id}>
-                                                        {server.name} ({server.baseUrl})
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
+                                        <Label htmlFor="repositoryUrl">Repository URL *</Label>
+                                        <div className="flex gap-2">
+                                            <Input
+                                                id="repositoryUrl"
+                                                value={gitOpsFormData.repositoryUrl}
+                                                onChange={(e) => setGitOpsFormData({
+                                                    ...gitOpsFormData,
+                                                    repositoryUrl: e.target.value
+                                                })}
+                                                placeholder="https://git.example.com/customer/repo.git"
+                                                className={connectionTestResult.status === 'error' ? 'border-red-300' : ''}
+                                            />
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={handleTestConnection}
+                                                disabled={isTestingConnection || !gitOpsFormData.repositoryUrl}
+                                            >
+                                                {isTestingConnection ? (
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                ) : (
+                                                    '🔄 Test'
+                                                )}
+                                            </Button>
+                                        </div>
                                     </div>
-                                    
-                                    <div className="text-sm text-gray-600 bg-blue-50 p-3 rounded">
-                                        <p><strong>Repository URL:</strong> {gitOpsConfig.gitBaseUrl}/{formData.name || '[customer-name]'}/gitops.git</p>
-                                        <p><strong>Environment Branches:</strong> dev, sit, uat, prod</p>
-                                        <p><strong>Initial Content:</strong> README.md in each branch</p>
+
+                                    {/* Server ID Input */}
+                                    <div className="space-y-2">
+                                        <Label htmlFor="serverId">Server ID</Label>
+                                        <Input
+                                            id="serverId"
+                                            value={gitOpsFormData.serverId}
+                                            onChange={(e) => setGitOpsFormData({
+                                                ...gitOpsFormData,
+                                                serverId: e.target.value
+                                            })}
+                                            placeholder="git-server-id"
+                                        />
+                                        <p className="text-xs text-gray-500">
+                                            Server ID from Git server configuration (auto-generated from base URL)
+                                        </p>
+                                    </div>
+
+                                    {/* Environments */}
+                                    <div className="space-y-2">
+                                        <Label>Environments</Label>
+                                        <div className="flex gap-2 flex-wrap">
+                                            {gitOpsFormData.environments.map((env, index) => (
+                                                <Badge key={index} variant="secondary" className="text-xs">
+                                                    {env}
+                                                </Badge>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Connection Test Results */}
+                                    {connectionTestResult.status !== 'idle' && (
+                                        <div className={`p-3 rounded-md text-sm ${connectionTestResult.status === 'success'
+                                            ? 'bg-green-50 border border-green-200 text-green-800'
+                                            : connectionTestResult.status === 'error'
+                                                ? 'bg-red-50 border border-red-200 text-red-800'
+                                                : 'bg-blue-50 border border-blue-200 text-blue-800'
+                                            }`}>
+                                            <div className="flex items-center gap-2">
+                                                {connectionTestResult.status === 'testing' && (
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                )}
+                                                {connectionTestResult.status === 'success' && (
+                                                    <CheckCircle className="h-4 w-4" />
+                                                )}
+                                                {connectionTestResult.status === 'error' && (
+                                                    <XCircle className="h-4 w-4" />
+                                                )}
+                                                <span className="font-medium">
+                                                    {connectionTestResult.status === 'testing' && 'Testing connection...'}
+                                                    {connectionTestResult.status === 'success' && 'Connection Successful'}
+                                                    {connectionTestResult.status === 'error' && 'Connection Failed'}
+                                                </span>
+                                            </div>
+
+                                            {connectionTestResult.message && (
+                                                <p className="mt-1">{connectionTestResult.message}</p>
+                                            )}
+
+                                            {connectionTestResult.suggestedUrl && (
+                                                <div className="mt-2 flex items-center gap-2">
+                                                    <span className="text-xs">Suggested URL:</span>
+                                                    <code className="text-xs bg-white px-2 py-1 rounded border">
+                                                        {connectionTestResult.suggestedUrl}
+                                                    </code>
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={handleAutoFixUrl}
+                                                        className="text-xs h-6"
+                                                    >
+                                                        🔧 Use This
+                                                    </Button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* Current Git Server Info */}
+                                    <div className="text-sm text-gray-600 bg-gray-50 p-3 rounded">
+                                        <p><strong>Current Git Server:</strong> {context?.baseHostUrl || 'Not configured'}</p>
+                                        {!context?.baseHostUrl && (
+                                            <p className="text-red-600 mt-1">
+                                                ⚠️ No Git server configured in Settings. Please configure it first.
+                                            </p>
+                                        )}
                                     </div>
                                 </div>
-                            )} */}
+                            )}
                         </div>
+
                     </div>
 
                     <DialogFooter>
@@ -883,10 +1177,12 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
                             Cancel
                         </Button>
                         <Button
-                            onClick={gitOpsConfig.createGitOpsRepo ? handleSaveCustomerWithGitOps : handleSaveCustomer}
+                            onClick={handleSaveCustomerEnhanced}
                             disabled={gitOpsLoading}
+                            className="min-w-[120px]" // Prevent button width changes
                         >
-                            {gitOpsLoading ? 'Creating...' : (editingCustomer ? 'Update' : 'Create')} Customer
+                            {gitOpsLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            {gitOpsLoading ? 'Saving...' : (editingCustomer ? 'Update' : 'Create')} Customer
                         </Button>
                     </DialogFooter>
                 </DialogContent>

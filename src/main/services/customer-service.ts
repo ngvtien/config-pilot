@@ -295,18 +295,92 @@ export class CustomerService {
   //   }
   // }
 
-static async createCustomerGitOpsRepository(
-  customer: Customer,
-  gitServerConfig: {
-    serverId: string;
-    gitBaseUrl: string;
-  }
-): Promise<any> {
-  const { gitService } = await import('./git-service');
+  /**
+   * Sanitize and validate Git server configuration with comprehensive logging
+   * @param gitServerConfig - Raw git server configuration
+   * @returns Sanitized configuration
+   */
+  private static sanitizeGitServerConfig(gitServerConfig: { serverId: string; gitBaseUrl: string }) {
+    console.log(`🔍 [DEBUG] Raw gitServerConfig input:`, JSON.stringify(gitServerConfig, null, 2));
 
-    // Construct GitOps repository URL: {gitBaseUrl}/{customerId}/gitops.git
+    let { serverId, gitBaseUrl } = gitServerConfig;
+
+    // Sanitize gitBaseUrl - handle common issues
+    const originalBaseUrl = gitBaseUrl;
+
+    // Remove trailing slashes
+    gitBaseUrl = gitBaseUrl.replace(/\/+$/, '');
+
+    // Handle placeholder URLs
+    if (gitBaseUrl.includes('git.example.com') || gitBaseUrl.includes('example.com')) {
+      console.warn(`⚠️ [SANITIZE] Detected placeholder URL: ${gitBaseUrl}`);
+      // Try to use a fallback or throw an error
+      if (process.env.NODE_ENV !== 'production') {
+        gitBaseUrl = 'http://localhost:9080'; // Development fallback
+        console.log(`🔧 [SANITIZE] Using development fallback: ${gitBaseUrl}`);
+      } else {
+        throw new Error(`Invalid Git server URL: ${originalBaseUrl}. Please configure a valid Git server in Settings.`);
+      }
+    }
+
+    // Ensure URL has protocol
+    if (!gitBaseUrl.startsWith('http://') && !gitBaseUrl.startsWith('https://')) {
+      gitBaseUrl = `http://${gitBaseUrl}`;
+      console.log(`🔧 [SANITIZE] Added http protocol: ${gitBaseUrl}`);
+    }
+
+    // Validate URL format
+    try {
+      new URL(gitBaseUrl);
+    } catch (error) {
+      console.error(`❌ [SANITIZE] Invalid URL format: ${gitBaseUrl}`);
+      throw new Error(`Invalid Git server URL format: ${gitBaseUrl}`);
+    }
+
+    // Sanitize serverId
+    if (!serverId || serverId.trim() === '') {
+      serverId = gitBaseUrl;
+      console.log(`🔧 [SANITIZE] Generated serverId from baseUrl: ${serverId}`);
+    }
+
+    const sanitized = { serverId, gitBaseUrl };
+
+    if (originalBaseUrl !== gitBaseUrl) {
+      console.log(`🔄 [SANITIZE] URL changed from '${originalBaseUrl}' to '${gitBaseUrl}'`);
+    }
+
+    console.log(`✅ [DEBUG] Sanitized gitServerConfig:`, JSON.stringify(sanitized, null, 2));
+    return sanitized;
+  }
+
+  static async createCustomerGitOpsRepository(
+    customer: Customer,
+    gitServerConfig: {
+      serverId: string;
+      gitBaseUrl: string;
+    }
+  ): Promise<any> {
+    console.log(`🚀 [DEBUG] === Starting GitOps Repository Creation ===`);
+    console.log(`🔍 [DEBUG] Customer:`, JSON.stringify({
+      id: customer.id,
+      name: customer.name,
+      displayName: customer.displayName
+    }, null, 2));
+
+    // Sanitize configuration with fuzzy logic
+    const sanitizedConfig = this.sanitizeGitServerConfig(gitServerConfig);
+
+    const { gitService } = await import('./git-service');
+
+    // Construct GitOps repository URL with sanitized base URL
     const gitOpsRepoName = `${customer.name}-gitops`;
-    const gitOpsRepoUrl = `${gitServerConfig.gitBaseUrl}/${customer.name}/gitops.git`;
+    const cleanBaseUrl = sanitizedConfig.gitBaseUrl.replace(/\/$/, '');
+    const gitOpsRepoUrl = `${cleanBaseUrl}/${customer.name}/gitops.git`;
+
+    console.log(`🔍 [DEBUG] Repository URL construction:`);
+    console.log(`  - gitOpsRepoName: ${gitOpsRepoName}`);
+    console.log(`  - cleanBaseUrl: ${cleanBaseUrl}`);
+    console.log(`  - gitOpsRepoUrl: ${gitOpsRepoUrl}`);
 
     try {
       // First, create the organization for the customer
@@ -317,15 +391,18 @@ static async createCustomerGitOpsRepository(
         visibility: 'private' as const
       };
 
+      console.log(`🏢 [DEBUG] Creating organization with config:`, JSON.stringify(orgConfig, null, 2));
+
       try {
-        await gitService.createOrganisation(gitServerConfig.gitBaseUrl, orgConfig);
-        console.log(`✅ Created organization '${customer.name}' for customer`);
+        await gitService.createOrganisation(sanitizedConfig.gitBaseUrl, orgConfig);
+        console.log(`✅ [DEBUG] Created organization '${customer.name}' for customer`);
       } catch (orgError: any) {
+        console.log(`🔍 [DEBUG] Organization creation error:`, orgError.message);
         // If organization already exists, that's fine, continue
         if (orgError.message?.includes('already exists') || orgError.message?.includes('409')) {
-          console.log(`ℹ️ Organization '${customer.name}' already exists, continuing...`);
+          console.log(`ℹ️ [DEBUG] Organization '${customer.name}' already exists, continuing...`);
         } else {
-          console.warn(`⚠️ Failed to create organization '${customer.name}':`, orgError.message);
+          console.warn(`⚠️ [DEBUG] Failed to create organization '${customer.name}':`, orgError.message);
           // Continue anyway - maybe the organization exists but we can't detect it
         }
       }
@@ -336,52 +413,165 @@ static async createCustomerGitOpsRepository(
         description: `GitOps repository for customer: ${customer.displayName || customer.name}`,
         isPrivate: true,
         autoInit: true,
-        provider: 'gitea' as const, // Assuming Gitea based on existing code
-        baseUrl: gitServerConfig.gitBaseUrl,
+        provider: 'gitea' as const,
+        baseUrl: sanitizedConfig.gitBaseUrl,
         url: gitOpsRepoUrl
       };
 
-      const repository = await gitService.createRepository(repoConfig, gitServerConfig.serverId);
+      console.log(`📦 [DEBUG] Creating repository with config:`, JSON.stringify(repoConfig, null, 2));
+
+      const repository = await gitService.createRepository(repoConfig, sanitizedConfig.serverId);
+
+      console.log(`✅ [DEBUG] Repository created:`, JSON.stringify({
+        url: repository.url,
+        name: repository.name,
+        id: repository.id
+      }, null, 2));
 
       // Create 4 environment branches: dev, sit, uat, prod
       const environments = ['dev', 'sit', 'uat', 'prod'];
+      console.log(`🌿 [DEBUG] Creating environment branches:`, environments);
+
       const branchResult = await gitService.createCustomerEnvironmentBranches(
-        gitOpsRepoUrl, // Use the correct clone URL
+        gitOpsRepoUrl,
         environments,
         customer.name,
-        gitServerConfig.serverId
+        sanitizedConfig.serverId
       );
 
-      console.log(`✅ Created GitOps repository for customer ${customer.name}:`, {
+      console.log(`✅ [DEBUG] Branch creation result:`, JSON.stringify(branchResult, null, 2));
+
+      console.log(`✅ [DEBUG] Created GitOps repository for customer ${customer.name}:`, {
         repository: repository.url,
         branches: branchResult.createdBranches
       });
+
+      // Update customer metadata with the actual repository URL
+      const finalRepositoryUrl = gitOpsRepoUrl;
+      console.log(`💾 [DEBUG] Updating customer metadata with repositoryUrl: ${finalRepositoryUrl}`);
 
       const updatedCustomer = await this.updateCustomer(customer.id, {
         metadata: {
           ...customer.metadata,
           gitOps: {
-            repositoryUrl: repository.url || gitOpsRepoUrl,
-            serverId: gitServerConfig.serverId,
-            environments: ['dev', 'sit', 'uat', 'prod']
+            repositoryUrl: finalRepositoryUrl,
+            serverId: sanitizedConfig.serverId,
+            environments: ['dev', 'sit', 'uat', 'prod'],
+            setupDate: new Date().toISOString()
           }
         }
       });
 
-      console.log(`✅ Updated customer ${customer.name} with GitOps metadata:`, updatedCustomer.metadata?.gitOps);
+      console.log(`✅ [DEBUG] Customer metadata updated successfully`);
+      console.log(`🎉 [DEBUG] === GitOps Repository Creation Completed ===`);
 
       return {
         repository,
         branches: branchResult.createdBranches,
-        errors: branchResult.errors,
-        updatedCustomer
+        updatedCustomer,
+        errors: branchResult.errors
       };
 
     } catch (error: any) {
-      console.error(`❌ Failed to create GitOps repository for customer ${customer.name}:`, error);
-      throw new Error(`Failed to create GitOps repository: ${error.message}`);
+      console.error(`❌ [DEBUG] GitOps repository creation failed:`, {
+        error: error.message,
+        stack: error.stack,
+        customer: customer.name,
+        gitServerConfig: sanitizedConfig
+      });
+      throw error;
     }
   }
+
+  // static async createCustomerGitOpsRepository(
+  //   customer: Customer,
+  //   gitServerConfig: {
+  //     serverId: string;
+  //     gitBaseUrl: string;
+  //   }
+  // ): Promise<any> {
+  //   const { gitService } = await import('./git-service');
+
+  //     // Construct GitOps repository URL: {gitBaseUrl}/{customerId}/gitops.git
+  //     const gitOpsRepoName = `${customer.name}-gitops`;
+  //     const cleanBaseUrl = gitServerConfig.gitBaseUrl.replace(/\/$/, '');
+  //     const gitOpsRepoUrl = `${cleanBaseUrl}/${customer.name}/gitops.git`;
+
+  //     try {
+  //       // First, create the organization for the customer
+  //       const orgConfig = {
+  //         name: customer.name,
+  //         displayName: customer.displayName || customer.name,
+  //         description: `Organization for customer: ${customer.displayName || customer.name}`,
+  //         visibility: 'private' as const
+  //       };
+
+  //       try {
+  //         await gitService.createOrganisation(gitServerConfig.gitBaseUrl, orgConfig);
+  //         console.log(`✅ Created organization '${customer.name}' for customer`);
+  //       } catch (orgError: any) {
+  //         // If organization already exists, that's fine, continue
+  //         if (orgError.message?.includes('already exists') || orgError.message?.includes('409')) {
+  //           console.log(`ℹ️ Organization '${customer.name}' already exists, continuing...`);
+  //         } else {
+  //           console.warn(`⚠️ Failed to create organization '${customer.name}':`, orgError.message);
+  //           // Continue anyway - maybe the organization exists but we can't detect it
+  //         }
+  //       }
+
+  //       // Create the repository using git service
+  //       const repoConfig = {
+  //         name: gitOpsRepoName,
+  //         description: `GitOps repository for customer: ${customer.displayName || customer.name}`,
+  //         isPrivate: true,
+  //         autoInit: true,
+  //         provider: 'gitea' as const, // Assuming Gitea based on existing code
+  //         baseUrl: gitServerConfig.gitBaseUrl,
+  //         url: gitOpsRepoUrl
+  //       };
+
+  //       const repository = await gitService.createRepository(repoConfig, gitServerConfig.serverId);
+
+  //       // Create 4 environment branches: dev, sit, uat, prod
+  //       const environments = ['dev', 'sit', 'uat', 'prod'];
+  //       const branchResult = await gitService.createCustomerEnvironmentBranches(
+  //         gitOpsRepoUrl, // Use the correct clone URL
+  //         environments,
+  //         customer.name,
+  //         gitServerConfig.serverId
+  //       );
+
+  //       console.log(`✅ Created GitOps repository for customer ${customer.name}:`, {
+  //         repository: repository.url,
+  //         branches: branchResult.createdBranches
+  //       });
+
+  //       const updatedCustomer = await this.updateCustomer(customer.id, {
+  //         metadata: {
+  //           ...customer.metadata,
+  //           gitOps: {
+  //             repositoryUrl: repository.url || gitOpsRepoUrl,
+  //             serverId: gitServerConfig.serverId,
+  //             environments: ['dev', 'sit', 'uat', 'prod']
+  //           }
+  //         }
+  //       });
+
+  //       console.log(`✅ Updated customer ${customer.name} with GitOps metadata:`, updatedCustomer.metadata?.gitOps);
+
+  //       return {
+  //         repository,
+  //         branches: branchResult.createdBranches,
+  //         errors: branchResult.errors,
+  //         updatedCustomer
+  //       };
+
+  //     } catch (error: any) {
+  //       console.error(`❌ Failed to create GitOps repository for customer ${customer.name}:`, error);
+  //       throw new Error(`Failed to create GitOps repository: ${error.message}`);
+  //     }
+  //   }
+
 
   /**
    * Setup GitOps repository for existing customer

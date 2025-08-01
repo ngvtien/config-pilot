@@ -1,4 +1,4 @@
-import { app, BrowserWindow, nativeTheme, screen, session, ipcMain } from 'electron';
+import { app, BrowserWindow, nativeTheme, screen, session, ipcMain, shell } from 'electron';
 import Store from 'electron-store';
 import path from 'path';
 import { initializeSchemaHandlers, setupIpcHandlers, registerProductComponentHandlers, registerUnifiedGitHandlers } from './ipc-handlers';
@@ -111,6 +111,14 @@ async function createWindow() {
   mainWindow.on('move', debouncedSave);
   mainWindow.on('close', saveState);
 
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      shell.openExternal(url)
+      return { action: 'deny' } // Prevent opening in Electron
+    }
+    return { action: 'allow' } // Allow internal navigation
+  })
+
   // Load app
   if (isDev) {
     try {
@@ -154,7 +162,7 @@ app.whenReady().then(async () => {
   try {
     const allServers = gitService.getServers();
     console.log(`Total Git servers found: ${allServers.length}`);
-    
+
     if (allServers.length === 0) {
       console.log('❌ NO GIT SERVERS CONFIGURED!');
     } else {
