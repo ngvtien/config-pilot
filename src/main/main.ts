@@ -7,6 +7,7 @@ import { initK8sService } from './k8s-service-client';
 import { templateManager } from './template-manager';
 import { CustomerService } from './services/customer-service';
 import { ProductService } from './services/product-service'
+import { gitService } from './services/git-service';
 
 interface WindowState {
   width: number;
@@ -147,6 +148,30 @@ app.whenReady().then(async () => {
 
   // product service initializatoin
   await ProductService.initialize();
+
+  // **ADD LOGGING TO LIST ALL GIT SERVERS**
+  console.log('=== GIT SERVERS STARTUP LOGGING ===');
+  try {
+    const allServers = gitService.getServers();
+    console.log(`Total Git servers found: ${allServers.length}`);
+    
+    if (allServers.length === 0) {
+      console.log('❌ NO GIT SERVERS CONFIGURED!');
+    } else {
+      allServers.forEach((server, index) => {
+        console.log(`\n📡 Server ${index + 1}:`);
+        console.log(`  - ID: ${server.id}`);
+        console.log(`  - Base URL: ${server.baseUrl}`);
+        console.log(`  - Provider: ${server.provider}`);
+        console.log(`  - Name: ${server.name || 'N/A'}`);
+        console.log(`  - Created: ${server.createdAt}`);
+        console.log(`  - Updated: ${server.updatedAt}`);
+      });
+    }
+  } catch (error) {
+    console.error('❌ Error listing Git servers:', error);
+  }
+  console.log('=== END GIT SERVERS LOGGING ===\n');
 
   // Add window control handlers
   ipcMain.on('window:minimize', () => {

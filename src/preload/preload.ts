@@ -137,6 +137,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       'customer:createCustomerWithGitOps',
       'customer:setupGitOps',
       'customer:getAvailableGitServers',
+      'git:createCustomerEnvironmentBranches',
 
       // Produc management      
       'product:initialize',
@@ -465,6 +466,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     abortMerge: () => ipcRenderer.invoke('git:abortMerge'),
     prepareMergeRequest: (sourceBranch: string, targetBranch: string, title: string, description?: string) => ipcRenderer.invoke('git:prepareMergeRequest', sourceBranch, targetBranch, title, description),
     createEnvironmentBranches: (repositoryUrl: string, environments: string[], serverId?: string) => ipcRenderer.invoke('git:createEnvironmentBranches', repositoryUrl, environments, serverId),
+    createCustomerEnvironmentBranches: (repositoryUrl: string, environments: string[], serverId?: string) => ipcRenderer.invoke('git:createCustomerEnvironmentBranches', repositoryUrl, environments, serverId),
     setDefaultBranch: (repositoryUrl: string, branchName: string) => ipcRenderer.invoke('git:setDefaultBranch', repositoryUrl, branchName),
     checkGitAuth: (url: string) => ipcRenderer.invoke('git:checkAuth', url),
 

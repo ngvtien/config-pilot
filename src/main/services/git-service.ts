@@ -109,18 +109,18 @@ export class GitService {
     saveServer(server: Omit<GitServerConfig, 'id' | 'createdAt' | 'updatedAt'>): GitServerConfig {
         const servers = this.getServers();
 
-        // Use baseUrl as unique identifier - pragmatic and logical
-        const serverId = server.baseUrl.replace(/[^a-zA-Z0-9]/g, '-');
+        // Use baseUrl directly as the serverId - simple and logical
+        const serverId = server.baseUrl;
 
         // Check if server already exists
         const existingIndex = servers.findIndex(s => s.baseUrl === server.baseUrl);
 
         if (existingIndex >= 0) {
-            // Update existing server, preserving provider
+            // ✅ CORRECTLY UPDATES existing server, ensuring ID is set to baseUrl
             const updatedServer = {
                 ...servers[existingIndex],
                 ...server,
-                id: servers[existingIndex].id,
+                id: serverId,
                 updatedAt: new Date().toISOString()
             };
             servers[existingIndex] = updatedServer;
@@ -128,7 +128,7 @@ export class GitService {
             return updatedServer;
         }
 
-        // Create new server
+        // Only creates new server if none exists with same baseUrl
         const newServer: GitServerConfig = {
             ...server,
             id: serverId,
@@ -209,31 +209,41 @@ export class GitService {
         let server: GitServerConfig | undefined;
 
         if (serverId) {
-            server = this.getServers().find(s => s.id === serverId);
+            // Normalize serverId by removing trailing slash
+            const normalizedServerId = serverId.endsWith('/') ? serverId.slice(0, -1) : serverId;
+            server = this.getServers().find(s => s.id === normalizedServerId);
             if (!server) throw new Error(`No server configured with ID: ${serverId}`);
         } else {
             const parsed = gitUrlParse(url);
             const baseUrl = parsed.port
                 ? `${parsed.protocol}://${parsed.resource}:${parsed.port}`
                 : `${parsed.protocol}://${parsed.resource}`;
-            server = this.getServers().find(s => s.baseUrl === baseUrl);
+
+            // Get all servers matching the baseUrl and return the first one
+            // Sort by preference: most recently updated first
+            const matchingServers = this.getServers()
+                .filter(s => s.baseUrl === baseUrl)
+                .sort((a, b) => {
+                    const aTime = new Date(a.updatedAt || a.createdAt).getTime();
+                    const bTime = new Date(b.updatedAt || b.createdAt).getTime();
+                    return bTime - aTime; // Most recent first
+                });
+
+            server = matchingServers[0];
             if (!server) throw new Error(`No server configured for ${baseUrl}`);
         }
 
-        // ✅ FIXED: Use the same key format as credential manager
         const credentialKey = `configpilot-git-server:${server.id}`;
-
-        // ✅ FIXED: Use the imported Store class instead of requiring it dynamically
         const credentialStore = new Store({ name: 'secure-credentials' }) as any;
         const encryptedCreds = credentialStore.get(credentialKey);
 
         if (!encryptedCreds) throw new Error(`No credentials for server ${server.id}`);
 
-        // ✅ FIXED: Decrypt using safeStorage (already imported at the top)
         const decrypted = safeStorage.decryptString(Buffer.from(encryptedCreds, 'base64'));
         const credentials: GitServerCredentials = JSON.parse(decrypted);
 
         return { server, credentials };
+
     }
 
 

@@ -326,6 +326,15 @@ export function registerUnifiedGitHandlers() {
     }
   });
 
+  ipcMain.handle('git:createCustomerEnvironmentBranches', async (_, repositoryUrl: string, environments: string[], customerName: string, serverId?: string): Promise<{ success: boolean; createdBranches: string[]; errors: any[] }> => {
+    try {
+      const result = await gitService.createCustomerEnvironmentBranches(repositoryUrl, environments, customerName, serverId);
+      return result;
+    } catch (error: any) {
+      console.error('Failed to create customer environment branches:', error);
+      throw new Error(`Failed to create customer environment branches: ${error.message}`);
+    }
+  });  
 
 }
 

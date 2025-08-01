@@ -10,21 +10,24 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/renderer/components/ui/select'
 import { Textarea } from '@/renderer/components/ui/textarea'
 import { Switch } from '@/renderer/components/ui/switch'
-import { Trash2, Edit, Plus, Download, Upload, Building2, Loader2 } from 'lucide-react'
+import { Trash2, Edit, Plus, Download, Upload, Building2, Loader2, GitBranch, CheckCircle, XCircle, ExternalLink } from 'lucide-react'
 import type { Customer, CustomerGitOpsConfig, CustomerGitOpsResult } from '@/shared/types/customer'
 import { createNewCustomer, validateCustomer } from '@/shared/types/customer'
 import { useDialog } from '@/renderer/hooks/useDialog'
 import { GitRepositoryService } from '@/renderer/services/git-repository.service'
 import { GitServerConfig } from '@/shared/types/git-repository'
+import type { ContextData } from '@/shared/types/context-data'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/renderer/components/ui/tooltip'
 
 interface CustomerManagementPageProps {
     onNavigateBack?: () => void
+    context?: ContextData
 }
 
 /**
  * Customer management page for CRUD operations
  */
-export function CustomerManagementPage({ onNavigateBack }: CustomerManagementPageProps) {
+export function CustomerManagementPage({ onNavigateBack, context }: CustomerManagementPageProps) {
     const { showConfirm, showAlert, AlertDialog, ConfirmDialog } = useDialog()
 
     const [customers, setCustomers] = useState<Customer[]>([])
@@ -34,19 +37,62 @@ export function CustomerManagementPage({ onNavigateBack }: CustomerManagementPag
     const [formData, setFormData] = useState<Partial<Customer>>({})
     const [errors, setErrors] = useState<string[]>([])
 
-    const [gitServers, setGitServers] = useState<GitServerConfig[]>([])
+    // const [gitServers, setGitServers] = useState<GitServerConfig[]>([])
     const [showGitOpsDialog, setShowGitOpsDialog] = useState(false)
     const [gitOpsConfig, setGitOpsConfig] = useState<CustomerGitOpsConfig>({
+        createGitOpsRepo: false,
         serverId: '',
-        gitBaseUrl: '',
-        createGitOpsRepo: true
+        gitBaseUrl: context?.baseHostUrl || '',  // Use context baseHostUrl
     })
     const [gitOpsLoading, setGitOpsLoading] = useState(false)
 
-    // Load Git servers on component mount
+    const [repositoryValidationStatus, setRepositoryValidationStatus] = useState<Record<string, 'validating' | 'valid' | 'invalid' | 'unknown'>>({})
+
+
+
+    // Add repository validation function
+    const validateCustomerRepository = async (customer: Customer) => {
+        if (!customer.metadata?.gitOps?.repositoryUrl) return
+
+        setRepositoryValidationStatus(prev => ({
+            ...prev,
+            [customer.id]: 'validating'
+        }))
+
+        try {
+            const isValid = await GitRepositoryService.testConnection(customer.metadata.gitOps.repositoryUrl)
+            setRepositoryValidationStatus(prev => ({
+                ...prev,
+                [customer.id]: isValid ? 'valid' : 'invalid'
+            }))
+        } catch (error) {
+            setRepositoryValidationStatus(prev => ({
+                ...prev,
+                [customer.id]: 'invalid'
+            }))
+        }
+    }
+
+    // Add validation for all customers
+    const validateAllCustomerRepositories = async () => {
+        const customersWithRepos = customers.filter(c => c.metadata?.gitOps?.repositoryUrl)
+        await Promise.all(customersWithRepos.map(validateCustomerRepository))
+    }
+
+    // Add useEffect to validate repositories when customers load
     useEffect(() => {
-        loadGitServers()
-    }, [])
+        if (customers.length > 0) {
+            const timer = setTimeout(() => {
+                validateAllCustomerRepositories()
+            }, 1000)
+            return () => clearTimeout(timer)
+        }
+    }, [customers])
+
+    // // Load Git servers on component mount
+    // useEffect(() => {
+    //     loadGitServers()
+    // }, [])
 
     // Load customers on component mount
     useEffect(() => {
@@ -61,6 +107,12 @@ export function CustomerManagementPage({ onNavigateBack }: CustomerManagementPag
         try {
             const response = await window.electronAPI?.customer?.getAllCustomers()
             if (response?.customers) {
+                console.log('Loaded customers:', response.customers.map(c => ({
+                    id: c.id,
+                    name: c.name,
+                    hasGitOps: !!c.metadata?.gitOps?.repositoryUrl,
+                    repositoryUrl: c.metadata?.gitOps?.repositoryUrl
+                })))
                 setCustomers(response.customers)
             }
         } catch (error) {
@@ -69,18 +121,17 @@ export function CustomerManagementPage({ onNavigateBack }: CustomerManagementPag
             setIsLoading(false)
         }
     }
-
-    /**
-     * Load available Git servers
-     */
-    const loadGitServers = async () => {
-        try {
-            const servers = await window.electronAPI?.customer?.getAvailableGitServers()
-            setGitServers(servers || [])
-        } catch (error: any) {
-            console.error('Failed to load Git servers:', error)
-        }
-    }
+    // /**
+    //  * Load available Git servers
+    //  */
+    // const loadGitServers = async () => {
+    //     try {
+    //         const servers = await window.electronAPI?.customer?.getAvailableGitServers()
+    //         setGitServers(servers || [])
+    //     } catch (error: any) {
+    //         console.error('Failed to load Git servers:', error)
+    //     }
+    // }
 
     /**
      * Handle saving customer with GitOps setup
@@ -101,7 +152,7 @@ export function CustomerManagementPage({ onNavigateBack }: CustomerManagementPag
             if (editingCustomer) {
                 // Update existing customer
                 result = await window.electronAPI?.customer?.updateCustomer(editingCustomer.id, formData)
-                
+
                 // Setup GitOps if requested
                 if (gitOpsConfig.createGitOpsRepo && gitOpsConfig.serverId) {
                     await window.electronAPI?.customer?.setupGitOps(editingCustomer.id, gitOpsConfig)
@@ -116,13 +167,13 @@ export function CustomerManagementPage({ onNavigateBack }: CustomerManagementPag
             }
 
             console.log(`✅ Customer ${editingCustomer ? 'updated' : 'created'} successfully:`, result)
-            
+
             await loadCustomers()
             setIsDialogOpen(false)
             setShowGitOpsDialog(false)
             setFormData({})
             setErrors([])
-            
+
             // Show success message with GitOps info if applicable
             if (result?.gitOpsRepo) {
                 await showAlert(
@@ -139,18 +190,24 @@ export function CustomerManagementPage({ onNavigateBack }: CustomerManagementPag
     }
 
     /**
+     * Generate server ID from baseUrl using the same logic as GitService
+     */
+    const generateServerId = (baseUrl: string): string => {
+        return baseUrl.replace(/[^a-zA-Z0-9]/g, '-');
+    };
+
+    /**
      * Handle GitOps setup for existing customer
      */
     const handleSetupGitOps = async (customer: Customer) => {
         setEditingCustomer(customer)
         setGitOpsConfig({
-            serverId: '',
-            gitBaseUrl: '',
+            serverId: context?.baseHostUrl ? generateServerId(context.baseHostUrl) : '', // Generate proper serverId from baseHostUrl
+            gitBaseUrl: context?.baseHostUrl || '',
             createGitOpsRepo: true
         })
         setShowGitOpsDialog(true)
     }
-
     /**
      * Handle creating a new customer
      */
@@ -183,65 +240,38 @@ export function CustomerManagementPage({ onNavigateBack }: CustomerManagementPag
      * Smart GitOps setup function - follows product management pattern
      * Uses GitRepositoryService.createRepository directly like handleAddNewRepository
      */
+    /**
+     * Smart GitOps setup function - uses proper backend service
+     */
     const setupCustomerGitOps = async (customerName: string): Promise<boolean> => {
         console.log(`🚀 Starting GitOps setup for customer: ${customerName}`);
 
         try {
-            const repoName = customerName.toLowerCase().replace(/\s+/g, '-');
-            console.log(`📝 Generated repository name: ${repoName}`);
-
-            // Check if repository already exists
-            console.log(`🔍 Checking for existing repositories...`);
-            const existingRepos = await GitRepositoryService.getRepositories();
-            console.log(`📊 Found ${existingRepos.length} existing repositories`);
-
-            const repoExists = existingRepos.some(repo => repo.name === repoName);
-            console.log(`🔎 Repository exists check: ${repoExists}`);
-
-            if (repoExists) {
-                console.log(`✅ Repository already exists for customer: ${customerName}`);
-                return true;
+            // Find the customer by name to get the ID
+            const allCustomers = await window.electronAPI?.customer?.getAllCustomers();
+            const customer = allCustomers?.customers?.find((c: Customer) => c.name === customerName);
+            
+            if (!customer) {
+                throw new Error(`Customer '${customerName}' not found`);
             }
 
-            // Create repository using the same pattern as product management
-            const repoData = {
-                name: repoName,
-                description: `GitOps repository for customer ${customerName}`,
-                isPrivate: false
-            } as any;
+            // Use the proper backend service that handles organization creation and environment branches
+            const gitServerConfig = {
+                serverId: context?.baseHostUrl || '',
+                gitBaseUrl: context?.baseHostUrl || ''
+            };
 
-            console.log(`🏗️ Creating repository with data:`, repoData);
-            const newRepo = await GitRepositoryService.createRepository(repoData);
-            console.log(`✅ Repository created:`, newRepo);
+            console.log(`🏗️ Setting up GitOps with config:`, gitServerConfig);
+            const result = await window.electronAPI?.customer?.setupGitOps(customer.id, gitServerConfig);
+            console.log(`✅ GitOps setup completed:`, result);
 
-            // Test connection to the newly created repository
-            console.log(`🔗 Testing connection to repository: ${newRepo.url}`);
-            const connectionTest = await GitRepositoryService.testConnection(newRepo.url);
-            console.log(`🔗 Connection test result: ${connectionTest}`);
-
-            if (!connectionTest) {
-                console.warn(`⚠️ Connection test failed for repository: ${newRepo.url}`);
-                // Continue anyway as the repo might still be initializing
-            }
-
-            // Create environment branches
-            console.log(`🌿 Creating environment branches for: ${newRepo.url}`);
-            const branchResult = await window.electronAPI?.git?.createEnvironmentBranches(newRepo.url, ['dev', 'uat', 'prod']);
-            console.log(`🌿 Branch creation result:`, branchResult);
-
-            console.log(`🎉 GitOps setup completed successfully for customer: ${customerName}`);
             return true;
+
         } catch (error: any) {
-            console.error(`❌ GitOps setup failed for customer ${customerName}:`, error);
-            console.error(`❌ Error details:`, {
-                message: error?.message,
-                stack: error?.stack,
-                name: error?.name
-            });
-            return false;
+            console.error(`❌ GitOps setup failed for customer: ${customerName}`, error);
+            throw new Error(`GitOps setup failed: ${error.message}`);
         }
     };
-
     /**
      * Handle saving customer (create or update)
      */
@@ -371,6 +401,35 @@ export function CustomerManagementPage({ onNavigateBack }: CustomerManagementPag
         }
     }
 
+    const handleConfirmGitOpsSetup = async () => {
+        if (!editingCustomer) return;
+
+        setGitOpsLoading(true);
+        try {
+            // ✅ Use the working setupCustomerGitOps function instead
+            const success = await setupCustomerGitOps(editingCustomer.name);
+
+            if (success) {
+                await loadCustomers();
+                setShowGitOpsDialog(false);
+
+                showAlert({
+                    title: 'GitOps Setup Complete',
+                    message: `✅ GitOps repository created successfully for ${editingCustomer.displayName || editingCustomer.name}`,
+                    variant: 'success'
+                });
+            }
+        } catch (error: any) {
+            showAlert({
+                title: 'GitOps Setup Failed',
+                message: error.message,
+                variant: 'error'
+            });
+        } finally {
+            setGitOpsLoading(false);
+        }
+    };
+
     if (isLoading) {
         return (
             <div className="flex items-center justify-center h-64">
@@ -381,6 +440,19 @@ export function CustomerManagementPage({ onNavigateBack }: CustomerManagementPag
             </div>
         )
     }
+
+    /**
+     * Smart URL builder that handles trailing/leading slashes properly
+     */
+    const buildRepositoryUrl = (baseUrl: string, customerName: string): string => {
+        if (!baseUrl || !customerName) return '[incomplete-url]';
+
+        // Remove trailing slash from baseUrl and leading slash from path
+        const cleanBaseUrl = baseUrl.replace(/\/$/, '');
+        const cleanCustomerName = customerName.replace(/^\//, '');
+
+        return `${cleanBaseUrl}/${cleanCustomerName}/gitops.git`;
+    };
 
     return (
         <div className="container mx-auto p-6 space-y-6">
@@ -411,62 +483,218 @@ export function CustomerManagementPage({ onNavigateBack }: CustomerManagementPag
 
             {/* Customer List */}
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {customers.map((customer) => (
-                    <Card key={customer.id} className="hover:shadow-md transition-shadow">
-                        <CardHeader className="pb-3">
-                            <div className="flex items-center justify-between">
-                                <CardTitle className="text-lg">{customer.displayName || customer.name}</CardTitle>
-                                <div className="flex items-center gap-1">
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => handleEditCustomer(customer)}
-                                    >
-                                        <Edit className="h-4 w-4" />
-                                    </Button>
-                                    {!customer.metadata?.gitOps?.repositoryUrl && (
+                <TooltipProvider>
+                    {customers.map((customer) => (
+                        <Card key={customer.id} className="hover:shadow-md transition-shadow">
+                            <CardHeader className="pb-3">
+                                <div className="flex items-center justify-between">
+                                    <CardTitle className="text-lg">{customer.displayName || customer.name}</CardTitle>
+                                    <div className="flex items-center gap-1">
                                         <Button
                                             variant="ghost"
                                             size="sm"
-                                            onClick={() => handleSetupGitOps(customer)}
-                                            title="Setup GitOps Repository"
+                                            onClick={() => handleEditCustomer(customer)}
                                         >
-                                            🔧
+                                            <Edit className="h-4 w-4" />
                                         </Button>
-                                    )}
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => handleDeleteCustomer(customer)}
-                                    >
-                                        <Trash2 className="h-4 w-4" />
-                                    </Button>
+                                        {customer.metadata?.gitOps?.repositoryUrl ? (
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() => handleSetupGitOps(customer)}
+                                                        title="Reconfigure GitOps Repository"
+                                                    >
+                                                        ⚙️
+                                                    </Button>
+                                                </TooltipTrigger>
+                                                <TooltipContent>
+                                                    <p>Reconfigure GitOps repository for this customer</p>
+                                                </TooltipContent>
+                                            </Tooltip>
+                                        ) : (
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() => handleSetupGitOps(customer)}
+                                                        title="Setup GitOps Repository"
+                                                    >
+                                                        🔧
+                                                    </Button>
+                                                </TooltipTrigger>
+                                                <TooltipContent>
+                                                    <p>Setup GitOps repository for this customer `{customer.name}` `{customer.metadata?.gitOps?.repositoryUrl}`</p>
+                                                </TooltipContent>
+                                            </Tooltip>
+                                        )}
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => handleDeleteCustomer(customer)}
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                    </div>
                                 </div>
-                            </div>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="space-y-2">
-                                <p className="text-sm text-gray-600">{customer.description}</p>
-                                <div className="flex items-center gap-2">
+                                <CardDescription className="text-sm">{customer.description || 'No description'}</CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-3">
+                                {/* Customer Details */}
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between text-xs">
+                                        <span className="text-gray-600 dark:text-gray-400">Internal Name:</span>
+                                        <code className="bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded">{customer.name}</code>
+                                    </div>
+
+                                    {customer.metadata?.tier && (
+                                        <div className="flex items-center justify-between text-xs">
+                                            <span className="text-gray-600 dark:text-gray-400">Tier:</span>
+                                            <Badge className={getTierBadgeColor(customer.metadata.tier)}>
+                                                {customer.metadata.tier}
+                                            </Badge>
+                                        </div>
+                                    )}
+
+                                    {customer.metadata?.region && (
+                                        <div className="flex items-center justify-between text-xs">
+                                            <span className="text-gray-600 dark:text-gray-400">Region:</span>
+                                            <span>{customer.metadata.region}</span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Status Badges */}
+                                <div className="flex items-center gap-2 flex-wrap">
                                     <Badge variant={customer.isActive ? "default" : "secondary"}>
                                         {customer.isActive ? 'Active' : 'Inactive'}
                                     </Badge>
-                                    {customer.metadata?.gitOps?.repositoryUrl && (
-                                        <Badge variant="outline" className="text-green-600">
+
+                                    {customer.metadata?.gitOps?.repositoryUrl ? (
+                                        <Badge variant="outline" className="text-green-600 border-green-200">
+                                            <GitBranch className="h-3 w-3 mr-1" />
                                             GitOps ✓
+                                        </Badge>
+                                    ) : (
+                                        <Badge variant="outline" className="text-gray-500">
+                                            No GitOps
                                         </Badge>
                                     )}
                                 </div>
+
+                                {/* Enhanced GitOps Repository Information */}
                                 {customer.metadata?.gitOps?.repositoryUrl && (
-                                    <div className="text-xs text-gray-500">
-                                        <p>GitOps: {customer.metadata.gitOps.repositoryUrl}</p>
-                                        <p>Environments: {customer.metadata.gitOps.environments?.join(', ')}</p>
+                                    <div className="border-t pt-3 space-y-2">
+                                        <div className="flex items-center justify-between text-xs">
+                                            <span className="text-gray-600 dark:text-gray-400">GitOps Repository:</span>
+                                            <div className="flex items-center gap-1">
+                                                {/* Repository validation status indicator */}
+                                                {repositoryValidationStatus[customer.id] === 'validating' && (
+                                                    <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
+                                                )}
+                                                {repositoryValidationStatus[customer.id] === 'valid' && (
+                                                    <CheckCircle className="h-3 w-3 text-green-500" />
+                                                )}
+                                                {repositoryValidationStatus[customer.id] === 'invalid' && (
+                                                    <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                            <XCircle className="h-3 w-3 text-red-500 cursor-help" />
+                                                        </TooltipTrigger>
+                                                        <TooltipContent>
+                                                            <p>Repository is not accessible or doesn't exist</p>
+                                                        </TooltipContent>
+                                                    </Tooltip>
+                                                )}
+
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <a
+                                                            href={customer.metadata.gitOps.repositoryUrl}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className={`flex items-center gap-1 truncate max-w-32 ${repositoryValidationStatus[customer.id] === 'invalid'
+                                                                ? 'text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300'
+                                                                : 'text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300'
+                                                                }`}
+                                                        >
+                                                            <GitBranch className="h-3 w-3" />
+                                                            <span>{customer.metadata.gitOps.repositoryUrl.split('/').pop()?.replace('.git', '')}</span>
+                                                            <ExternalLink className="h-3 w-3" />
+                                                        </a>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent>
+                                                        <div className="space-y-1">
+                                                            <p className="font-medium">{repositoryValidationStatus[customer.id] === 'invalid'
+                                                                ? 'Repository not accessible - click to attempt opening anyway'
+                                                                : 'Open GitOps repository in new tab'}</p>
+                                                            <p className="text-xs opacity-75">{customer.metadata.gitOps.repositoryUrl}</p>
+                                                        </div>
+                                                    </TooltipContent>
+                                                </Tooltip>
+                                            </div>
+                                        </div>
+
+                                        {customer.metadata.gitOps.environments && customer.metadata.gitOps.environments.length > 0 && (
+                                            <div className="flex items-center justify-between text-xs">
+                                                <span className="text-gray-600 dark:text-gray-400">Environments:</span>
+                                                <div className="flex gap-1 flex-wrap">
+                                                    {customer.metadata.gitOps.environments.map((env) => (
+                                                        <Badge key={env} variant="secondary" className="text-xs px-1 py-0">
+                                                            {env}
+                                                        </Badge>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {repositoryValidationStatus[customer.id] === 'invalid' && (
+                                            <div className="flex gap-1">
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            onClick={() => validateCustomerRepository(customer)}
+                                                            className="h-6 px-2 text-xs"
+                                                        >
+                                                            🔄 Retry
+                                                        </Button>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent>
+                                                        <p>Retry repository validation</p>
+                                                    </TooltipContent>
+                                                </Tooltip>
+
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            onClick={() => handleSetupGitOps(customer)}
+                                                            className="h-6 px-2 text-xs"
+                                                        >
+                                                            🔧 Reconfigure
+                                                        </Button>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent>
+                                                        <p>Reconfigure GitOps repository</p>
+                                                    </TooltipContent>
+                                                </Tooltip>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
-                            </div>
-                        </CardContent>
-                    </Card>
-                ))}
+
+                                {/* Last Updated */}
+                                <div className="text-xs text-gray-500 pt-2 border-t">
+                                    Updated: {new Date(customer.updatedAt).toLocaleDateString()}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    ))}
+                </TooltipProvider>
             </div>
 
             {customers.length === 0 && (
@@ -491,8 +719,8 @@ export function CustomerManagementPage({ onNavigateBack }: CustomerManagementPag
                             {editingCustomer ? 'Edit Customer' : 'Create New Customer'}
                         </DialogTitle>
                         <DialogDescription>
-                            {editingCustomer 
-                                ? 'Update customer information and optionally setup GitOps repository.' 
+                            {editingCustomer
+                                ? 'Update customer information and optionally setup GitOps repository.'
                                 : 'Add a new customer to the system with optional GitOps repository setup.'}
                         </DialogDescription>
                     </DialogHeader>
@@ -603,7 +831,7 @@ export function CustomerManagementPage({ onNavigateBack }: CustomerManagementPag
                                 <Switch
                                     id="enableGitOps"
                                     checked={gitOpsConfig.createGitOpsRepo}
-                                    onCheckedChange={(checked) => 
+                                    onCheckedChange={(checked) =>
                                         setGitOpsConfig({ ...gitOpsConfig, createGitOpsRepo: checked })
                                     }
                                 />
@@ -611,8 +839,8 @@ export function CustomerManagementPage({ onNavigateBack }: CustomerManagementPag
                                     Setup GitOps Repository
                                 </Label>
                             </div>
-                            
-                            {gitOpsConfig.createGitOpsRepo && (
+
+                            {/* {gitOpsConfig.createGitOpsRepo && (
                                 <div className="space-y-4 pl-6 border-l-2 border-blue-200">
                                     <div className="space-y-2">
                                         <Label htmlFor="gitServer">Git Server *</Label>
@@ -646,7 +874,7 @@ export function CustomerManagementPage({ onNavigateBack }: CustomerManagementPag
                                         <p><strong>Initial Content:</strong> README.md in each branch</p>
                                     </div>
                                 </div>
-                            )}
+                            )} */}
                         </div>
                     </div>
 
@@ -654,7 +882,7 @@ export function CustomerManagementPage({ onNavigateBack }: CustomerManagementPag
                         <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
                             Cancel
                         </Button>
-                        <Button 
+                        <Button
                             onClick={gitOpsConfig.createGitOpsRepo ? handleSaveCustomerWithGitOps : handleSaveCustomer}
                             disabled={gitOpsLoading}
                         >
@@ -674,88 +902,51 @@ export function CustomerManagementPage({ onNavigateBack }: CustomerManagementPag
                         </DialogDescription>
                     </DialogHeader>
 
-                    <div className="space-y-4">
-                        <div className="space-y-2">
-                            <Label htmlFor="gitServer">Git Server *</Label>
-                            <Select
-                                value={gitOpsConfig.serverId}
-                                onValueChange={(value) => {
-                                    const server = gitServers.find(s => s.id === value)
-                                    setGitOpsConfig({
-                                        ...gitOpsConfig,
-                                        serverId: value,
-                                        gitBaseUrl: server?.baseUrl || ''
-                                    })
-                                }}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select Git server" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {gitServers.map((server) => (
-                                        <SelectItem key={server.id} value={server.id}>
-                                            {server.name} ({server.baseUrl})
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                    <div className="space-y-4 p-4 border rounded-lg bg-gray-50">
+                        <div className="flex items-center space-x-2">
+                            <Switch
+                                id="createGitOpsRepo"
+                                checked={gitOpsConfig.createGitOpsRepo}
+                                onCheckedChange={(checked) => setGitOpsConfig({
+                                    ...gitOpsConfig,
+                                    createGitOpsRepo: checked,
+                                    gitBaseUrl: context?.baseHostUrl || ''
+                                })}
+                            />
+                            <Label htmlFor="createGitOpsRepo">Setup GitOps Repository</Label>
                         </div>
-                        
-                        <div className="text-sm text-gray-600 bg-blue-50 p-3 rounded">
-                            <p><strong>Repository URL:</strong> {gitOpsConfig.gitBaseUrl}/{editingCustomer?.name}/gitops.git</p>
-                            <p><strong>Environment Branches:</strong> dev, sit, uat, prod</p>
-                            <p><strong>Initial Content:</strong> README.md in each branch</p>
-                        </div>
-                    </div>
 
+                        {gitOpsConfig.createGitOpsRepo && (
+                            <div className="space-y-2">
+                                <Label>Git Server (from Settings)</Label>
+                                <div className="p-2 bg-gray-50 dark:bg-gray-800 border rounded text-sm text-gray-900 dark:text-gray-100">
+                                    {context?.baseHostUrl || 'No Git server configured in Settings'}
+                                </div>
+                                {context?.baseHostUrl && (
+                                    <p className="text-xs text-gray-600 dark:text-gray-400">
+                                        <strong>Repository URL:</strong> {buildRepositoryUrl(
+                                            context.baseHostUrl,
+                                            editingCustomer?.name || formData.name || 'customer-name'
+                                        )}
+                                    </p>
+                                )}
+                                {!context?.baseHostUrl && (
+                                    <p className="text-xs text-red-600 dark:text-red-400">
+                                        Please configure a Git server in Settings first.
+                                    </p>
+                                )}
+                            </div>
+                        )}
+                    </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setShowGitOpsDialog(false)}>
                             Cancel
                         </Button>
 
-                        <Button 
-                            onClick={async () => {
-                                if (editingCustomer && gitOpsConfig.serverId) {
-                                    setGitOpsLoading(true)
-                                    try {
-                                        const result = await window.electronAPI?.customer?.setupGitOps(editingCustomer.id, gitOpsConfig)
-                                        await loadCustomers()
-                                        setShowGitOpsDialog(false)
+                        <Button onClick={handleConfirmGitOpsSetup}>
+                            Setup GitOps
+                        </Button>
 
-                                        // Show detailed success message with actual values
-                                        const repositoryUrl = result?.repository?.url || `${gitOpsConfig.gitBaseUrl}/${editingCustomer.name}/gitops.git`
-                                        const createdBranches = result?.branches || ['dev', 'sit', 'uat', 'prod']
-                                        
-                                        const successMessage = `✅ **GitOps Setup Completed Successfully!**\n\n**Customer:** ${editingCustomer.displayName || editingCustomer.name}\n**Repository:** ${repositoryUrl}\n**Branches Created:** ${createdBranches.join(', ')}\n\n🎉 Your customer environment is ready for GitOps deployments!`
-
-                                        showAlert({
-                                            title: 'GitOps Setup Complete',
-                                            message: successMessage,
-                                            variant: 'success'
-                                        })
-                                    } catch (error: any) {
-                                        showAlert({
-                                            title: 'GitOps Setup Failed',
-                                            message: error.message,
-                                            variant: 'error'
-                                        })
-                                    } finally {
-                                        setGitOpsLoading(false)
-                                    }
-                                }
-                            }}
-                            disabled={!gitOpsConfig.serverId || gitOpsLoading}
-                            className="min-w-[120px]"
-                        >
-                            {gitOpsLoading ? (
-                                <>
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Setting up...
-                                </>
-                            ) : (
-                                'Setup GitOps'
-                            )}
-                        </Button>                        
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

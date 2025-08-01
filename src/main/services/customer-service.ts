@@ -222,18 +222,22 @@ export class CustomerService {
     await this.saveCustomers(customers)
 
     let gitOpsRepo = null;
+    let finalCustomer = newCustomer;
 
     // Create GitOps repository if requested
     if (gitServerConfig.createGitOpsRepo) {
       try {
         gitOpsRepo = await this.createCustomerGitOpsRepository(newCustomer, gitServerConfig);
+        // Use the updated customer from GitOps setup
+        if (gitOpsRepo.updatedCustomer) {
+          finalCustomer = gitOpsRepo.updatedCustomer;
+        }
       } catch (error: any) {
         console.warn(`Failed to create GitOps repository for customer ${newCustomer.name}:`, error.message);
         // Don't fail customer creation if GitOps repo creation fails
       }
     }
-
-    return { customer: newCustomer, gitOpsRepo };
+    return { customer: finalCustomer, gitOpsRepo };
   }
 
   /**
@@ -291,14 +295,14 @@ export class CustomerService {
   //   }
   // }
 
-  static async createCustomerGitOpsRepository(
-    customer: Customer,
-    gitServerConfig: {
-      serverId: string;
-      gitBaseUrl: string;
-    }
-  ): Promise<any> {
-    const { gitService } = await import('./git-service');
+static async createCustomerGitOpsRepository(
+  customer: Customer,
+  gitServerConfig: {
+    serverId: string;
+    gitBaseUrl: string;
+  }
+): Promise<any> {
+  const { gitService } = await import('./git-service');
 
     // Construct GitOps repository URL: {gitBaseUrl}/{customerId}/gitops.git
     const gitOpsRepoName = `${customer.name}-gitops`;
@@ -353,10 +357,24 @@ export class CustomerService {
         branches: branchResult.createdBranches
       });
 
+      const updatedCustomer = await this.updateCustomer(customer.id, {
+        metadata: {
+          ...customer.metadata,
+          gitOps: {
+            repositoryUrl: repository.url || gitOpsRepoUrl,
+            serverId: gitServerConfig.serverId,
+            environments: ['dev', 'sit', 'uat', 'prod']
+          }
+        }
+      });
+
+      console.log(`✅ Updated customer ${customer.name} with GitOps metadata:`, updatedCustomer.metadata?.gitOps);
+
       return {
         repository,
         branches: branchResult.createdBranches,
-        errors: branchResult.errors
+        errors: branchResult.errors,
+        updatedCustomer
       };
 
     } catch (error: any) {
