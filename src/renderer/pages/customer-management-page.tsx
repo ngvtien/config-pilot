@@ -1239,10 +1239,16 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
                             Cancel
                         </Button>
 
-                        <Button onClick={handleConfirmGitOpsSetup}>
-                            Setup GitOps
+                        <Button onClick={handleConfirmGitOpsSetup} disabled={gitOpsLoading}>
+                            {gitOpsLoading ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Setting up...
+                                </>
+                            ) : (
+                                'Setup GitOps'
+                            )}
                         </Button>
-
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
