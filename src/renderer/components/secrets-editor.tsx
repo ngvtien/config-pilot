@@ -23,7 +23,6 @@ import { useToast } from "@/renderer/hooks/use-toast"
 import CodeMirror from "@uiw/react-codemirror"
 import { yaml as yamlLanguage } from "@codemirror/lang-yaml"
 import { readOnlyExtensions } from "@/renderer/lib/codemirror-themes"
-import { buildConfigPath } from "@/renderer/lib/path-utils"
 import type { ContextData } from "@/shared/types/context-data"
 import { Alert, AlertDescription } from "@/renderer/components/ui/alert"
 import { useDialog } from '@/renderer/hooks/useDialog'
@@ -66,14 +65,6 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
   }
 
   // Build the file path using the path utility
-  const filePath = buildConfigPath(
-    baseDirectory,
-    editorContext.customer,
-    editorContext.environment,
-    editorContext.instance,
-    editorContext.product,
-    "secrets.yaml",
-  )
 
   // Extract values from context for easier use
   const { environment: env, product, customer } = editorContext
@@ -96,7 +87,6 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
     externalSecretsYaml,
     setExternalSecretsYaml,
     loadValues,
-    addNewSecret,
     removeSelectedSecrets,
     updateSecretField
   } = useSecretsManager(env, initialValue)
@@ -115,7 +105,6 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
   } = useVaultIntegration(env)
 
   const {
-    resetCertificateState,
     certificateMetadata,
     analysisResult,
     analyzeContent,
@@ -299,7 +288,6 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
     setIsDraftMode(true)
 
     // ✅ Set editing state for the draft secret
-    const draftIndex = draftSecrets.length
     setEditingSecretIndex(-1) // Use -1 to indicate draft mode
     setSecretInputValue("")
     setShowSecretValue(false)
