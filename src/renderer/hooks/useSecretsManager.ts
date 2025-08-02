@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from "react"
 import yaml from "js-yaml"
 import { useToast } from "@/renderer/hooks/use-toast"
-import type { SecretItem, SortConfig } from "../types/secrets"
-import { generateExternalSecretsYaml, updateSecretsSourceFile } from "../utils/secrets-utils"
+import type { SecretItem, SortConfig } from "../components/types/secrets"
+import { generateExternalSecretsYaml, updateSecretsSourceFile } from "../components/utils/secrets-utils"
 
 /**
  * Custom hook for managing secrets state and operations

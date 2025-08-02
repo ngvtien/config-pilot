@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useToast } from "@/renderer/hooks/use-toast"
 import { VaultCredentialManager } from "@/renderer/services/vault-credential-manager"
-import type { VaultConnectionStatus, SecretVaultStatus, SecretItem, CertificateMetadata } from "../types/secrets"
+import type { VaultConnectionStatus, SecretVaultStatus, SecretItem, CertificateMetadata } from "../components/types/secrets"
 
 /**
  * Custom hook for Vault integration and secret synchronization

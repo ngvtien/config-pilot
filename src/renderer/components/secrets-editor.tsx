@@ -33,9 +33,9 @@ import { SecretsTable } from "./secrets/SecretsTable"
 import { SecretEditModal } from "./secrets/SecretEditModal"
 
 // Import custom hooks
-import { useSecretsManager } from "./hooks/useSecretsManager"
-import { useVaultIntegration } from "./hooks/useVaultIntegration"
-import { useCertificateAnalysis } from "./hooks/useCertificateAnalysis"
+import { useSecretsManager } from "../hooks/useSecretsManager"
+import { useVaultIntegration } from "../hooks/useVaultIntegration"
+import { useCertificateAnalysis } from "../hooks/useCertificateAnalysis"
 import type { SecretEditorProps, SecretItem, TabType } from "./types/secrets"
 import { generateExternalSecretsYaml, updateSecretsSourceFile } from "./utils/secrets-utils"
 

@@ -1,8 +1,8 @@
 import { useState, useCallback } from "react"
 import { useToast } from "@/renderer/hooks/use-toast"
-import type { FileType, CertificateMetadata, CertificateAnalysisResult } from "../types/secrets"
-import { detectContentType } from "../utils/secrets-utils"
-import { analyzeCertificate, generateCertificateFingerprint } from "../utils/certificate-utils"
+import type { FileType, CertificateMetadata, CertificateAnalysisResult } from "../components/types/secrets"
+import { detectContentType } from "../components/utils/secrets-utils"
+import { analyzeCertificate, generateCertificateFingerprint } from "../components/utils/certificate-utils"
 
 /**
  * Custom hook for certificate file handling and analysis with enhanced metadata
