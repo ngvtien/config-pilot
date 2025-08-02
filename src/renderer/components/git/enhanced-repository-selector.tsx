@@ -217,12 +217,12 @@ export const EnhancedRepositorySelector: React.FC<EnhancedRepositorySelectorProp
                     </div>
                     <div className="flex items-center gap-1">
                       <GitBranch className="h-3 w-3" />
-                      <Badge variant="outline" className="text-xs px-1 py-0">
+                      <Badge variant="outline" className={typography.tile.badge}>
                         {repo.branch}
                       </Badge>
                     </div>
                     {repo.metadata?.lastSync && (
-                      <span className="text-xs">
+                      <span className={typography.tile.metadata}>
                         Last sync: {new Date(repo.metadata.lastSync).toLocaleDateString()}
                       </span>
                     )}

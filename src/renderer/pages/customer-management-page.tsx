@@ -403,7 +403,7 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
         } catch (error: any) {
             console.error(`❌ Failed to save customer:`, error)
             setErrors([error.message || 'Failed to save customer'])
-        } finally{
+        } finally {
             // Always clear loading state
             setGitOpsLoading(false)
         }
@@ -754,9 +754,9 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
                                     )}
 
                                     {customer.metadata?.region && (
-                                        <div className="flex items-center justify-between text-xs">
-                                            <span className="text-gray-600 dark:text-gray-400">Region:</span>
-                                            <span>{customer.metadata.region}</span>
+                                        <div className="flex items-center justify-between">
+                                            <span className={typography.card.metadata}>Region:</span>
+                                            <span className={typography.card.subtitle}>{customer.metadata.region}</span>
                                         </div>
                                     )}
                                 </div>
@@ -782,8 +782,8 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
                                 {/* Enhanced GitOps Repository Information */}
                                 {customer.metadata?.gitOps?.repositoryUrl && (
                                     <div className="border-t pt-3 space-y-2">
-                                        <div className="flex items-center justify-between text-xs">
-                                            <span className="text-gray-600 dark:text-gray-400">GitOps Repository:</span>
+                                        <div className="flex items-center justify-between">
+                                            <span className={typography.card.metadata}>GitOps Repository:</span>
                                             <div className="flex items-center gap-1">
                                                 {/* Repository validation status indicator */}
                                                 {repositoryValidationStatus[customer.id] === 'validating' && (
@@ -883,7 +883,7 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
                                 )}
 
                                 {/* Last Updated */}
-                                <div className="text-xs text-gray-500 pt-2 border-t">
+                                <div className={`${typography.card.metadata} pt-2 border-t`}>
                                     Updated: {new Date(customer.updatedAt).toLocaleDateString()}
                                 </div>
                             </CardContent>
@@ -896,8 +896,8 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
                 <Card className="text-center py-12">
                     <CardContent>
                         <Building2 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                        <h3 className="text-lg font-medium text-gray-900 mb-2">No customers found</h3>
-                        <p className="text-gray-600 mb-4">Get started by creating your first customer.</p>
+                        <h3 className={typography.card.title}>No customers found</h3>
+                        <p className={typography.card.subtitle}>Get started by creating your first customer.</p>
                         <Button onClick={handleCreateCustomer}>
                             <Plus className="h-4 w-4 mr-2" />
                             Add Customer
