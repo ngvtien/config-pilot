@@ -336,6 +336,24 @@ export function registerUnifiedGitHandlers() {
     }
   });  
 
+  // Add these missing handlers after the existing ones:
+  ipcMain.handle('git:updateServer', async (_, serverId: string, updates: any) => {
+    try {
+      return await gitService.updateServer(serverId, updates);
+    } catch (error: any) {
+      console.error('Failed to update server:', error);
+      throw new Error(`Failed to update server: ${error.message}`);
+    }
+  });
+
+  ipcMain.handle('git:testServerConnection', async (_, serverId: string) => {
+    try {
+      return await gitService.testServerConnection(serverId);
+    } catch (error: any) {
+      console.error('Failed to test server connection:', error);
+      throw new Error(`Failed to test server connection: ${error.message}`);
+    }
+  });  
 }
 
 export function registerProductHandlers() {

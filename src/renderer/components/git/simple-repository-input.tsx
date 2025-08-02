@@ -141,17 +141,8 @@ export const SimpleRepositoryInput: React.FC<SimpleRepositoryInputProps> = ({
             let targetServer = servers.find(s => s.baseUrl === url.origin);
 
             if (!targetServer) {
-                console.log('No server configuration found, creating default Gitea server...');
-                const serverConfig = {
-                    name: `Gitea Server (${url.hostname})`,
-                    baseUrl: url.origin,
-                    provider: 'gitea' as const,
-                    description: `Auto-configured Gitea server for ${url.hostname}`,
-                    isDefault: true
-                };
-
-                targetServer = await window.electronAPI?.git?.saveServer(serverConfig);
-                console.log('Created server configuration:', targetServer);
+                // Don't auto-create servers - let user configure properly
+                throw new Error(`No Git server configured for ${url.origin}. Please configure your Git server in Settings first.`);
             } else {
                 console.log('Using existing server configuration:', targetServer);
             }

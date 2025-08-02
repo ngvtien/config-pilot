@@ -8,7 +8,6 @@ import {
   Plus,
   GitBranch,
   CheckCircle,
-  XCircle,
   Loader2,
   Key,
   ZoomIn,
@@ -19,11 +18,10 @@ import {
   Code,
   RefreshCw,
   Server,
-  Trash2,
-  AlertTriangle,
+  Eye, EyeOff
 } from "lucide-react"
-import { Badge } from "@/renderer/components/ui/badge"
-import { Alert, AlertDescription, AlertTitle } from "@/renderer/components/ui/alert"
+import { gitCredentialManager } from "@/renderer/services/git-credential-manager"
+import { Alert, AlertDescription } from "@/renderer/components/ui/alert"
 import { AuthenticationModal } from "@/renderer/components/authentication-modal"
 import { useTheme } from "@/renderer/components/theme-provider"
 import { useZoom } from "@/renderer/hooks/use-zoom"
@@ -38,8 +36,11 @@ import { ArgoCDConfigurationSection } from '@/renderer/components/argocd-configu
 import { HelmOCIConfigurationSection } from "@/renderer/components/helm-oci-configuration"
 import { PlatformService } from '@/renderer/services/platform.service'
 import type { PlatformInfo } from '@/main/services/platform-detection-service'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@radix-ui/react-select"
 import { useDialog } from '@/renderer/hooks/useDialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/renderer/components/ui/select"
+import { GitRepositoryService } from "@/renderer/services/git-repository.service"
+import { GitConfigurationSection } from "@/renderer/components/git-configuration-section"
+
 
 interface SettingsPageProps {
   context: ContextData
@@ -47,16 +48,6 @@ interface SettingsPageProps {
   onContextChange: (context: ContextData) => void
   settings: SettingsData
   onSettingsChange: (settings: SettingsData) => void
-}
-
-const getPermissionDescription = (permission: string, environment: string) => {
-  const descriptions = {
-    full: "Full read/write access",
-    "read-only": "Read-only access",
-    "dev-only": environment === "dev" ? "Full access (DEV environment)" : "Limited to DEV environment only",
-    none: "No access",
-  }
-  return descriptions[permission as keyof typeof descriptions] || permission
 }
 
 const getEnvironmentAwareRepositories = (environment: string): GitRepository[] => [
@@ -149,15 +140,124 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
   // Replace the local zoom state with the global zoom hook
   const { zoomLevel, setZoomLevel, increaseZoom, decreaseZoom, resetZoom } = useZoom()
 
-  const [isCleaningUp, setIsCleaningUp] = useState(false)
-  const [duplicateServers, setDuplicateServers] = useState<any[]>([])
-  const [showDuplicates, setShowDuplicates] = useState(false)
+  // Add these state variables
+  const [authMethod, setAuthMethod] = useState<"token" | "ssh" | "credentials">("token")
+  const [authForm, setAuthForm] = useState({
+    username: "",
+    password: "",
+    token: "",
+    sshKeyPath: "",
+  })
+  const [showPassword, setShowPassword] = useState(false)
+  const [showToken, setShowToken] = useState(false)
+  const [rememberCredentials, setRememberCredentials] = useState(true)
+  const [isAuthenticating, setIsAuthenticating] = useState(false)
+  const [error, setError] = useState("")
+
+  const [gitProvider, setGitProvider] = useState("")
+  const [gitServerConfig, setGitServerConfig] = useState({
+    provider: "",
+    baseUrl: "",
+    authStatus: "unknown" as const,
+    authMethod: "" as const,
+    lastConfigured: null as string | null
+  })
 
   const {
     showAlert,
     showErrorToast,
     AlertDialog
   } = useDialog();
+
+  const isFormValid = () => {
+    if (authMethod === "token") return authForm.token.trim() !== ""
+    if (authMethod === "credentials") return authForm.username.trim() !== "" && authForm.password.trim() !== ""
+    if (authMethod === "ssh") return authForm.sshKeyPath.trim() !== ""
+    return false
+  }
+
+  const handleFileSelect = async () => {
+    if (window.electronAPI?.selectFile) {
+      try {
+        const result = await window.electronAPI.selectFile({
+          filters: [
+            { name: "SSH Keys", extensions: ["", "rsa", "ed25519", "pem"] },
+            { name: "All Files", extensions: ["*"] },
+          ],
+        })
+
+        if (result && !result.canceled && result.filePaths.length > 0) {
+          setAuthForm({ ...authForm, sshKeyPath: result.filePaths[0] })
+        }
+      } catch (error) {
+        console.error("Error selecting SSH key file:", error)
+      }
+    }
+  }
+
+  const handleAuthSubmit = async () => {
+    setError("")
+    setIsAuthenticating(true)
+
+    try {
+      // Validate form based on auth method
+      if (authMethod === "token" && !authForm.token) {
+        setError("Personal access token is required")
+        return
+      }
+      if (authMethod === "credentials" && (!authForm.username || !authForm.password)) {
+        setError("Username and password are required")
+        return
+      }
+      if (authMethod === "ssh" && !authForm.sshKeyPath) {
+        setError("SSH key path is required")
+        return
+      }
+
+      const serverUrl = new URL(localContext.baseHostUrl)
+
+      // Create server credentials
+      const serverCredentials = {
+        method: authMethod,
+        serverUrl: serverUrl.origin,
+        serverId: "server-auth",
+        ...(authMethod === "token" && { token: authForm.token }),
+        ...(authMethod === "credentials" && {
+          username: authForm.username,
+          password: authForm.password,
+        }),
+        ...(authMethod === "ssh" && { sshKeyPath: authForm.sshKeyPath }),
+      }
+
+      // Simulate authentication (replace with actual implementation)
+      await new Promise((resolve) => setTimeout(resolve, 1500))
+
+      // Update auth status
+      const updatedRepo = {
+        id: "server-auth",
+        name: "Server Authentication",
+        url: localContext.baseHostUrl,
+        branch: "main",
+        description: "Server authentication setup",
+        authStatus: "authenticated" as const
+      }
+      setAuthModalRepo(updatedRepo)
+
+      // Store credentials if requested
+      if (rememberCredentials && gitCredentialManager.isSecureStorageAvailable()) {
+        await gitCredentialManager.storeServerCredentials(serverCredentials, true)
+      }
+
+      // Reset form
+      setAuthForm({ username: "", password: "", token: "", sshKeyPath: "" })
+      setError("")
+    } catch (error) {
+      console.error("Authentication error:", error)
+      setError("An unexpected error occurred. Please try again.")
+    } finally {
+      setIsAuthenticating(false)
+    }
+  }
 
   // Add platform detection function
   const handleDetectPlatform = async () => {
@@ -182,6 +282,45 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
       setIsDetectingPlatform(false)
     }
   }
+
+  // Load Git server configuration from localStorage on mount
+  useEffect(() => {
+    const savedGitConfig = localStorage.getItem("configpilot_git_server_config")
+    if (savedGitConfig) {
+      try {
+        const configData = JSON.parse(savedGitConfig)
+        setGitProvider(configData.provider || "")
+        setGitServerConfig(configData)
+
+        // Also restore the base URL to context if it exists
+        if (configData.baseUrl && configData.baseUrl !== localContext.baseHostUrl) {
+          handleContextChange("baseHostUrl", configData.baseUrl)
+        }
+      } catch (e) {
+        console.error("Error parsing saved Git config:", e)
+      }
+    }
+  }, [])
+
+  // Update the useEffect that saves Git server configuration
+  useEffect(() => {
+    if (gitProvider && localContext.baseHostUrl && authModalRepo?.authStatus === 'authenticated') {
+      const serverConfig = {
+        id: localContext.baseHostUrl,
+        serverId: localContext.baseHostUrl,
+        provider: gitProvider, // ✅ EXPLICITLY SET - no auto-detection
+        baseUrl: localContext.baseHostUrl,
+        description: `${gitProvider} server configuration`
+      }
+
+      console.log('💾 Saving server with explicit provider:', gitProvider);
+
+      // Use GitRepositoryService directly instead of addServer hook
+      GitRepositoryService.saveServer(serverConfig).catch((error: any) => {
+        console.error('Failed to save server to backend:', error)
+      })
+    }
+  }, [gitProvider, localContext.baseHostUrl, authModalRepo?.authStatus, authMethod])
 
   // Sync local state with props when they change
   useEffect(() => {
@@ -260,7 +399,6 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
 
     handleSettingChange("gitRepositories", updatedRepos)
   }, [context.environment])
-
 
   const [kubeConfigState, setKubeConfigState] = useState<{
     active: string;
@@ -432,47 +570,6 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
     } catch (error) {
       console.error('Failed to update kubeconfig:', error);
     }
-  }
-
-  const getAuthStatusIcon = (status?: string) => {
-    switch (status) {
-      case "checking":
-        return <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
-      case "success":
-        return <CheckCircle className="h-4 w-4 text-green-500" />
-      case "failed":
-        return <XCircle className="h-4 w-4 text-red-500" />
-      default:
-        return <Key className="h-4 w-4 text-gray-400" />
-    }
-  }
-
-  const getAuthStatusText = (status?: string) => {
-    switch (status) {
-      case "checking":
-        return "Checking..."
-      case "success":
-        return "Authenticated"
-      case "failed":
-        return "Auth Failed"
-      default:
-        return "Unknown"
-    }
-  }
-
-  const getPermissionBadge = (permission: string) => {
-    const variants = {
-      full: "default",
-      "read-only": "secondary",
-      "dev-only": "outline",
-      none: "destructive",
-    } as const
-
-    return (
-      <Badge variant={variants[permission as keyof typeof variants] || "secondary"} className="text-xs w-fit min-w-0">
-        {permission === "dev-only" ? "Dev only" : permission.charAt(0).toUpperCase() + permission.slice(1)}
-      </Badge>
-    )
   }
 
   const addRepository = () => {
@@ -655,187 +752,13 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
         </TabsList>
 
         <TabsContent value="repositories" className="space-y-6">
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-medium">Git Server Management</h3>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={checkDuplicateServers}
-                  className="flex items-center gap-2"
-                >
-                  <AlertTriangle className="h-4 w-4" />
-                  Check Duplicates
-                </Button>
-                {duplicateServers.length > 0 && (
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={cleanupDuplicateServers}
-                    disabled={isCleaningUp}
-                    className="flex items-center gap-2"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    {isCleaningUp ? 'Cleaning...' : 'Cleanup Servers'}
-                  </Button>
-                )}
-              </div>
-            </div>
-
-            {/* Duplicate Servers Alert */}
-            {showDuplicates && duplicateServers.length > 0 && (
-              <Alert className="border-orange-200 bg-orange-50">
-                <AlertTriangle className="h-4 w-4 text-orange-600" />
-                <AlertTitle className="text-orange-800">Duplicate Servers Found</AlertTitle>
-                <AlertDescription className="text-orange-700">
-                  <div className="mt-2 space-y-1">
-                    {duplicateServers.map((group, index) => (
-                      <div key={index} className="text-sm">
-                        <strong>{group.baseUrl}</strong>: {group.count} duplicates
-                        <div className="ml-4 text-xs text-gray-600">
-                          {group.servers.map((server: any, serverIndex: number) => (
-                            <div key={serverIndex}>
-                              ID: {server.id} | Provider: {server.provider || 'undefined'} |
-                              Created: {new Date(server.createdAt).toLocaleDateString()}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {showDuplicates && duplicateServers.length === 0 && (
-              <Alert className="border-green-200 bg-green-50">
-                <CheckCircle className="h-4 w-4 text-green-600" />
-                <AlertTitle className="text-green-800">No Duplicates Found</AlertTitle>
-                <AlertDescription className="text-green-700">
-                  All Git servers are unique. No cleanup needed.
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {/* Base Host URL */}
-            <div className="mb-4">
-              <Label htmlFor="baseHostUrl" className="text-sm font-medium">
-                Base Host URL
-              </Label>
-              <p className="text-xs text-muted-foreground mb-2">
-                Base URL for Git repositories (e.g., https://github.com/{context.customer})
-              </p>
-              <Input
-                id="baseHostUrl"
-                value={localContext.baseHostUrl}
-                onChange={(e) => {
-                  const lowercaseValue = e.target.value.toLowerCase()
-                  handleContextChange("baseHostUrl", lowercaseValue)
-                }}
-                placeholder={`https://github.com/${context.customer}`}
-                className="w-full"
-              />
-              {localContext.baseHostUrl && (
-                <p className="text-xs text-muted-foreground mt-1">Current: {localContext.baseHostUrl}</p>
-              )}
-            </div>
-
-            {/* Repository List */}
-            <div className="space-y-3 mb-4">
-              {localSettings.gitRepositories.map((repo) => (
-                <div key={repo.id} className="border rounded-lg p-4">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <h3 className="text-lg font-semibold">{repo.name}</h3>
-                        <Badge variant="outline" className="text-xs">
-                          {repo.branch}
-                        </Badge>
-                        <div className="flex items-center gap-1">
-                          {getAuthStatusIcon(repo.authStatus)}
-                          <span className="text-xs text-muted-foreground">{getAuthStatusText(repo.authStatus)}</span>
-                        </div>
-                      </div>
-                      <p className="text-sm text-muted-foreground mb-2">{repo.description}</p>
-                      <p className="text-xs text-muted-foreground font-mono">{repo.url.toLowerCase()}</p>
-
-                      {repo.lastAuthCheck && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Last checked: {new Date(repo.lastAuthCheck).toLocaleString()}
-                        </p>
-                      )}
-
-                      {repo.authStatus === "failed" && (
-                        <Alert className="mt-2">
-                          <XCircle className="h-4 w-4" />
-                          <AlertDescription className="text-xs">
-                            Authentication failed. Please check your Git credentials and repository access permissions.
-                          </AlertDescription>
-                        </Alert>
-                      )}
-
-                      {/* Permissions Grid */}
-                      <div className="grid grid-cols-3 gap-4 mt-3 pt-3 border-t">
-                        <div className="flex flex-col gap-1">
-                          <span className="text-xs font-medium">Developer:</span>
-                          {getPermissionBadge(repo.permissions.developer)}
-                          <span className="text-xs text-muted-foreground">
-                            {getPermissionDescription(repo.permissions.developer, context.environment)}
-                          </span>
-                        </div>
-                        <div className="flex flex-col gap-1">
-                          <span className="text-xs font-medium">DevOps:</span>
-                          {getPermissionBadge(repo.permissions.devops)}
-                          <span className="text-xs text-muted-foreground">
-                            {getPermissionDescription(repo.permissions.devops, context.environment)}
-                          </span>
-                        </div>
-                        <div className="flex flex-col gap-1">
-                          <span className="text-xs font-medium">Operations:</span>
-                          {getPermissionBadge(repo.permissions.operations)}
-                          <span className="text-xs text-muted-foreground">
-                            {getPermissionDescription(repo.permissions.operations, context.environment)}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => checkRepositoryAuth(repo.id)}
-                        disabled={repo.authStatus === "checking"}
-                        className="flex items-center gap-2"
-                      >
-                        {repo.authStatus === "checking" ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Key className="h-4 w-4" />
-                        )}
-                        Auth
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setEditingRepoId(repo.id)
-                          setNewRepo({
-                            ...repo,
-                            url: repo.url || `${localContext.baseHostUrl}/${context.product}/config-definitions.git`,
-                          })
-                          setIsModalOpen(true)
-                        }}
-                      >
-                        Update
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+          <GitConfigurationSection
+            context={context}
+            onContextChange={onContextChange}
+            authModalRepo={authModalRepo}
+            setAuthModalRepo={setAuthModalRepo}
+            setAuthModalOpen={setAuthModalOpen}
+          />
         </TabsContent>
 
         <TabsContent value="vault" className="space-y-6">

@@ -35,8 +35,8 @@ export class GitRepositoryService {
   static async removeRepository(id: string): Promise<void> {
     try {
       // Update to use unified API (this needs to be added to UnifiedGitService)
-      await window.electronAPI?.git?.removeRepository?.(id) || 
-      await window.electronAPI?.invoke('git:removeRepository', id);
+      await window.electronAPI?.git?.removeRepository?.(id) ||
+        await window.electronAPI?.invoke('git:removeRepository', id);
     } catch (error) {
       console.error('Failed to remove repository:', error);
       throw new Error(`Failed to remove repository: ${error}`);
@@ -121,7 +121,7 @@ export class GitRepositoryService {
   static async updateRepository(id: string, updates: Partial<GitRepository>): Promise<GitRepository> {
     const repositories = await this.getRepositories();
     const existingRepo = repositories.find(r => r.id === id);
-    
+
     if (!existingRepo) {
       throw new Error('Repository not found');
     }
@@ -184,6 +184,42 @@ export class GitRepositoryService {
     } catch (error: any) {
       console.error('Failed to check health:', error);
       return { status: 'error', error: error.message };
+    }
+  }
+
+  /**
+   * Remove a Git server configuration
+   */
+  static async removeServer(serverId: string): Promise<void> {
+    try {
+      await window.electronAPI?.git?.removeServer(serverId)
+    } catch (error) {
+      console.error('Failed to remove server:', error)
+      throw new Error(`Failed to remove server: ${error}`)
+    }
+  }
+
+  /**
+   * Update an existing Git server configuration
+   */
+  static async updateServer(serverId: string, updates: Partial<GitServerConfig>): Promise<GitServerConfig> {
+    try {
+      return await window.electronAPI?.git?.updateServer(serverId, updates)
+    } catch (error) {
+      console.error('Failed to update server:', error)
+      throw new Error(`Failed to update server: ${error}`)
+    }
+  }
+
+  /**
+   * Test connection to a Git server
+   */
+  static async testServerConnection(serverId: string): Promise<{ success: boolean; status: string; message?: string }> {
+    try {
+      return await window.electronAPI?.git?.testServerConnection(serverId)
+    } catch (error) {
+      console.error('Failed to test server connection:', error)
+      return { success: false, status: 'failed', message: error.message }
     }
   }
 }

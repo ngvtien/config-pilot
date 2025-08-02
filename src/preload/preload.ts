@@ -196,6 +196,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
       'git:removeServer',
       'git:cleanupDuplicateServers',
       'git:getDuplicateServers',
+      'git:updateServer',
+      'git:testServerConnection',
 
     ]
     if (validChannels.includes(channel)) {
@@ -473,6 +475,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     removeServer: (serverId: string) => ipcRenderer.invoke('git:removeServer', serverId),
     cleanupDuplicateServers: () => ipcRenderer.invoke('git:cleanupDuplicateServers'),
     getDuplicateServers: () => ipcRenderer.invoke('git:getDuplicateServers'),
-
+    updateServer: (serverId: string, updates: any) => ipcRenderer.invoke('git:updateServer', serverId, updates),
+    testServerConnection: (serverId: string) => ipcRenderer.invoke('git:testServerConnection', serverId),
   },
 })

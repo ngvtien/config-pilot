@@ -106,31 +106,44 @@ export class GitService {
         return this.store.get('servers', []);
     }
 
+    /**
+     * Normalize URL by removing trailing slashes for consistent comparison
+     * @param url - URL to normalize
+     * @returns Normalized URL
+     */
+    private normalizeUrl(url: string): string {
+        return url.replace(/\/+$/, '');
+    }
+
     saveServer(server: Omit<GitServerConfig, 'id' | 'createdAt' | 'updatedAt'>): GitServerConfig {
         const servers = this.getServers();
 
-        // Use baseUrl directly as the serverId - simple and logical
-        const serverId = server.baseUrl;
+        // Normalize baseUrl to prevent duplicates with trailing slashes
+        const normalizedBaseUrl = this.normalizeUrl(server.baseUrl);
+        const serverId = normalizedBaseUrl;
 
-        // Check if server already exists
-        const existingIndex = servers.findIndex(s => s.baseUrl === server.baseUrl);
+        // Check if server already exists using normalized URL
+        const existingIndex = servers.findIndex(s => this.normalizeUrl(s.baseUrl) === normalizedBaseUrl);
 
         if (existingIndex >= 0) {
-            // ✅ CORRECTLY UPDATES existing server, ensuring ID is set to baseUrl
+            // ✅ CORRECTLY UPDATES existing server, ensuring provider is explicitly preserved
             const updatedServer = {
                 ...servers[existingIndex],
                 ...server,
+                baseUrl: normalizedBaseUrl, // Use normalized URL
                 id: serverId,
                 updatedAt: new Date().toISOString()
             };
             servers[existingIndex] = updatedServer;
             this.store.set('servers', servers);
+            console.log('🔄 Updated existing server:', updatedServer.id, 'Provider:', updatedServer.provider);
             return updatedServer;
         }
 
-        // Only creates new server if none exists with same baseUrl
+        // Only creates new server if none exists with same normalized baseUrl
         const newServer: GitServerConfig = {
             ...server,
+            baseUrl: normalizedBaseUrl, // Use normalized URL
             id: serverId,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
@@ -138,6 +151,7 @@ export class GitService {
 
         servers.push(newServer);
         this.store.set('servers', servers);
+        console.log('➕ Created new server:', newServer.id, 'Provider:', newServer.provider);
         return newServer;
     }
 
@@ -1565,6 +1579,102 @@ The ApplicationSet uses GitDirectoryGenerator to automatically discover applicat
         // Pass all required parameters: server, credentials, and config
         await request.provider.createOrganization(server, credentials, request.config);
     }
+
+    /**
+     * Update an existing server
+     * @param serverId Server ID to update
+     * @param updates Partial server data to update
+     * @returns Updated server configuration
+     */
+    updateServer(serverId: string, updates: Partial<GitServerConfig>): GitServerConfig {
+        const servers = this.getServers();
+        const serverIndex = servers.findIndex(s => s.id === serverId);
+
+        if (serverIndex === -1) {
+            throw new Error(`Server with ID ${serverId} not found`);
+        }
+
+        const existingServer = servers[serverIndex];
+        const updatedServer: GitServerConfig = {
+            ...existingServer,
+            ...updates,
+            id: serverId, // Ensure ID doesn't change
+            updatedAt: new Date().toISOString()
+        };
+
+        // Normalize the URL if baseUrl is being updated
+        if (updates.baseUrl) {
+            updatedServer.baseUrl = this.normalizeUrl(updates.baseUrl);
+        }
+
+        servers[serverIndex] = updatedServer;
+        this.store.set('servers', servers);
+
+        return updatedServer;
+    }
+
+    /**
+     * Test server connection by server ID
+     * @param serverId Server ID to test
+     * @returns Connection test result
+     */
+    async testServerConnection(serverId: string): Promise<{ success: boolean; status: string; message?: string }> {
+        try {
+            const servers = this.getServers();
+            const server = servers.find(s => s.id === serverId);
+
+            if (!server) {
+                return {
+                    success: false,
+                    status: 'error',
+                    message: `Server with ID ${serverId} not found`
+                };
+            }
+
+            // Get stored credentials for this server
+            const credentialsData = this.store.get('credentials', {});
+            const encryptedCredentials = credentialsData[serverId];
+
+            if (!encryptedCredentials) {
+                return {
+                    success: false,
+                    status: 'no_credentials',
+                    message: 'No credentials found for this server'
+                };
+            }
+
+            // Decrypt credentials
+            let credentials: GitServerCredentials;
+            try {
+                const decryptedData = safeStorage.decryptString(Buffer.from(encryptedCredentials, 'base64'));
+                credentials = JSON.parse(decryptedData);
+            } catch (error) {
+                return {
+                    success: false,
+                    status: 'credential_error',
+                    message: 'Failed to decrypt stored credentials'
+                };
+            }
+
+            // Test the connection using the existing authenticateServer method
+            const result = await this.authenticateServer(serverId, credentials);
+
+            return {
+                success: result.isValid,
+                status: result.isValid ? 'connected' : 'failed',
+                message: result.error
+            };
+
+        } catch (error: any) {
+            console.error(`[GitService] Error testing server connection for ${serverId}:`, error);
+            return {
+                success: false,
+                status: 'error',
+                message: error.message || 'Unknown error occurred'
+            };
+        }
+    }
+
 }
 
 // Export singleton instance
