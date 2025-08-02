@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/renderer/components/ui/select'
 import { Textarea } from '@/renderer/components/ui/textarea'
 import { Switch } from '@/renderer/components/ui/switch'
-import { Trash2, Edit, Plus, Download, Upload, Building2, Loader2, GitBranch, CheckCircle, XCircle, ExternalLink } from 'lucide-react'
+import { Trash2, Edit, Plus, Download, Upload, Building2, Loader2, GitBranch, CheckCircle, XCircle, ExternalLink, Search, X, Grid, List } from 'lucide-react'
 import type { Customer, CustomerGitOpsConfig, CustomerGitOpsResult } from '@/shared/types/customer'
 import { createNewCustomer, validateCustomer } from '@/shared/types/customer'
 import { useDialog } from '@/renderer/hooks/useDialog'
@@ -62,8 +62,46 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
         suggestedUrl?: string
     }>({ status: 'idle' })
 
+    // Search and view functionality
+    const [searchQuery, setSearchQuery] = useState('')
+    const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([])
+    const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
 
-    // Add repository validation function
+    /**
+     * Filter customers based on search query (simplified to name, displayName, description only)
+     */
+    const filterCustomers = (customers: Customer[], query: string): Customer[] => {
+        if (!query.trim()) return customers
+
+        const lowercaseQuery = query.toLowerCase()
+        return customers.filter(customer =>
+            customer.name.toLowerCase().includes(lowercaseQuery) ||
+            customer.displayName?.toLowerCase().includes(lowercaseQuery) ||
+            customer.description?.toLowerCase().includes(lowercaseQuery)
+        )
+    }
+
+    /**
+     * Handle search input change
+     */
+    const handleSearchChange = (value: string) => {
+        setSearchQuery(value)
+        setFilteredCustomers(filterCustomers(customers, value))
+    }
+
+    /**
+     * Clear search
+     */
+    const handleClearSearch = () => {
+        setSearchQuery('')
+        setFilteredCustomers(customers)
+    }
+
+    // Update filtered customers when customers change
+    useEffect(() => {
+        setFilteredCustomers(filterCustomers(customers, searchQuery))
+    }, [customers, searchQuery])
+
     // Add repository validation function
     const validateCustomerRepository = async (customer: Customer) => {
         if (!customer.metadata?.gitOps?.repositoryUrl) return
@@ -107,11 +145,6 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
         }
     }, [customers])
 
-    // // Load Git servers on component mount
-    // useEffect(() => {
-    //     loadGitServers()
-    // }, [])
-
     // Load customers on component mount
     useEffect(() => {
         loadCustomers()
@@ -139,17 +172,6 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
             setIsLoading(false)
         }
     }
-    // /**
-    //  * Load available Git servers
-    //  */
-    // const loadGitServers = async () => {
-    //     try {
-    //         const servers = await window.electronAPI?.customer?.getAvailableGitServers()
-    //         setGitServers(servers || [])
-    //     } catch (error: any) {
-    //         console.error('Failed to load Git servers:', error)
-    //     }
-    // }
 
     /**
      * Handle saving customer with GitOps setup
@@ -434,12 +456,6 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
                 gitBaseUrl: context?.baseHostUrl || ''
             };
 
-            // // Use the correct localhost server configuration
-            // const gitServerConfig = {
-            //     serverId: 'http://localhost:9080',  // Use the actual server ID
-            //     gitBaseUrl: 'http://localhost:9080' // Use the correct base URL
-            // };
-
             console.log(`🏗️ Setting up GitOps with config:`, gitServerConfig);
             const result = await window.electronAPI?.customer?.setupGitOps(customer.id, gitServerConfig);
             console.log(`✅ GitOps setup completed:`, result);
@@ -660,7 +676,55 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
                         <p className="text-gray-600">Manage your customers and their configurations</p>
                     </div>
                 </div>
+            </div>
+
+            {/* Search and Actions Row */}
+            <div className="flex items-center justify-between gap-4">
+                {/* Search Section */}
+                <div className="flex items-center gap-4 flex-1">
+                    <div className="relative flex-1 max-w-md">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <Input
+                            type="text"
+                            placeholder="Search by name or description..."
+                            value={searchQuery}
+                            onChange={(e) => handleSearchChange(e.target.value)}
+                            className="pl-10 pr-10"
+                        />
+                        {searchQuery && (
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={handleClearSearch}
+                                className="absolute right-1 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0 hover:bg-gray-100"
+                            >
+                                <X className="h-3 w-3" />
+                            </Button>
+                        )}
+                    </div>
+
+                    {/* Search Results Summary */}
+                    {searchQuery && (
+                        <div className="flex items-center gap-2">
+                            <span className={typography.card.metadata}>
+                                {filteredCustomers.length} of {customers.length} customers
+                            </span>
+                        </div>
+                    )}
+                </div>
+
+                {/* Action Buttons */}
                 <div className="flex items-center gap-2">
+                    {/* View Toggle */}
+                    <Button
+                        onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
+                        variant="outline"
+                        size="sm"
+                        title={`Switch to ${viewMode === 'grid' ? 'list' : 'grid'} view`}
+                    >
+                        {viewMode === 'grid' ? <List className="h-4 w-4" /> : <Grid className="h-4 w-4" />}
+                    </Button>
+
                     <Button variant="outline" onClick={handleImportCustomers}>
                         <Download className="h-4 w-4 mr-2" />
                         Import
@@ -676,14 +740,275 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
                 </div>
             </div>
 
-            {/* Customer List */}
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                <TooltipProvider>
-                    {customers.map((customer) => (
-                        <Card key={customer.id} className="hover:shadow-md transition-shadow">
-                            <CardHeader className="pb-3">
-                                <div className="flex items-center justify-between">
-                                    <CardTitle className={typography.card.title}>{customer.displayName || customer.name}</CardTitle>
+            {/* Customer Display - Grid or List */}
+            {viewMode === 'grid' ? (
+                /* Grid View (existing tile layout) */
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    <TooltipProvider>
+                        {filteredCustomers.map((customer) => (
+                            <Card key={customer.id} className="hover:shadow-md transition-shadow">
+                                <CardHeader className="pb-3">
+                                    <div className="flex items-center justify-between">
+                                        <CardTitle className={typography.card.title}>{customer.displayName || customer.name}</CardTitle>
+                                        <div className="flex items-center gap-1">
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => handleEditCustomer(customer)}
+                                            >
+                                                <Edit className="h-4 w-4" />
+                                            </Button>
+                                            {customer.metadata?.gitOps?.repositoryUrl ? (
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            onClick={() => handleSetupGitOps(customer)}
+                                                            title="Reconfigure GitOps Repository"
+                                                        >
+                                                            ⚙️
+                                                        </Button>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent>
+                                                        <p>Reconfigure GitOps repository for this customer</p>
+                                                    </TooltipContent>
+                                                </Tooltip>
+                                            ) : (
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            onClick={() => handleSetupGitOps(customer)}
+                                                            title="Setup GitOps Repository"
+                                                        >
+                                                            🔧
+                                                        </Button>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent>
+                                                        <p>Setup GitOps repository for this customer `{customer.name}` `{customer.metadata?.gitOps?.repositoryUrl}`</p>
+                                                    </TooltipContent>
+                                                </Tooltip>
+                                            )}
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => handleDeleteCustomer(customer)}
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </Button>
+                                        </div>
+                                    </div>
+                                    <CardDescription className={typography.card.subtitle}>{customer.description || 'No description'}</CardDescription>
+                                </CardHeader>
+                                <CardContent className="space-y-3">
+                                    {/* Customer Details */}
+                                    <div className="space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <span className={typography.card.metadata}>Internal ID:</span>
+                                            <code className="bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded">{customer.name}</code>
+                                        </div>
+
+                                        {customer.metadata?.tier && (
+                                            <div className="flex items-center justify-between">
+                                                <span className={typography.card.metadata}>Tier:</span>
+                                                <Badge className={getTierBadgeColor(customer.metadata.tier)}>
+                                                    {customer.metadata.tier}
+                                                </Badge>
+                                            </div>
+                                        )}
+
+                                        {customer.metadata?.region && (
+                                            <div className="flex items-center justify-between">
+                                                <span className={typography.card.metadata}>Region:</span>
+                                                <span className={typography.card.subtitle}>{customer.metadata.region}</span>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Status Badges */}
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <Badge variant={customer.isActive ? "default" : "secondary"}>
+                                            {customer.isActive ? 'Active' : 'Inactive'}
+                                        </Badge>
+
+                                        {customer.metadata?.gitOps?.repositoryUrl ? (
+                                            <Badge variant="outline" className="text-green-600 border-green-200">
+                                                <GitBranch className="h-3 w-3 mr-1" />
+                                                GitOps ✓
+                                            </Badge>
+                                        ) : (
+                                            <Badge variant="outline" className="text-gray-500">
+                                                No GitOps
+                                            </Badge>
+                                        )}
+                                    </div>
+
+                                    {/* Enhanced GitOps Repository Information */}
+                                    {customer.metadata?.gitOps?.repositoryUrl && (
+                                        <div className="border-t pt-3 space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <span className={typography.card.metadata}>GitOps Repository:</span>
+                                                <div className="flex items-center gap-1">
+                                                    {/* Repository validation status indicator */}
+                                                    {repositoryValidationStatus[customer.id] === 'validating' && (
+                                                        <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
+                                                    )}
+                                                    {repositoryValidationStatus[customer.id] === 'valid' && (
+                                                        <CheckCircle className="h-3 w-3 text-green-500" />
+                                                    )}
+                                                    {repositoryValidationStatus[customer.id] === 'invalid' && (
+                                                        <Tooltip>
+                                                            <TooltipTrigger asChild>
+                                                                <XCircle className="h-3 w-3 text-red-500 cursor-help" />
+                                                            </TooltipTrigger>
+                                                            <TooltipContent>
+                                                                <p>Repository is not accessible or doesn't exist</p>
+                                                            </TooltipContent>
+                                                        </Tooltip>
+                                                    )}
+
+                                                    <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                            <a
+                                                                href={customer.metadata.gitOps.repositoryUrl}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className={`flex items-center gap-1 truncate max-w-32 ${repositoryValidationStatus[customer.id] === 'invalid'
+                                                                    ? 'text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300'
+                                                                    : 'text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300'
+                                                                    }`}
+                                                            >
+                                                                <GitBranch className="h-3 w-3" />
+                                                                <span>{customer.metadata.gitOps.repositoryUrl.split('/').pop()?.replace('.git', '')}</span>
+                                                                <ExternalLink className="h-3 w-3" />
+                                                            </a>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent>
+                                                            <div className="space-y-1">
+                                                                <p className="font-medium">{repositoryValidationStatus[customer.id] === 'invalid'
+                                                                    ? 'Repository not accessible - click to attempt opening anyway'
+                                                                    : 'Open GitOps repository in new tab'}</p>
+                                                                <p className="text-xs opacity-75">{customer.metadata.gitOps.repositoryUrl}</p>
+                                                            </div>
+                                                        </TooltipContent>
+                                                    </Tooltip>
+                                                </div>
+                                            </div>
+
+                                            {customer.metadata.gitOps.environments && customer.metadata.gitOps.environments.length > 0 && (
+                                                <div className="flex items-center justify-between text-xs">
+                                                    <span className="text-gray-600 dark:text-gray-400">Environments:</span>
+                                                    <div className="flex gap-1 flex-wrap">
+                                                        {customer.metadata.gitOps.environments.map((env: any) => (
+                                                            <Badge key={env} variant="secondary" className={typography.card.badge}>
+                                                                {env}
+                                                            </Badge>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {repositoryValidationStatus[customer.id] === 'invalid' && (
+                                                <div className="flex gap-1">
+                                                    <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={() => validateCustomerRepository(customer)}
+                                                                className="h-6 px-2 text-xs"
+                                                            >
+                                                                🔄 Retry
+                                                            </Button>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent>
+                                                            <p>Retry repository validation</p>
+                                                        </TooltipContent>
+                                                    </Tooltip>
+
+                                                    <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={() => handleSetupGitOps(customer)}
+                                                                className="h-6 px-2 text-xs"
+                                                            >
+                                                                🔧 Reconfigure
+                                                            </Button>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent>
+                                                            <p>Reconfigure GitOps repository</p>
+                                                        </TooltipContent>
+                                                    </Tooltip>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* Last Updated */}
+                                    <div className={`${typography.card.metadata} pt-2 border-t`}>
+                                        Updated: {new Date(customer.updatedAt).toLocaleDateString()}
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        ))}
+                    </TooltipProvider>
+                </div>
+            ) : (
+                /* List View (row layout) */
+                <div className="space-y-3">
+                    <TooltipProvider>
+                        {filteredCustomers.map((customer) => (
+                            <Card key={customer.id} className="hover:shadow-md transition-shadow">
+                                <div className="flex items-center p-4 gap-4">
+                                    {/* Customer Info */}
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-3 mb-2">
+                                            <h3 className={typography.card.title}>{customer.displayName || customer.name}</h3>
+                                            <Badge variant={customer.isActive ? "default" : "secondary"} className={typography.card.badge}>
+                                                {customer.isActive ? 'Active' : 'Inactive'}
+                                            </Badge>
+                                            {customer.metadata?.tier && (
+                                                <Badge className={`${getTierBadgeColor(customer.metadata.tier)} ${typography.card.badge}`}>
+                                                    {customer.metadata.tier}
+                                                </Badge>
+                                            )}
+                                            {customer.metadata?.gitOps?.repositoryUrl && (
+                                                <Badge variant="outline" className={`text-green-600 border-green-200 ${typography.card.badge}`}>
+                                                    <GitBranch className="h-3 w-3 mr-1" />
+                                                    GitOps
+                                                </Badge>
+                                            )}
+                                        </div>
+                                        <p className={typography.card.subtitle}>{customer.description || 'No description'}</p>
+                                        <div className="flex items-center gap-4 mt-2">
+                                            <span className={typography.card.metadata}>ID: {customer.name}</span>
+                                            {customer.metadata?.region && (
+                                                <span className={typography.card.metadata}>Region: {customer.metadata.region}</span>
+                                            )}
+                                            <span className={typography.card.metadata}>Updated: {new Date(customer.updatedAt).toLocaleDateString()}</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Repository Status */}
+                                    {customer.metadata?.gitOps?.repositoryUrl && (
+                                        <div className="flex items-center gap-2">
+                                            {repositoryValidationStatus[customer.id] === 'validating' && (
+                                                <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                                            )}
+                                            {repositoryValidationStatus[customer.id] === 'valid' && (
+                                                <CheckCircle className="h-4 w-4 text-green-500" />
+                                            )}
+                                            {repositoryValidationStatus[customer.id] === 'invalid' && (
+                                                <XCircle className="h-4 w-4 text-red-500" />
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* Actions */}
                                     <div className="flex items-center gap-1">
                                         <Button
                                             variant="ghost"
@@ -692,39 +1017,14 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
                                         >
                                             <Edit className="h-4 w-4" />
                                         </Button>
-                                        {customer.metadata?.gitOps?.repositoryUrl ? (
-                                            <Tooltip>
-                                                <TooltipTrigger asChild>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        onClick={() => handleSetupGitOps(customer)}
-                                                        title="Reconfigure GitOps Repository"
-                                                    >
-                                                        ⚙️
-                                                    </Button>
-                                                </TooltipTrigger>
-                                                <TooltipContent>
-                                                    <p>Reconfigure GitOps repository for this customer</p>
-                                                </TooltipContent>
-                                            </Tooltip>
-                                        ) : (
-                                            <Tooltip>
-                                                <TooltipTrigger asChild>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        onClick={() => handleSetupGitOps(customer)}
-                                                        title="Setup GitOps Repository"
-                                                    >
-                                                        🔧
-                                                    </Button>
-                                                </TooltipTrigger>
-                                                <TooltipContent>
-                                                    <p>Setup GitOps repository for this customer `{customer.name}` `{customer.metadata?.gitOps?.repositoryUrl}`</p>
-                                                </TooltipContent>
-                                            </Tooltip>
-                                        )}
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => handleSetupGitOps(customer)}
+                                            title={customer.metadata?.gitOps?.repositoryUrl ? "Reconfigure GitOps" : "Setup GitOps"}
+                                        >
+                                            {customer.metadata?.gitOps?.repositoryUrl ? '⚙️' : '🔧'}
+                                        </Button>
                                         <Button
                                             variant="ghost"
                                             size="sm"
@@ -734,165 +1034,29 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
                                         </Button>
                                     </div>
                                 </div>
-                                <CardDescription className={typography.card.subtitle}>{customer.description || 'No description'}</CardDescription>
-                            </CardHeader>
-                            <CardContent className="space-y-3">
-                                {/* Customer Details */}
-                                <div className="space-y-2">
-                                    <div className="flex items-center justify-between">
-                                        <span className={typography.card.metadata}>Internal ID:</span>
-                                        <code className="bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded">{customer.name}</code>
-                                    </div>
+                            </Card>
+                        ))}
+                    </TooltipProvider>
+                </div>
+            )}
 
-                                    {customer.metadata?.tier && (
-                                        <div className="flex items-center justify-between">
-                                            <span className={typography.card.metadata}>Tier:</span>
-                                            <Badge className={getTierBadgeColor(customer.metadata.tier)}>
-                                                {customer.metadata.tier}
-                                            </Badge>
-                                        </div>
-                                    )}
+            {/* Empty States */}
+            {filteredCustomers.length === 0 && searchQuery && (
+                <Card className="text-center py-12">
+                    <CardContent>
+                        <Search className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                        <h3 className={typography.card.title}>No customers match your search</h3>
+                        <p className={typography.card.subtitle}>
+                            Try adjusting your search terms or{' '}
+                            <Button variant="link" onClick={handleClearSearch} className="p-0 h-auto">
+                                clear the search
+                            </Button>
+                        </p>
+                    </CardContent>
+                </Card>
+            )}
 
-                                    {customer.metadata?.region && (
-                                        <div className="flex items-center justify-between">
-                                            <span className={typography.card.metadata}>Region:</span>
-                                            <span className={typography.card.subtitle}>{customer.metadata.region}</span>
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Status Badges */}
-                                <div className="flex items-center gap-2 flex-wrap">
-                                    <Badge variant={customer.isActive ? "default" : "secondary"}>
-                                        {customer.isActive ? 'Active' : 'Inactive'}
-                                    </Badge>
-
-                                    {customer.metadata?.gitOps?.repositoryUrl ? (
-                                        <Badge variant="outline" className="text-green-600 border-green-200">
-                                            <GitBranch className="h-3 w-3 mr-1" />
-                                            GitOps ✓
-                                        </Badge>
-                                    ) : (
-                                        <Badge variant="outline" className="text-gray-500">
-                                            No GitOps
-                                        </Badge>
-                                    )}
-                                </div>
-
-                                {/* Enhanced GitOps Repository Information */}
-                                {customer.metadata?.gitOps?.repositoryUrl && (
-                                    <div className="border-t pt-3 space-y-2">
-                                        <div className="flex items-center justify-between">
-                                            <span className={typography.card.metadata}>GitOps Repository:</span>
-                                            <div className="flex items-center gap-1">
-                                                {/* Repository validation status indicator */}
-                                                {repositoryValidationStatus[customer.id] === 'validating' && (
-                                                    <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
-                                                )}
-                                                {repositoryValidationStatus[customer.id] === 'valid' && (
-                                                    <CheckCircle className="h-3 w-3 text-green-500" />
-                                                )}
-                                                {repositoryValidationStatus[customer.id] === 'invalid' && (
-                                                    <Tooltip>
-                                                        <TooltipTrigger asChild>
-                                                            <XCircle className="h-3 w-3 text-red-500 cursor-help" />
-                                                        </TooltipTrigger>
-                                                        <TooltipContent>
-                                                            <p>Repository is not accessible or doesn't exist</p>
-                                                        </TooltipContent>
-                                                    </Tooltip>
-                                                )}
-
-                                                <Tooltip>
-                                                    <TooltipTrigger asChild>
-                                                        <a
-                                                            href={customer.metadata.gitOps.repositoryUrl}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            className={`flex items-center gap-1 truncate max-w-32 ${repositoryValidationStatus[customer.id] === 'invalid'
-                                                                ? 'text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300'
-                                                                : 'text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300'
-                                                                }`}
-                                                        >
-                                                            <GitBranch className="h-3 w-3" />
-                                                            <span>{customer.metadata.gitOps.repositoryUrl.split('/').pop()?.replace('.git', '')}</span>
-                                                            <ExternalLink className="h-3 w-3" />
-                                                        </a>
-                                                    </TooltipTrigger>
-                                                    <TooltipContent>
-                                                        <div className="space-y-1">
-                                                            <p className="font-medium">{repositoryValidationStatus[customer.id] === 'invalid'
-                                                                ? 'Repository not accessible - click to attempt opening anyway'
-                                                                : 'Open GitOps repository in new tab'}</p>
-                                                            <p className="text-xs opacity-75">{customer.metadata.gitOps.repositoryUrl}</p>
-                                                        </div>
-                                                    </TooltipContent>
-                                                </Tooltip>
-                                            </div>
-                                        </div>
-
-                                        {customer.metadata.gitOps.environments && customer.metadata.gitOps.environments.length > 0 && (
-                                            <div className="flex items-center justify-between text-xs">
-                                                <span className="text-gray-600 dark:text-gray-400">Environments:</span>
-                                                <div className="flex gap-1 flex-wrap">
-                                                    {customer.metadata.gitOps.environments.map((env: any) => (
-                                                        <Badge key={env} variant="secondary" className={typography.card.badge}>
-                                                            {env}
-                                                        </Badge>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {repositoryValidationStatus[customer.id] === 'invalid' && (
-                                            <div className="flex gap-1">
-                                                <Tooltip>
-                                                    <TooltipTrigger asChild>
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            onClick={() => validateCustomerRepository(customer)}
-                                                            className="h-6 px-2 text-xs"
-                                                        >
-                                                            🔄 Retry
-                                                        </Button>
-                                                    </TooltipTrigger>
-                                                    <TooltipContent>
-                                                        <p>Retry repository validation</p>
-                                                    </TooltipContent>
-                                                </Tooltip>
-
-                                                <Tooltip>
-                                                    <TooltipTrigger asChild>
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            onClick={() => handleSetupGitOps(customer)}
-                                                            className="h-6 px-2 text-xs"
-                                                        >
-                                                            🔧 Reconfigure
-                                                        </Button>
-                                                    </TooltipTrigger>
-                                                    <TooltipContent>
-                                                        <p>Reconfigure GitOps repository</p>
-                                                    </TooltipContent>
-                                                </Tooltip>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-
-                                {/* Last Updated */}
-                                <div className={`${typography.card.metadata} pt-2 border-t`}>
-                                    Updated: {new Date(customer.updatedAt).toLocaleDateString()}
-                                </div>
-                            </CardContent>
-                        </Card>
-                    ))}
-                </TooltipProvider>
-            </div>
-
-            {customers.length === 0 && (
+            {customers.length === 0 && !searchQuery && (
                 <Card className="text-center py-12">
                     <CardContent>
                         <Building2 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
