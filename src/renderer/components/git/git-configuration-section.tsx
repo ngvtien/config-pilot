@@ -21,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { GitRepositoryService } from "@/renderer/services/git-repository.service"
 import type { ContextData } from "@/shared/types/context-data"
 import type { GitRepository } from "@/shared/types/git-repository"
-import { GitServerConfig } from "../../shared/types/git-repository"
+import { GitServerConfig } from "../../../shared/types/git-repository"
 import { GitServerCard } from "./git-server-card"
 import { GitServerForm } from "./git-server-form"
 import { GitServerTile } from "./git-server-tile"
@@ -94,7 +94,7 @@ export function GitConfigurationSection({
                 console.error("Error parsing saved Git config:", e)
             }
         }
-        
+
         // Load the selected server ID from localStorage
         const savedCurrentServerId = localStorage.getItem("configpilot_current_server_id")
         if (savedCurrentServerId) {
@@ -120,7 +120,7 @@ export function GitConfigurationSection({
                     authMethod: "" as const,
                     lastConfigured: null as string | null
                 })
-                
+
                 // Update the context baseHostUrl to match selected server
                 if (selectedServer.baseUrl && selectedServer.baseUrl !== localContext.baseHostUrl) {
                     handleContextChange("baseHostUrl", selectedServer.baseUrl)
@@ -157,7 +157,7 @@ export function GitConfigurationSection({
             localStorage.removeItem("configpilot_current_server_id")
         }
     }, [currentServerId])
-        
+
     const handleFileSelect = async () => {
         if (window.electronAPI?.selectFile) {
             try {
@@ -217,9 +217,6 @@ export function GitConfigurationSection({
                 }),
                 ...(authMethod === "ssh" && { sshKeyPath: authForm.sshKeyPath }),
             }
-
-            // Simulate authentication (replace with actual implementation)
-            // await new Promise((resolve) => setTimeout(resolve, 1500))
 
             // Update auth status
             const updatedRepo = {
@@ -333,47 +330,29 @@ export function GitConfigurationSection({
                     />
                 </div>
 
-                {/* Server List */}
-                {/* <div className="space-y-2">
-        {filteredServers.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-                {servers.length === 0 ? "No Git servers configured" : "No servers match your search"}
-            </div>
-        ) : (
-            filteredServers.map((server) => (
-                <GitServerCard
-                    key={server.id}
-                    server={server}
-                    onEdit={handleEditServer}
-                    onDelete={handleDeleteServer}
-                    isDefault={server.isDefault}
-                />
-            ))
-        )}
-    </div> */}
 
-{/* Server List - Updated to horizontal tile grid */}
-<div className="space-y-2">
-    {filteredServers.length === 0 ? (
-        <div className="text-center py-6 text-muted-foreground">
-            {servers.length === 0 ? "No Git servers configured" : "No servers match your search"}
-        </div>
-    ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {filteredServers.map((server) => (
-                <GitServerTile
-                    key={server.id}
-                    server={server}
-                    onEdit={handleEditServer}
-                    onDelete={handleDeleteServer}
-                    onSetCurrent={setCurrentServerId}
-                    isDefault={server.isDefault}
-                    isCurrent={currentServerId === server.id}
-                />
-            ))}
-        </div>
-    )}
-</div>
+                {/* Server List - Updated to horizontal tile grid */}
+                <div className="space-y-2">
+                    {filteredServers.length === 0 ? (
+                        <div className="text-center py-6 text-muted-foreground">
+                            {servers.length === 0 ? "No Git servers configured" : "No servers match your search"}
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                            {filteredServers.map((server) => (
+                                <GitServerTile
+                                    key={server.id}
+                                    server={server}
+                                    onEdit={handleEditServer}
+                                    onDelete={handleDeleteServer}
+                                    onSetCurrent={setCurrentServerId}
+                                    isDefault={server.isDefault}
+                                    isCurrent={currentServerId === server.id}
+                                />
+                            ))}
+                        </div>
+                    )}
+                </div>
             </div>
 
             {/* Add/Edit Server Form Modal */}
@@ -702,24 +681,22 @@ export function GitConfigurationSection({
                         baseUrl: localContext.baseHostUrl,
                         name: 'Current Server'
                     }
-                    
+
                     return (
                         <div className="border rounded-lg p-4 bg-muted/30">
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
                                     <div className="flex items-center gap-2">
-                                        <div className={`w-3 h-3 rounded-full ${
-                                            selectedServer ? 'bg-green-500' : 'bg-blue-500 animate-pulse'
-                                        }`}></div>
+                                        <div className={`w-3 h-3 rounded-full ${selectedServer ? 'bg-green-500' : 'bg-blue-500 animate-pulse'
+                                            }`}></div>
                                         <span className="text-sm font-medium">
                                             {selectedServer ? 'Selected Server' : 'Server Status'}
                                         </span>
                                     </div>
-                                    <div className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium ${
-                                        selectedServer 
+                                    <div className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium ${selectedServer
                                             ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
                                             : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
-                                    }`}>
+                                        }`}>
                                         <CheckCircle className="h-3 w-3" />
                                         {selectedServer ? 'Active' : 'Connected'}
                                     </div>

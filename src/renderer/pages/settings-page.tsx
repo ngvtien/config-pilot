@@ -39,7 +39,7 @@ import type { PlatformInfo } from '@/main/services/platform-detection-service'
 import { useDialog } from '@/renderer/hooks/useDialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/renderer/components/ui/select"
 import { GitRepositoryService } from "@/renderer/services/git-repository.service"
-import { GitConfigurationSection } from "@/renderer/components/git-configuration-section"
+import { GitConfigurationSection } from "@/renderer/components/git/git-configuration-section"
 
 
 interface SettingsPageProps {
@@ -142,17 +142,6 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
 
   // Add these state variables
   const [authMethod, setAuthMethod] = useState<"token" | "ssh" | "credentials">("token")
-  const [authForm, setAuthForm] = useState({
-    username: "",
-    password: "",
-    token: "",
-    sshKeyPath: "",
-  })
-  const [showPassword, setShowPassword] = useState(false)
-  const [showToken, setShowToken] = useState(false)
-  const [rememberCredentials, setRememberCredentials] = useState(true)
-  const [isAuthenticating, setIsAuthenticating] = useState(false)
-  const [error, setError] = useState("")
 
   const [gitProvider, setGitProvider] = useState("")
   const [gitServerConfig, setGitServerConfig] = useState({
@@ -168,96 +157,6 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
     showErrorToast,
     AlertDialog
   } = useDialog();
-
-  const isFormValid = () => {
-    if (authMethod === "token") return authForm.token.trim() !== ""
-    if (authMethod === "credentials") return authForm.username.trim() !== "" && authForm.password.trim() !== ""
-    if (authMethod === "ssh") return authForm.sshKeyPath.trim() !== ""
-    return false
-  }
-
-  const handleFileSelect = async () => {
-    if (window.electronAPI?.selectFile) {
-      try {
-        const result = await window.electronAPI.selectFile({
-          filters: [
-            { name: "SSH Keys", extensions: ["", "rsa", "ed25519", "pem"] },
-            { name: "All Files", extensions: ["*"] },
-          ],
-        })
-
-        if (result && !result.canceled && result.filePaths.length > 0) {
-          setAuthForm({ ...authForm, sshKeyPath: result.filePaths[0] })
-        }
-      } catch (error) {
-        console.error("Error selecting SSH key file:", error)
-      }
-    }
-  }
-
-  const handleAuthSubmit = async () => {
-    setError("")
-    setIsAuthenticating(true)
-
-    try {
-      // Validate form based on auth method
-      if (authMethod === "token" && !authForm.token) {
-        setError("Personal access token is required")
-        return
-      }
-      if (authMethod === "credentials" && (!authForm.username || !authForm.password)) {
-        setError("Username and password are required")
-        return
-      }
-      if (authMethod === "ssh" && !authForm.sshKeyPath) {
-        setError("SSH key path is required")
-        return
-      }
-
-      const serverUrl = new URL(localContext.baseHostUrl)
-
-      // Create server credentials
-      const serverCredentials = {
-        method: authMethod,
-        serverUrl: serverUrl.origin,
-        serverId: "server-auth",
-        ...(authMethod === "token" && { token: authForm.token }),
-        ...(authMethod === "credentials" && {
-          username: authForm.username,
-          password: authForm.password,
-        }),
-        ...(authMethod === "ssh" && { sshKeyPath: authForm.sshKeyPath }),
-      }
-
-      // Simulate authentication (replace with actual implementation)
-      await new Promise((resolve) => setTimeout(resolve, 1500))
-
-      // Update auth status
-      const updatedRepo = {
-        id: "server-auth",
-        name: "Server Authentication",
-        url: localContext.baseHostUrl,
-        branch: "main",
-        description: "Server authentication setup",
-        authStatus: "authenticated" as const
-      }
-      setAuthModalRepo(updatedRepo)
-
-      // Store credentials if requested
-      if (rememberCredentials && gitCredentialManager.isSecureStorageAvailable()) {
-        await gitCredentialManager.storeServerCredentials(serverCredentials, true)
-      }
-
-      // Reset form
-      setAuthForm({ username: "", password: "", token: "", sshKeyPath: "" })
-      setError("")
-    } catch (error) {
-      console.error("Authentication error:", error)
-      setError("An unexpected error occurred. Please try again.")
-    } finally {
-      setIsAuthenticating(false)
-    }
-  }
 
   // Add platform detection function
   const handleDetectPlatform = async () => {
@@ -480,71 +379,6 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
     setHasContextChanges(false)
   }
 
-  const checkRepositoryAuth = async (repoId: string) => {
-    // Update status to checking
-    const updatedRepos = localSettings.gitRepositories.map((repo) =>
-      repo.id === repoId ? { ...repo, authStatus: "checking" as const } : repo,
-    );
-    handleSettingChange("gitRepositories", updatedRepos);
-
-    const repo = localSettings.gitRepositories.find((r) => r.id === repoId);
-    if (!repo) return;
-
-    try {
-      let authResult: "success" | "failed" = "failed";
-
-      if (typeof window !== "undefined" && window.electronAPI?.checkGitAuth) {
-        // Always use actual git commands - remove simulation
-        authResult = await window.electronAPI.checkGitAuth(repo.url);
-      } else {
-        console.warn('Git authentication check not available - running in web mode');
-        authResult = "failed";
-      }
-
-      // Update the repository with auth result
-      const finalRepos = localSettings.gitRepositories.map((r) =>
-        r.id === repoId
-          ? {
-            ...r,
-            authStatus: authResult,
-            lastAuthCheck: new Date().toISOString(),
-          }
-          : r,
-      )
-      handleSettingChange("gitRepositories", finalRepos)
-
-      // If auth failed, show the authentication modal
-      if (authResult === "failed") {
-        const failedRepo = localSettings.gitRepositories.find((r) => r.id === repoId)
-        if (failedRepo) {
-          setAuthModalRepo(failedRepo)
-          setAuthModalOpen(true)
-        }
-      }
-    } catch (error) {
-      console.error("Auth check failed:", error)
-
-      // Update status to failed
-      const failedRepos = localSettings.gitRepositories.map((r) =>
-        r.id === repoId
-          ? {
-            ...r,
-            authStatus: "failed" as const,
-            lastAuthCheck: new Date().toISOString(),
-          }
-          : r,
-      )
-      handleSettingChange("gitRepositories", failedRepos)
-
-      // If auth failed, show the authentication modal
-      const failedRepo = localSettings.gitRepositories.find((r) => r.id === repoId)
-      if (failedRepo) {
-        setAuthModalRepo(failedRepo)
-        setAuthModalOpen(true)
-      }
-    }
-  }
-
   const [isSelectingFile, setIsSelectingFile] = useState(false);
 
 
@@ -669,58 +503,6 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
       />
     </button>
   )
-
-  // Add a function to get real repositories
-  const getRealRepositories = async (): Promise<GitRepository[]> => {
-    if (typeof window !== "undefined" && window.electronAPI?.git?.getRepositories) {
-      try {
-        const repos = await window.electronAPI.git.getRepositories();
-        return repos || [];
-      } catch (error) {
-        console.error('Failed to load real repositories:', error);
-        return [];
-      }
-    }
-    return [];
-  }
-
-  /**
-   * Check for duplicate Git servers
-   */
-  const checkDuplicateServers = async () => {
-    try {
-      const duplicates = await (window as any).electronAPI?.git?.getDuplicateServers();
-      setDuplicateServers(duplicates || []);
-      setShowDuplicates(true);
-    } catch (error) {
-      console.error('Error checking duplicates:', error);
-    }
-  };
-
-  /**
-   * Clean up duplicate Git servers
-   */
-  const cleanupDuplicateServers = async () => {
-    setIsCleaningUp(true);
-    try {
-      const result = await (window as any).electronAPI?.git?.cleanupDuplicateServers();
-      // Refresh the duplicates list
-      await checkDuplicateServers();
-      // Show success message
-      showAlert({
-        title: "Cleanup Completed",
-        message: `Removed: ${result?.removed || 0} servers\nKept: ${result?.kept || 0} servers`,
-      });
-    } catch (error) {
-      console.error('Error during cleanup:', error);
-      showAlert({
-        title: "Cleanup Failed",
-        message: "Please check the console for more details.",
-      });
-    } finally {
-      setIsCleaningUp(false);
-    }
-  };
 
   return (
     <div className="space-y-6">
@@ -1115,7 +897,7 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
           setAuthModalOpen(false)
           setAuthModalRepo(null)
         }}
-        onSuccess={(credentials) => {
+        onSuccess={(credentials: any) => {
           window.electronAPI?.logger?.debug('Authentication completed successfully', {
             serverName: authModalRepo?.name,
             serverUrl: authModalRepo?.url,
@@ -1130,7 +912,7 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
               newStatus: 'success'
             });
             // Update repository auth status
-            const updatedRepos = localSettings.gitRepositories.map((repo) =>
+            const updatedRepos = localSettings.gitRepositories.map((repo: any) =>
               repo.id === authModalRepo.id
                 ? {
                   ...repo,
