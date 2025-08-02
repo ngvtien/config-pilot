@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useRef, useState, useEffect, useCallback } from "react"
+import { useState } from "react"
 import yaml from "js-yaml"
 import { Button } from "@/renderer/components/ui/button"
 import { Card, CardHeader } from "@/renderer/components/ui/card"
@@ -10,14 +10,14 @@ import { Copy } from "lucide-react"
 import CodeMirror from "@uiw/react-codemirror"
 import { yaml as yamlLanguage } from "@codemirror/lang-yaml"
 import { json as jsonLanguage } from "@codemirror/lang-json"
-import { oneDark } from "@codemirror/theme-one-dark"
-import { jsonTheme, jsonReadOnlyExtensions, readOnlyExtensions } from "@/renderer/lib/codemirror-themes"
+import { readOnlyExtensions } from "@/renderer/lib/codemirror-themes"
 import YamlEditor, { type YamlEditorLayout } from "@/renderer/components/yaml-editor"
 import type { ContextData } from "@/shared/types/context-data"
-import { generateConfigMap, generateConfigJson } from "@/renderer/lib/config-generator"
+import { generateConfigMap } from "@/renderer/lib/config-generator"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/renderer/components/ui/tooltip"
 import { buildConfigPath } from "@/renderer/lib/path-utils"
 import { useEditorTheme } from '@/renderer/hooks/useEditorTheme'
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./ui/resizable"
 
 interface ValueEditorProps {
   initialValue?: string
@@ -58,9 +58,6 @@ resources:
 }) => {
   const [yamlContent, setYamlContent] = useState(initialValue)
   const [displayFormat, setDisplayFormat] = useState<"configjson" | "configmap">("configjson")
-  const [leftPanelWidth, setLeftPanelWidth] = useState(60) // Percentage
-  const [isDragging, setIsDragging] = useState(false)
-  const containerRef = useRef<HTMLDivElement>(null)
 
   const { codeMirrorTheme, jsonCodeMirrorTheme, jsonExtensions } = useEditorTheme()
 
@@ -92,41 +89,6 @@ resources:
     }
   }
 
-  // Horizontal splitter drag functionality
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault()
-    setIsDragging(true)
-  }, [])
-
-  const handleMouseMove = useCallback(
-    (e: MouseEvent) => {
-      if (!isDragging || !containerRef.current) return
-
-      const containerRect = containerRef.current.getBoundingClientRect()
-      const newLeftWidth = ((e.clientX - containerRect.left) / containerRect.width) * 100
-
-      // Constrain between 20% and 80%
-      const constrainedWidth = Math.min(Math.max(newLeftWidth, 20), 80)
-      setLeftPanelWidth(constrainedWidth)
-    },
-    [isDragging],
-  )
-
-  const handleMouseUp = useCallback(() => {
-    setIsDragging(false)
-  }, [])
-
-  useEffect(() => {
-    if (isDragging) {
-      document.addEventListener("mousemove", handleMouseMove)
-      document.addEventListener("mouseup", handleMouseUp)
-      return () => {
-        document.removeEventListener("mousemove", handleMouseMove)
-        document.removeEventListener("mouseup", handleMouseUp)
-      }
-    }
-  }, [isDragging, handleMouseMove, handleMouseUp])
-
   const generateConfigMapOutput = () => {
     try {
       const values = (yaml.load(yamlContent) as Record<string, any>) || {}
@@ -152,8 +114,6 @@ resources:
       return "Error generating ConfigMap"
     }
   }
-
-
 
   const generateConfigJsonOutput = () => {
     try {
@@ -265,87 +225,78 @@ resources:
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="flex flex-1 overflow-hidden" ref={containerRef}>
-        {/* Left Panel - YamlEditor */}
-        <div className="flex flex-col min-w-0 overflow-hidden" style={{ width: `${leftPanelWidth}%` }}>
-          <YamlEditor
-            targetYamlFilename="values.yaml"
-            jsonSchemaFile={schemaPath}
-            context={editorContext}
-            layout="stacked"
-            initialContent={initialValue}
-            onChange={handleYamlChange}
-            title=""
-          />
-        </div>
+      {/* Main Content with ResizablePanelGroup */}
+      <div className="flex-1 overflow-hidden">
+        <ResizablePanelGroup direction="horizontal" className="h-full">
+          {/* Left Panel - YamlEditor */}
+          <ResizablePanel defaultSize={60} minSize={30}>
+            <div className="h-full flex flex-col">
+              <YamlEditor
+                targetYamlFilename="values.yaml"
+                jsonSchemaFile={schemaPath}
+                context={editorContext}
+                layout="stacked"
+                initialContent={initialValue}
+                onChange={handleYamlChange}
+                title=""
+              />
+            </div>
+          </ResizablePanel>
 
-        {/* Horizontal Splitter - Hidden by default, shows on hover */}
-        <div className="relative group">
-          <div
-            className="w-0.5 bg-transparent hover:bg-primary/20 cursor-col-resize flex-shrink-0 transition-all duration-200 group-hover:w-1 group-hover:bg-border"
-            onMouseDown={handleMouseDown}
-            role="separator"
-            aria-label="Resize panels"
-            style={{
-              backgroundColor: isDragging ? "hsl(var(--primary))" : undefined,
-              width: isDragging ? "4px" : undefined,
-            }}
-          />
-          {/* Invisible hover area for easier targeting */}
-          <div className="absolute inset-0 -left-2 -right-2 cursor-col-resize" onMouseDown={handleMouseDown} />
-        </div>
+          <ResizableHandle />
 
-        {/* Right Panel - Output Display */}
-        <div className="flex flex-col min-w-0 overflow-hidden" style={{ width: `${100 - leftPanelWidth}%` }}>
-          <Card className="flex flex-col m-4 ml-2 overflow-hidden h-full">
-            <CardHeader className="pb-0 flex-shrink-0">
-              <Tabs
-                value={displayFormat}
-                onValueChange={(value) => setDisplayFormat(value as "configjson" | "configmap")}
-                className="h-full flex flex-col"
-              >
-                <div className="flex justify-between items-center">
-                  <TabsList className="grid w-auto grid-cols-2 flex-shrink-0">
-                    <TabsTrigger value="configjson">config.json</TabsTrigger>
-                    <TabsTrigger value="configmap">ConfigMap</TabsTrigger>
-                  </TabsList>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            const content =
-                              displayFormat === "configmap" ? generateConfigMapOutput() : generateConfigJsonOutput()
-                            copyToClipboard(content)
-                          }}
-                          aria-label="Copy to clipboard"
-                          className="hover:bg-muted"
-                        >
-                          <Copy className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Copy to clipboard</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </div>
-                <TabsContent value="configjson" className="m-0 flex-1 overflow-hidden">
-                  <div className="h-full overflow-hidden border rounded-lg">{renderDisplayContent()}</div>
-                </TabsContent>
-                <TabsContent value="configmap" className="m-0 flex-1 overflow-hidden">
-                  <div className="h-full overflow-hidden border rounded-lg">{renderDisplayContent()}</div>
-                </TabsContent>
-              </Tabs>
-            </CardHeader>
-          </Card>
-        </div>
+          {/* Right Panel - Output Display */}
+          <ResizablePanel defaultSize={40} minSize={30}>
+            <div className="h-full flex flex-col">
+              <Card className="flex flex-col m-4 ml-2 overflow-hidden h-full">
+                <CardHeader className="pb-0 flex-shrink-0">
+                  <Tabs
+                    value={displayFormat}
+                    onValueChange={(value) => setDisplayFormat(value as "configjson" | "configmap")}
+                    className="h-full flex flex-col"
+                  >
+                    <div className="flex justify-between items-center">
+                      <TabsList className="grid w-auto grid-cols-2 flex-shrink-0">
+                        <TabsTrigger value="configjson">config.json</TabsTrigger>
+                        <TabsTrigger value="configmap">ConfigMap</TabsTrigger>
+                      </TabsList>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                const content =
+                                  displayFormat === "configmap" ? generateConfigMapOutput() : generateConfigJsonOutput()
+                                copyToClipboard(content)
+                              }}
+                              aria-label="Copy to clipboard"
+                              className="hover:bg-muted"
+                            >
+                              <Copy className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Copy to clipboard</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                    <TabsContent value="configjson" className="m-0 flex-1 overflow-hidden">
+                      <div className="h-full overflow-hidden border rounded-lg">{renderDisplayContent()}</div>
+                    </TabsContent>
+                    <TabsContent value="configmap" className="m-0 flex-1 overflow-hidden">
+                      <div className="h-full overflow-hidden border rounded-lg">{renderDisplayContent()}</div>
+                    </TabsContent>
+                  </Tabs>
+                </CardHeader>
+              </Card>
+            </div>
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </div>
     </div>
   )
 }
-
 export default ValueEditor

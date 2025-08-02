@@ -50,7 +50,7 @@ import { EditorState } from "@codemirror/state"
 import { linter, lintGutter } from "@codemirror/lint"
 import { jsonParseLinter } from "@codemirror/lang-json"
 import { syntaxHighlighting } from "@codemirror/language"
-
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./ui/resizable"
 import type { ContextData } from "@/shared/types/context-data"
 import { jsonTheme, jsonHighlightStyle } from "@/renderer/lib/codemirror-themes"
 import { buildConfigPath } from "@/renderer/lib/path-utils"
@@ -648,11 +648,10 @@ const TreeNodeWithChildren = React.memo(
     return (
       <div className="select-none">
         <div
-          className={`flex items-center py-1.5 px-2 rounded-lg cursor-pointer transition-all duration-150 group relative ${
-            node.isSelected
+          className={`flex items-center py-1.5 px-2 rounded-lg cursor-pointer transition-all duration-150 group relative ${node.isSelected
               ? "bg-primary/5 transform scale-[1.02] shadow-sm"
               : "hover:bg-slate-100/80 dark:hover:bg-slate-800/60"
-          }`}
+            }`}
           style={{ paddingLeft: `${paddingLeft}px` }}
           onClick={(e) => {
             e.stopPropagation()
@@ -689,9 +688,8 @@ const TreeNodeWithChildren = React.memo(
         {/* Children with smooth animation */}
         {hasChildren && (
           <div
-            className={`overflow-hidden transition-all duration-300 ease-out ${
-              node.isExpanded ? "max-h-[2000px] opacity-100" : "max-h-0 opacity-0"
-            }`}
+            className={`overflow-hidden transition-all duration-300 ease-out ${node.isExpanded ? "max-h-[2000px] opacity-100" : "max-h-0 opacity-0"
+              }`}
           >
             <div className="ml-4 mt-1 space-y-0 border-l border-slate-200 dark:border-slate-700 pl-2">
               {node.children.map((child: any) => (
@@ -737,12 +735,6 @@ export function SchemaEditor({ context, baseDirectory }: SchemaEditorProps) {
   const [newEnumValue, setNewEnumValue] = useState("")
   const [isFileLoading, setIsFileLoading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
-
-  // Add these state variables after the existing useState declarations
-  const [panelSplit, setPanelSplit] = useState(50) // Percentage for middle panel (Property Editor)
-  const [isDragging, setIsDragging] = useState(false)
-  const [dragStartX, setDragStartX] = useState(0)
-  const [dragStartSplit, setDragStartSplit] = useState(50)
 
   // Build the file path using the path utility
   const filePath = buildConfigPath(
@@ -1703,61 +1695,8 @@ export function SchemaEditor({ context, baseDirectory }: SchemaEditorProps) {
     getExistingPropertiesAtLevel,
   ])
 
-  // Add these handlers after the existing useCallback functions
-  const handleSplitterMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault()
-      setIsDragging(true)
-      setDragStartX(e.clientX)
-      setDragStartSplit(panelSplit)
-      document.body.style.cursor = "col-resize"
-      document.body.style.userSelect = "none"
-    },
-    [panelSplit],
-  )
-
-  const handleSplitterMouseMove = useCallback(
-    (e: MouseEvent) => {
-      if (!isDragging) return
-
-      e.preventDefault()
-      const containerWidth = window.innerWidth * 0.67 // Approximate width of panels 2 & 3 (2/3 of screen)
-      const deltaX = e.clientX - dragStartX
-      const deltaPercentage = (deltaX / containerWidth) * 100
-
-      const newSplit = Math.max(25, Math.min(75, dragStartSplit + deltaPercentage))
-      setPanelSplit(newSplit)
-    },
-    [isDragging, dragStartX, dragStartSplit],
-  )
-
-  const handleSplitterMouseUp = useCallback(() => {
-    setIsDragging(false)
-    document.body.style.cursor = ""
-    document.body.style.userSelect = ""
-  }, [])
-
-  // Add useEffect for global mouse events
-  useEffect(() => {
-    if (isDragging) {
-      document.addEventListener("mousemove", handleSplitterMouseMove)
-      document.addEventListener("mouseup", handleSplitterMouseUp)
-
-      return () => {
-        document.removeEventListener("mousemove", handleSplitterMouseMove)
-        document.removeEventListener("mouseup", handleSplitterMouseUp)
-      }
-    }
-  }, [isDragging, handleSplitterMouseMove, handleSplitterMouseUp])
-
   // Update the renderSplitView function to give Tree View 1/3 of the width and make Property Editor and JSON Editor share the remaining space equally
   const renderSplitView = useCallback(() => {
-    // Calculate height based on viewport minus header and controls
-    const panelHeight = "calc(100vh - 220px)"
-
-    // Calculate grid template columns based on split ratio
-    const middlePanelWidth = `${panelSplit}%`
-    const rightPanelWidth = `${100 - panelSplit}%`
 
     // Add root node to tree data
     const treeData = [
@@ -1806,79 +1745,72 @@ export function SchemaEditor({ context, baseDirectory }: SchemaEditorProps) {
     ]
 
     return (
-      <div className="flex gap-3" style={{ height: panelHeight }}>
-        {/* Schema Tree - Left Panel (1/3 width) */}
-        <div className="w-1/3 h-full flex flex-col flex-shrink-0">
-          <Card className="h-full border-0 shadow-sm flex flex-col">
-            <CardHeader className="p-4 pb-2 flex-shrink-0">
-              <div className="flex items-center justify-between">
-                <h4 className="text-lg font-semibold">Schema Structure</h4>
-              </div>
-            </CardHeader>
-            <CardContent className="p-4 pt-0 flex-1 min-h-0">
-              <ScrollArea className="h-full">
-                {treeData.map((node) => (
-                  <TreeNodeWithChildren
-                    key={node.id}
-                    node={node}
-                    level={0}
-                    onToggle={(nodeId) => {
-                      if (node.onToggle) node.onToggle()
-                    }}
-                  />
-                ))}
-              </ScrollArea>
-            </CardContent>
-          </Card>
-        </div>
+      <div className="h-full">
+        <ResizablePanelGroup direction="horizontal" className="h-full">
+          {/* Left Panel: Schema Tree + Property Editor - Now Horizontal */}
+          <ResizablePanel defaultSize={60} minSize={40} maxSize={75}>
+            <ResizablePanelGroup direction="horizontal" className="h-full">
+              {/* Schema Tree Section */}
+              <ResizablePanel defaultSize={50} minSize={30}>
+                <Card className="h-full border-0 shadow-sm flex flex-col">
+                  <CardHeader className="p-4 pb-2 flex-shrink-0">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-lg font-semibold">Schema Structure</h4>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-4 pt-0 flex-1 min-h-0">
+                    <ScrollArea className="h-full">
+                      {treeData.map((node) => (
+                        <TreeNodeWithChildren
+                          key={node.id}
+                          node={node}
+                          level={0}
+                          onToggle={(nodeId) => {
+                            if (node.onToggle) node.onToggle()
+                          }}
+                        />
+                      ))}
+                    </ScrollArea>
+                  </CardContent>
+                </Card>
+              </ResizablePanel>
 
-        {/* Resizable panels container - remaining 2/3 width */}
-        <div className="w-2/3 flex h-full">
-          {/* Property Editor - Middle Panel (Resizable) */}
-          <div className="h-full flex flex-col" style={{ width: middlePanelWidth }}>
-            <Card className="h-full border-0 shadow-sm flex flex-col">
-              <CardHeader className="p-4 pb-2 flex-shrink-0">
-                <h4 className="text-lg font-semibold">Property Editor</h4>
-              </CardHeader>
-              <CardContent className="p-4 pt-0 flex-1 min-h-0">
-                <ScrollArea className="h-full">{renderPropertyEditor()}</ScrollArea>
-              </CardContent>
-            </Card>
-          </div>
+              <ResizableHandle />
 
-          {/* Splitter */}
-          <div
-            className="w-0.5 bg-transparent hover:bg-border group cursor-col-resize transition-all duration-200 flex-shrink-0 relative"
-            onMouseDown={handleSplitterMouseDown}
-          >
-            {/* Invisible wider hit area for easier grabbing */}
-            <div className="absolute inset-y-0 -left-2 -right-2 cursor-col-resize" />
+              {/* Property Editor Section */}
+              <ResizablePanel defaultSize={50} minSize={30}>
+                <Card className="h-full border-0 shadow-sm flex flex-col">
+                  <CardHeader className="p-4 pb-2 flex-shrink-0">
+                    <h4 className="text-lg font-semibold">Property Editor</h4>
+                  </CardHeader>
+                  <CardContent className="p-4 pt-0 flex-1 min-h-0">
+                    <ScrollArea className="h-full">{renderPropertyEditor()}</ScrollArea>
+                  </CardContent>
+                </Card>
+              </ResizablePanel>
+            </ResizablePanelGroup>
+          </ResizablePanel>
 
-            {/* Visual indicator on hover */}
-            <div className="absolute inset-y-0 left-0 w-full group-hover:w-1 group-hover:bg-border transition-all duration-200" />
+          <ResizableHandle />
 
-            {/* Active state indicator */}
-            <div
-              className={`absolute inset-y-0 left-0 w-1 ${isDragging ? "bg-primary/60" : "bg-transparent"} transition-colors duration-150`}
-            />
-          </div>
-
-          {/* JSON Editor - Right Panel (Resizable) */}
-          <div className="h-full flex flex-col" style={{ width: rightPanelWidth }}>
-            <Card className="h-full border-0 shadow-sm flex flex-col">
-              <CardHeader className="p-4 pb-2 flex-shrink-0">
-                <h4 className="text-lg font-semibold">JSON Editor</h4>
-              </CardHeader>
-              <CardContent className="p-4 pt-0 flex-1 min-h-0">
-                <ScrollArea className="h-full">
-                  <div className="h-full">
-                    <EnhancedCodeMirrorEditor value={schemaText} onChange={handleSchemaTextChange} />
-                  </div>
-                </ScrollArea>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
+          {/* Right Panel: JSON Editor */}
+          <ResizablePanel defaultSize={40} minSize={25}>
+            <div className="h-full flex flex-col">
+              <Card className="h-full border-0 shadow-sm flex flex-col">
+                <CardHeader className="p-4 pb-2 flex-shrink-0">
+                  <h4 className="text-lg font-semibold">JSON Editor</h4>
+                </CardHeader>
+                <CardContent className="p-4 pt-0 flex-1 min-h-0">
+                  <ScrollArea className="h-full">
+                    <div className="h-full">
+                      <EnhancedCodeMirrorEditor value={schemaText} onChange={handleSchemaTextChange} />
+                    </div>
+                  </ScrollArea>
+                </CardContent>
+              </Card>
+            </div>
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </div>
     )
   }, [
@@ -1890,9 +1822,6 @@ export function SchemaEditor({ context, baseDirectory }: SchemaEditorProps) {
     renderPropertyEditor,
     schemaText,
     handleSchemaTextChange,
-    panelSplit,
-    isDragging,
-    handleSplitterMouseDown,
     expandedSections,
     toggleSection,
     getTypeColor,
