@@ -18,6 +18,7 @@ import { GitRepositoryService } from '@/renderer/services/git-repository.service
 import { GitServerConfig } from '@/shared/types/git-repository'
 import type { ContextData } from '@/shared/types/context-data'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/renderer/components/ui/tooltip'
+import { typography } from '../lib/typography';
 
 interface CustomerManagementPageProps {
     onNavigateBack?: () => void
@@ -682,7 +683,7 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
                         <Card key={customer.id} className="hover:shadow-md transition-shadow">
                             <CardHeader className="pb-3">
                                 <div className="flex items-center justify-between">
-                                    <CardTitle className="text-lg">{customer.displayName || customer.name}</CardTitle>
+                                    <CardTitle className={typography.card.title}>{customer.displayName || customer.name}</CardTitle>
                                     <div className="flex items-center gap-1">
                                         <Button
                                             variant="ghost"
@@ -733,19 +734,19 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
                                         </Button>
                                     </div>
                                 </div>
-                                <CardDescription className="text-sm">{customer.description || 'No description'}</CardDescription>
+                                <CardDescription className={typography.card.subtitle}>{customer.description || 'No description'}</CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-3">
                                 {/* Customer Details */}
                                 <div className="space-y-2">
-                                    <div className="flex items-center justify-between text-xs">
-                                        <span className="text-gray-600 dark:text-gray-400">Internal Name:</span>
+                                    <div className="flex items-center justify-between">
+                                        <span className={typography.card.metadata}>Internal ID:</span>
                                         <code className="bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded">{customer.name}</code>
                                     </div>
 
                                     {customer.metadata?.tier && (
-                                        <div className="flex items-center justify-between text-xs">
-                                            <span className="text-gray-600 dark:text-gray-400">Tier:</span>
+                                        <div className="flex items-center justify-between">
+                                            <span className={typography.card.metadata}>Tier:</span>
                                             <Badge className={getTierBadgeColor(customer.metadata.tier)}>
                                                 {customer.metadata.tier}
                                             </Badge>
@@ -834,8 +835,8 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
                                             <div className="flex items-center justify-between text-xs">
                                                 <span className="text-gray-600 dark:text-gray-400">Environments:</span>
                                                 <div className="flex gap-1 flex-wrap">
-                                                    {customer.metadata.gitOps.environments.map((env) => (
-                                                        <Badge key={env} variant="secondary" className="text-xs px-1 py-0">
+                                                    {customer.metadata.gitOps.environments.map((env: any) => (
+                                                        <Badge key={env} variant="secondary" className={typography.card.badge}>
                                                             {env}
                                                         </Badge>
                                                     ))}

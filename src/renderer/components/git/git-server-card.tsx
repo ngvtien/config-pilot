@@ -4,6 +4,7 @@ import { Card, CardContent } from '@/renderer/components/ui/card'
 import { Badge } from '@/renderer/components/ui/badge'
 import { Edit, Trash2, CheckCircle, AlertTriangle, XCircle } from 'lucide-react'
 import type { GitServerConfig } from '@/shared/types/git-repository'
+import { typography } from '@/renderer/lib/typography'
 
 interface GitServerCardProps {
     server: GitServerConfig
@@ -40,23 +41,24 @@ export function GitServerCard({ server, onEdit, onDelete, isDefault }: GitServer
             <CardContent className="p-4">
                 <div className="flex items-start justify-between">
                     <div className="flex items-start gap-3 flex-1">
-                        <span className="text-lg">{getProviderIcon(server.provider)}</span>
+                        <span className={typography.card.icon}>{getProviderIcon(server.provider)}</span>
                         <div className="flex-1">
                             <div className="flex items-center gap-2 mb-1">
-                                <h4 className="font-medium">{server.name}</h4>
-                                {isDefault && <Badge variant="secondary">Default</Badge>}
+                                <h4 className={typography.card.title}>{server.name}</h4>
+                                {isDefault && <Badge variant="secondary" className={typography.card.badge}>Default</Badge>}
                             </div>
-                            <p className="text-sm text-muted-foreground mb-2">{server.baseUrl}</p>
-                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <p className={`${typography.card.subtitle} mb-2`}>{server.baseUrl}</p>
+                            <div className={`flex items-center gap-2 ${typography.card.metadata}`}>
                                 {getStatusIcon('connected')}
                                 <span>Connected • Last tested: {new Date().toLocaleString()}</span>
                             </div>
-                            <div className="text-xs text-muted-foreground mt-1">
+                            <div className={`${typography.card.metadata} mt-1`}>
                                 Created: {new Date(server.createdAt).toLocaleDateString()} • 
                                 Updated: {new Date(server.updatedAt).toLocaleDateString()}
                             </div>
                         </div>
                     </div>
+
                     <div className="flex gap-2">
                         <Button
                             variant="outline"

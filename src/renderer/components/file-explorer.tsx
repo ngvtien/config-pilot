@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils"
 import { ScrollArea } from "@/renderer/components/ui/scroll-area"
 import { Badge } from "@/renderer/components/ui/badge"
 import { Card, CardHeader } from "@/renderer/components/ui/card"
+import { typography } from '../lib/typography';
 
 // Context types
 interface FileExplorerContext {
@@ -483,15 +484,15 @@ const FileExplorerItem = ({
         {/* Name and metadata */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium truncate">{item.name}</span>
+            <span className={typography.tile.title}>{item.name}</span>
             {item.contextLevel && item.contextLevel !== "content" && (
-              <Badge variant="outline" className="text-xs">
+              <Badge variant="outline" className={typography.tile.badge}>
                 {item.contextLevel}
               </Badge>
             )}
           </div>
           {item.type === "file" && (item.size || item.lastModified) && (
-            <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            <div className={typography.tile.metadata}>
               {item.size && formatFileSize(item.size)}
               {item.size && item.lastModified && " • "}
               {item.lastModified && item.lastModified.toLocaleDateString()}

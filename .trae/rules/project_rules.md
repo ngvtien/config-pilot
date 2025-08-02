@@ -10,4 +10,7 @@
 - e2e tests output in a file called tests/output/e2e-tests.txt
 - Always scan existing codebase before suggesting anything new
 - Always check the github community for any existing libraries or tools before reinventing the wheel
-- Any new or enhance UI should provide a propose wireframe beforehand 
+- Any new or enhance UI should provide a propose wireframe beforehand
+- **Typography Standardization**: Always use the typography constants from <mcfile name="typography.ts" path=".\src\renderer\lib\typography.ts"></mcfile> for consistent text styling across all UI components
+- **UI Component Guidelines**: New components must follow established typography patterns (tile.title, card.subtitle, etc.) and avoid hardcoded text classes
+- **Typography Review**: All UI changes must be reviewed for typography consistency before implementation

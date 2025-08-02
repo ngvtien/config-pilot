@@ -3,6 +3,7 @@ import { Button } from '@/renderer/components/ui/button'
 import { Badge } from '@/renderer/components/ui/badge'
 import { Edit, Trash2, CheckCircle, AlertTriangle, XCircle, Star, ChevronDown, ChevronUp, Key } from 'lucide-react'
 import type { GitServerConfig } from '@/shared/types/git-repository'
+import { typography } from '@/renderer/lib/typography'
 
 interface GitServerTileProps {
     server: GitServerConfig
@@ -75,11 +76,11 @@ export function GitServerTile({
             {/* Header with provider, status, and actions */}
             <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                    <span className="text-lg">{providerInfo.icon}</span>
-                    <span className="text-xs font-medium text-muted-foreground">{providerInfo.name}</span>
+                    <span className={typography.tile.icon}>{providerInfo.icon}</span>
+                    <span className={`${typography.tile.metadata} font-medium`}>{providerInfo.name}</span>
                     {getStatusIcon('connected')}
-                    {isDefault && <Badge variant="secondary" className="text-xs px-1 py-0 h-4">Default</Badge>}
-                    {isCurrent && <Badge variant="default" className="text-xs px-1 py-0 h-4">Active</Badge>}
+                    {isDefault && <Badge variant="secondary" className={`${typography.tile.badge} px-1 py-0 h-4`}>Default</Badge>}
+                    {isCurrent && <Badge variant="default" className={`${typography.tile.badge} px-1 py-0 h-4`}>Active</Badge>}
                 </div>
                 <div className="flex gap-1">
                     {/* Auth Details Toggle */}
@@ -124,8 +125,8 @@ export function GitServerTile({
             
             {/* Server info */}
             <div className="space-y-1.5">
-                <h4 className="font-medium text-sm truncate">{server.name}</h4>
-                <p className="text-xs text-muted-foreground truncate">{server.baseUrl}</p>
+                <h4 className={`${typography.tile.title} truncate`}>{server.name}</h4>
+                <p className={`${typography.tile.subtitle} truncate`}>{server.baseUrl}</p>
             </div>
 
             {/* Collapsible Authentication Details */}
@@ -133,16 +134,16 @@ export function GitServerTile({
                 <div className="mt-3 pt-3 border-t border-border/50 space-y-2">
                     <div className="flex items-center gap-2">
                         <Key className="w-3 h-3 text-muted-foreground" />
-                        <span className="text-xs font-medium">Authentication Method</span>
+                        <span className={`${typography.tile.badge} font-medium`}>Authentication Method</span>
                     </div>
-                    <div className="text-xs text-muted-foreground pl-5">
+                    <div className={`${typography.tile.metadata} pl-5`}>
                         {/* This would be populated from server credentials if available */}
                         <span className="inline-flex items-center gap-1">
                             <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
                             Token Authentication
                         </span>
                     </div>
-                    <div className="text-xs text-muted-foreground pl-5">
+                    <div className={`${typography.tile.metadata} pl-5`}>
                         Last tested: {server.updatedAt ? new Date(server.updatedAt).toLocaleDateString() : 'Never'}
                     </div>
                 </div>

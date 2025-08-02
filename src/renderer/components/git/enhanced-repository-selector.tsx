@@ -8,6 +8,7 @@ import { AlertTriangle, CheckCircle, XCircle, Search, Plus, GitBranch, Globe, Lo
 import { GitOpsStructureValidator } from './gitops-structure-validator';
 import { BranchManagementDialog } from './branch-management-dialog';
 import { RepositoryRegistrationDialog } from './repository-registration-dialog';
+import { typography } from '../../lib/typography';
 
 export interface EnhancedRepositorySelectorProps {
   // Repository data
@@ -192,7 +193,7 @@ export const EnhancedRepositorySelector: React.FC<EnhancedRepositorySelectorProp
                 <div className="flex-1 min-w-0">
                   {/* Repository Header */}
                   <div className="flex items-center gap-2 mb-2">
-                    <h4 className="font-medium text-sm truncate">{repo.name}</h4>
+                    <h4 className={typography.tile.title}>{repo.name}</h4>
                     <div className="flex items-center gap-1">
                       {getAuthStatusIcon(repo.authStatus)}
                       <span className="text-xs text-gray-600">

@@ -19,8 +19,7 @@ import { GitRepositoryService } from '@/renderer/services/git-repository.service
 import { RepositoryRegistrationDialog } from '@/renderer/components/git/repository-registration-dialog'
 import { EnhancedRepositorySelector } from '@/renderer/components/git/enhanced-repository-selector'
 import { GitRepository, PermissionFilter } from '../../shared/types/git-repository'
-// import { EnhancedRepositorySelector } from '@/renderer/components/git/enhanced-repository-selector'
-// import { GitOpsStructureValidator } from '@/renderer/components/git/gitops-structure-validator'
+import { typography } from '../lib/typography'
 
 interface ProductManagementPageProps {
   onNavigateBack?: () => void
@@ -323,7 +322,7 @@ export function ProductManagementPage({ onNavigateBack }: ProductManagementPageP
           <Card key={product.id} className="hover:shadow-md transition-shadow">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-lg">{product.displayName || product.name}</CardTitle>
+                <CardTitle className={typography.card.title}>{product.displayName || product.name}</CardTitle>
                 <div className="flex items-center gap-1">
                   <Button
                     variant="ghost"
@@ -345,35 +344,35 @@ export function ProductManagementPage({ onNavigateBack }: ProductManagementPageP
               <CardDescription>{product.description || 'No description'}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-600 dark:text-gray-400">Name:</span>
-                <code className="bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded text-xs text-gray-900 dark:text-gray-100">{product.name}</code>
+              <div className="flex items-center justify-between">
+                <span className={typography.card.metadata}>Product ID:</span>
+                <code className="bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded font-mono">{product.name}</code>
               </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-600 dark:text-gray-400">Owner:</span>
+              <div className="flex items-center justify-between">
+                <span className={typography.card.metadata}>Owner:</span>
                 <span className="text-gray-900 dark:text-gray-100">{product.owner || 'Unassigned'}</span>
               </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-600 dark:text-gray-400">Category:</span>
+              <div className="flex items-center justify-between">
+                <span className={typography.card.metadata}>Category:</span>
                 <Badge className={getCategoryBadgeColor(product.metadata?.category)}>
                   {product.metadata?.category || 'general'}
                 </Badge>
               </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-600 dark:text-gray-400">Status:</span>
+              <div className="flex items-center justify-between">
+                <span className={typography.card.metadata}>Status:</span>
                 <Badge variant={product.isActive ? 'default' : 'secondary'}>
                   {product.isActive ? 'Active' : 'Inactive'}
                 </Badge>
               </div>
               {product.metadata?.version && (
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-600 dark:text-gray-400">Version:</span>
-                  <span className="text-gray-900 dark:text-gray-100">{product.metadata.version}</span>
+                <div className="flex items-center justify-between">
+                  <span className={typography.card.metadata}>Version:</span>
+                  <span className={typography.card.subtitle}>{product.metadata.version}</span>
                 </div>
               )}
               {product.metadata?.repository && (
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-600 dark:text-gray-400">Repository:</span>
+                <div className="flex items-center justify-between">
+                  <span className={typography.card.metadata}>Repository:</span>
                   <a 
                     href={product.metadata.repository} 
                     target="_blank" 
