@@ -1,8 +1,16 @@
 import { contextBridge, ipcRenderer } from "electron"
 
+const splashAPI = {
+  onSplashStatus: (callback: (status: string) => void) => {
+    ipcRenderer.on('splash-status', (_event, status) => callback(status));
+  }
+};
+
 contextBridge.exposeInMainWorld("electronAPI", {
   invoke: (channel: string, ...args: any[]) => {
     const validChannels = [
+      'splash-status',
+      
       // Kubernetes channels
       'k8s:getContexts',
       'k8s:getCurrentContext',
@@ -205,6 +213,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     }
     throw new Error(`Invalid IPC channel: ${channel}`)
   },
+
+  onSplashStatus: splashAPI.onSplashStatus,
 
   // Window controls
   minimize: () => ipcRenderer.send("window:minimize"),
