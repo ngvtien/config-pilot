@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useRef, useState, useEffect, useCallback } from "react"
+import { useRef, useState, useEffect } from "react"
 import yaml from "js-yaml"
 import { Button } from "@/renderer/components/ui/button"
 import { Input } from "@/renderer/components/ui/input"
@@ -13,12 +13,10 @@ import { Badge } from "@/renderer/components/ui/badge"
 import { Upload, Download, RefreshCw, Copy, Plus, X, Eye, EyeOff, Maximize2, Minimize2 } from "lucide-react"
 import CodeMirror from "@uiw/react-codemirror"
 import { yaml as yamlLanguage } from "@codemirror/lang-yaml"
-import { oneDark } from "@codemirror/theme-one-dark"
 import { EditorView } from "@codemirror/view"
-import { HighlightStyle, syntaxHighlighting } from "@codemirror/language"
-import { tags as t } from "@lezer/highlight"
 import type { ContextData } from "@/shared/types/context-data"
 import { useEditorTheme } from '@/renderer/hooks/useEditorTheme'
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/renderer/components/ui/resizable"
 
 // Layout options for the editor
 export type YamlEditorLayout = "stacked" | "side-by-side"
@@ -49,118 +47,8 @@ export interface YamlEditorProps {
   customActions?: React.ReactNode
 }
 
-// Custom JSON theme with purple/pink accent colors (consistent with other editors)
-const jsonTheme = EditorView.theme({
-  "&": {
-    color: "#f8f8f2",
-    backgroundColor: "#1a1a2e",
-  },
-  ".cm-content": {
-    padding: "16px",
-    caretColor: "#f8f8f0",
-  },
-  ".cm-focused": {
-    outline: "none",
-  },
-  ".cm-editor": {
-    borderRadius: "0",
-    height: "100%",
-  },
-  ".cm-scroller": {
-    fontFamily: "Fira Code, Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace",
-    maxHeight: "100%",
-    overflow: "auto",
-  },
-  ".cm-gutters": {
-    backgroundColor: "#16213e",
-    color: "#6272a4",
-    border: "none",
-  },
-  ".cm-lineNumbers": {
-    color: "#6272a4",
-  },
-  ".cm-activeLine": {
-    backgroundColor: "#44475a40",
-  },
-  ".cm-activeLineGutter": {
-    backgroundColor: "#44475a40",
-  },
-  ".cm-selectionMatch": {
-    backgroundColor: "#44475a",
-  },
-  ".cm-searchMatch": {
-    backgroundColor: "#ffb86c40",
-    outline: "1px solid #ffb86c",
-  },
-  ".cm-cursor": {
-    borderLeftColor: "#f8f8f0",
-  },
-  ".cm-selection": {
-    backgroundColor: "#44475a",
-  },
-})
-
-const jsonHighlightStyle = HighlightStyle.define([
-  { tag: t.keyword, color: "#ff79c6" },
-  { tag: [t.name, t.deleted, t.character, t.propertyName, t.macroName], color: "#8be9fd" },
-  { tag: [t.function(t.variableName), t.labelName], color: "#50fa7b" },
-  { tag: [t.color, t.constant(t.name), t.standard(t.name)], color: "#bd93f9" },
-  { tag: [t.definition(t.name), t.separator], color: "#f8f8f2" },
-  {
-    tag: [t.typeName, t.className, t.number, t.changed, t.annotation, t.modifier, t.self, t.namespace],
-    color: "#ffb86c",
-  },
-  { tag: [t.operator, t.operatorKeyword, t.url, t.escape, t.regexp, t.link, t.special(t.string)], color: "#ff79c6" },
-  { tag: [t.meta, t.comment], color: "#6272a4" },
-  { tag: t.strong, fontWeight: "bold" },
-  { tag: t.emphasis, fontStyle: "italic" },
-  { tag: t.strikethrough, textDecoration: "line-through" },
-  { tag: t.link, color: "#8be9fd", textDecoration: "underline" },
-  { tag: t.heading, fontWeight: "bold", color: "#bd93f9" },
-  { tag: [t.atom, t.bool, t.special(t.variableName)], color: "#bd93f9" },
-  { tag: [t.processingInstruction, t.string, t.inserted], color: "#f1fa8c" },
-  { tag: t.invalid, color: "#ff5555" },
-])
-
-// CodeMirror extensions for read-only display
-const readOnlyExtensions = [
-  EditorView.theme({
-    "&": {
-      fontSize: "14px",
-    },
-    ".cm-content": {
-      padding: "16px",
-    },
-    ".cm-focused": {
-      outline: "none",
-    },
-    ".cm-editor": {
-      borderRadius: "0",
-    },
-  }),
-  EditorView.editable.of(false),
-]
 
 // JSON-specific read-only extensions
-const jsonReadOnlyExtensions = [
-  EditorView.theme({
-    "&": {
-      fontSize: "14px",
-    },
-    ".cm-content": {
-      padding: "16px",
-    },
-    ".cm-focused": {
-      outline: "none",
-    },
-    ".cm-editor": {
-      borderRadius: "0",
-    },
-  }),
-  EditorView.editable.of(false),
-  syntaxHighlighting(jsonHighlightStyle),
-]
-
 const YamlEditor: React.FC<YamlEditorProps> = ({
   targetYamlFilename,
   jsonSchemaFile,
@@ -182,26 +70,11 @@ const YamlEditor: React.FC<YamlEditorProps> = ({
   const [schema, setSchema] = useState<any>(null)
 
   // Layout state management
-  const [leftPanelWidth, setLeftPanelWidth] = useState(65) // Percentage
-  const [verticalSplitRatio, setVerticalSplitRatio] = useState(60) // Percentage for form vs yaml
-  const [isDraggingVertical, setIsDraggingVertical] = useState(false)
-  const containerRef = useRef<HTMLDivElement>(null)
-  const leftColumnRef = useRef<HTMLDivElement>(null)
-  const [isDraggingHorizontal, setIsDraggingHorizontal] = useState(false)
-
   const { codeMirrorTheme, yamlExtensions } = useEditorTheme()
 
   // Generate storage keys based on context and filename
   const getStorageKey = (suffix: string) => {
     return `yaml_editor_${context.environment}_${context.product}_${targetYamlFilename}_${suffix}`
-  }
-
-  /**
- * Handle horizontal splitter mouse down event for side-by-side layout
- */
-  const handleHorizontalMouseDown = (e: React.MouseEvent) => {
-    e.preventDefault()
-    setIsDraggingHorizontal(true)
   }
 
   // Load schema when component mounts
@@ -214,41 +87,6 @@ const YamlEditor: React.FC<YamlEditorProps> = ({
     loadYamlContent()
   }, [context, targetYamlFilename])
 
-  useEffect(() => {
-    /**
-     * Handle mouse move events for both horizontal and vertical splitters
-     */
-    const handleMouseMove = (e: MouseEvent) => {
-      if (isDraggingHorizontal && containerRef.current) {
-        const containerRect = containerRef.current.getBoundingClientRect()
-        const newLeftWidth = ((e.clientX - containerRect.left) / containerRect.width) * 100
-        setLeftPanelWidth(Math.max(20, Math.min(80, newLeftWidth)))
-      }
-
-      if (isDraggingVertical && leftColumnRef.current) {
-        const containerRect = leftColumnRef.current.getBoundingClientRect()
-        const newRatio = ((e.clientY - containerRect.top) / containerRect.height) * 100
-        setVerticalSplitRatio(Math.max(20, Math.min(80, newRatio)))
-      }
-    }
-
-    /**
-     * Handle mouse up events to stop dragging
-     */
-    const handleMouseUp = () => {
-      setIsDraggingHorizontal(false)
-      setIsDraggingVertical(false)
-    }
-
-    if (isDraggingHorizontal || isDraggingVertical) {
-      document.addEventListener('mousemove', handleMouseMove)
-      document.addEventListener('mouseup', handleMouseUp)
-      return () => {
-        document.removeEventListener('mousemove', handleMouseMove)
-        document.removeEventListener('mouseup', handleMouseUp)
-      }
-    }
-  }, [isDraggingHorizontal, isDraggingVertical])
   // Load schema from file or localStorage
   const loadSchema = async () => {
     try {
@@ -413,16 +251,6 @@ data:
     }
   }, [yamlContent])
 
-  // const showNotification = (message: string, type: "success" | "error" = "success") => {
-  //   // Simple toast notification - you could replace with a proper toast library
-  //   const toast = document.createElement("div")
-  //   toast.textContent = message
-  //   toast.className = `fixed top-4 right-4 px-4 py-2 rounded-md text-white z-50 ${
-  //     type === "success" ? "bg-green-500" : "bg-red-500"
-  //   }`
-  //   document.body.appendChild(toast)
-  //   setTimeout(() => document.body.removeChild(toast), 2000)
-  // }
   const showNotification = (message: string, type: "success" | "error" = "success") => {
     // Silent mode - do nothing
     console.log(`[${type.toUpperCase()}] ${message}`) // Optional: log to console instead
@@ -465,40 +293,6 @@ data:
     fileInputRef.current?.click()
   }
 
-  // Vertical splitter drag functionality (between form and yaml editor)
-  const handleVerticalMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault()
-    setIsDraggingVertical(true)
-  }, [])
-
-  const handleVerticalMouseMove = useCallback(
-    (e: MouseEvent) => {
-      if (!isDraggingVertical || !leftColumnRef.current) return
-
-      const containerRect = leftColumnRef.current.getBoundingClientRect()
-      const newTopHeight = ((e.clientY - containerRect.top) / containerRect.height) * 100
-
-      // Constrain between 30% and 80%
-      const constrainedHeight = Math.min(Math.max(newTopHeight, 30), 80)
-      setVerticalSplitRatio(constrainedHeight)
-    },
-    [isDraggingVertical],
-  )
-
-  const handleVerticalMouseUp = useCallback(() => {
-    setIsDraggingVertical(false)
-  }, [])
-
-  useEffect(() => {
-    if (isDraggingVertical) {
-      document.addEventListener("mousemove", handleVerticalMouseMove)
-      document.addEventListener("mouseup", handleVerticalMouseUp)
-      return () => {
-        document.removeEventListener("mousemove", handleVerticalMouseMove)
-        document.removeEventListener("mouseup", handleVerticalMouseUp)
-      }
-    }
-  }, [isDraggingVertical, handleVerticalMouseMove, handleVerticalMouseUp])
 
   // Get the title for a property from the schema if available
   const getPropertyTitle = (path: string[], key: string): string => {
@@ -827,7 +621,7 @@ data:
               <Label className="w-32 text-sm font-medium text-foreground">{displayName}</Label>
               <div className="flex-1">
                 {typeof value === "boolean" ? (
-                  <Checkbox checked={!!value} onCheckedChange={(checked) => updateFormData(path, checked)} />
+                  <Checkbox checked={!!value} onCheckedChange={(checked: any) => updateFormData(path, checked)} />
                 ) : typeof value === "number" ? (
                   <Input
                     type="number"
@@ -858,59 +652,36 @@ data:
    */
   const renderLayout = () => {
     if (layout === "side-by-side") {
-      // True side-by-side layout (horizontal split)
-      return (
-        <div className="flex gap-3 flex-1 min-h-0" ref={containerRef}>
-          {/* Left Panel - Form Editor */}
-          <div
-            className="flex flex-col min-w-0 overflow-hidden"
-            style={{
-              width: showYamlEditor ? `${leftPanelWidth}%` : '100%'
-            }}
-            ref={leftColumnRef}
-          >
-            <Card className="flex flex-col m-4 mr-2 overflow-hidden h-full">
-              {!hideHeader && (
-                <CardHeader className="pb-3 flex-shrink-0">
-                  <CardTitle className="text-lg">Form Editor</CardTitle>
-                </CardHeader>
-              )}
-              <CardContent className={`flex-1 overflow-hidden p-0 ${hideHeader ? 'pt-4' : ''}`}>
-                {isLoading ? (
-                  <div className="flex items-center justify-center h-full text-muted-foreground">Loading...</div>
-                ) : (
-                  <ScrollArea className="h-full">
-                    <div className="space-y-6 p-4">{renderFormFields(formData, [], 0)}</div>
-                  </ScrollArea>
+      // Side-by-side layout (horizontal split) using ResizablePanelGroup
+    return (
+      <div className="flex flex-col flex-1 min-h-0 h-full">
+        {showYamlEditor ? (
+          <ResizablePanelGroup direction="horizontal" className="flex-1 h-full">
+            {/* Form Editor Panel */}
+            <ResizablePanel defaultSize={65} minSize={20} maxSize={80}>
+              <Card className="flex flex-col m-4 mr-2 overflow-hidden h-full">
+                {!hideHeader && (
+                  <CardHeader className="pb-3 flex-shrink-0">
+                    <CardTitle className="text-lg">Form Editor</CardTitle>
+                  </CardHeader>
                 )}
-              </CardContent>
-            </Card>
-          </div>
+                <CardContent className={`flex-1 overflow-hidden p-0 ${hideHeader ? 'pt-4' : ''}`}>
+                  {isLoading ? (
+                    <div className="flex items-center justify-center h-full text-muted-foreground">Loading...</div>
+                  ) : (
+                    <div className="h-full overflow-y-auto custom-scrollbar">
+                      <div className="space-y-6 p-4">{renderFormFields(formData, [], 0)}</div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </ResizablePanel>
 
-          {/* Horizontal Splitter - Only show when YAML editor is visible */}
-          {showYamlEditor && (
-            <div className="relative group">
-              <div
-                className="w-0.5 bg-transparent hover:bg-primary/20 cursor-col-resize flex-shrink-0 transition-all duration-200 group-hover:w-1 group-hover:bg-border"
-                onMouseDown={handleHorizontalMouseDown}
-                role="separator"
-                aria-label="Resize panels"
-                style={{
-                  backgroundColor: isDraggingHorizontal ? "hsl(var(--primary))" : undefined,
-                  width: isDraggingHorizontal ? "4px" : undefined,
-                }}
-              />
-              {/* Invisible hover area for easier targeting */}
-              <div className="absolute inset-0 -left-2 -right-2 cursor-col-resize" onMouseDown={handleHorizontalMouseDown} />
-            </div>
-          )}
+            {/* Resizable Handle */}
+            <ResizableHandle withHandle />
 
-          {/* Right Panel - YAML Editor */}
-          {showYamlEditor && (
-            <div
-              className="flex flex-col min-w-0 overflow-hidden"
-              style={{ width: `${100 - leftPanelWidth}%` }}
-            >
+            {/* YAML Editor Panel */}
+            <ResizablePanel defaultSize={35} minSize={20} maxSize={80}>
               <Card className="flex flex-col m-4 ml-2 overflow-hidden h-full">
                 {!hideHeader && (
                   <CardHeader className="pb-2 flex-shrink-0">
@@ -959,104 +730,127 @@ data:
                   </div>
                 </CardContent>
               </Card>
-            </div>
-          )}
-        </div>
-      )
-    } else {
-      // Stacked layout (vertical split) - Form on top, YAML on bottom
-      return (
-        <div className="flex flex-col gap-3 flex-1 min-h-0" ref={leftColumnRef}>
-          {/* Form Editor */}
-          <Card
-            className="flex flex-col overflow-hidden"
-            style={{ height: showYamlEditor ? `${verticalSplitRatio}%` : "100%" }}
-          >
-            <CardHeader className="pb-3 flex-shrink-0">
-              <CardTitle className="text-lg">Form Editor</CardTitle>
-            </CardHeader>
-            <CardContent className="flex-1 overflow-hidden p-0">
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        ) : (
+          // When YAML editor is hidden, show only form editor
+          <Card className="flex flex-col m-4 overflow-hidden h-full">
+            {!hideHeader && (
+              <CardHeader className="pb-3 flex-shrink-0">
+                <CardTitle className="text-lg">Form Editor</CardTitle>
+              </CardHeader>
+            )}
+            <CardContent className={`flex-1 overflow-hidden p-0 ${hideHeader ? 'pt-4' : ''}`}>
               {isLoading ? (
                 <div className="flex items-center justify-center h-full text-muted-foreground">Loading...</div>
               ) : (
-                <ScrollArea className="h-full">
+                <div className="h-full overflow-y-auto custom-scrollbar">
                   <div className="space-y-6 p-4">{renderFormFields(formData, [], 0)}</div>
-                </ScrollArea>
+                </div>
               )}
             </CardContent>
           </Card>
+        )}
+      </div>
+    )
+    } else {
+      // Stacked layout (vertical split) - Form on top, YAML on bottom
+      return (
+        <div className="flex flex-col flex-1 min-h-0 h-full">
+          {showYamlEditor ? (
+            <ResizablePanelGroup direction="vertical" className="flex-1 h-full">
+              {/* Form Editor Panel */}
+              <ResizablePanel defaultSize={60} minSize={20} maxSize={80}>
+                <Card className="flex flex-col overflow-hidden h-full">
+                  <CardHeader className="pb-3 flex-shrink-0">
+                    <CardTitle className="text-lg">Form Editor</CardTitle>
+                  </CardHeader>
+                  <CardContent className="flex-1 overflow-hidden p-0">
+                    {isLoading ? (
+                      <div className="flex items-center justify-center h-full text-muted-foreground">Loading...</div>
+                    ) : (
+                      <div className="h-full overflow-y-auto custom-scrollbar">
+                        <div className="space-y-6 p-4">{renderFormFields(formData, [], 0)}</div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </ResizablePanel>
 
-          {/* Vertical Splitter - Hidden by default, shows on hover */}
-          {showYamlEditor && (
-            <div className="relative group">
-              <div
-                className="h-0.5 bg-transparent hover:bg-primary/20 cursor-row-resize flex-shrink-0 transition-all duration-200 group-hover:h-1 group-hover:bg-border"
-                onMouseDown={handleVerticalMouseDown}
-                style={{
-                  backgroundColor: isDraggingVertical ? "hsl(var(--primary))" : undefined,
-                  height: isDraggingVertical ? "4px" : undefined,
-                }}
-              />
-              {/* Invisible hover area for easier targeting */}
-              <div
-                className="absolute inset-0 -top-2 -bottom-2 cursor-row-resize"
-                onMouseDown={handleVerticalMouseDown}
-              />
-            </div>
-          )}
+              {/* Resizable Handle */}
+              <ResizableHandle withHandle />
 
-          {/* YAML Editor */}
-          {showYamlEditor && (
-            <Card className="flex flex-col overflow-hidden" style={{ height: `${100 - verticalSplitRatio}%` }}>
-              <CardHeader className="pb-2 flex-shrink-0">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg">YAML Editor</CardTitle>
-                  <div className="flex items-center space-x-2">
-                    <Button variant="ghost" size="sm" onClick={copyEditorContent}>
-                      <Copy className="h-4 w-4 mr-2" />
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => setIsYamlExpanded(!isYamlExpanded)}>
-                      {isYamlExpanded ? <Minimize2 className="h-4 w-4 mr-2" /> : <Maximize2 className="h-4 w-4 mr-2" />}
-                    </Button>
-                  </div>
-                </div>
+              {/* YAML Editor Panel */}
+              <ResizablePanel defaultSize={40} minSize={20} maxSize={80}>
+                <Card className="flex flex-col overflow-hidden h-full">
+                  <CardHeader className="pb-2 flex-shrink-0">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-lg">YAML Editor</CardTitle>
+                      <div className="flex items-center space-x-2">
+                        <Button variant="ghost" size="sm" onClick={copyEditorContent}>
+                          <Copy className="h-4 w-4 mr-2" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => setIsYamlExpanded(!isYamlExpanded)}>
+                          {isYamlExpanded ? <Minimize2 className="h-4 w-4 mr-2" /> : <Maximize2 className="h-4 w-4 mr-2" />}
+                        </Button>
+                      </div>
+                    </div>
+                  </CardHeader>
+
+                  <CardContent className="p-0 flex-1 overflow-hidden">
+                    <div className="h-full border rounded-b-lg overflow-hidden">
+                      <CodeMirror
+                        value={yamlContent}
+                        height="100%"
+                        theme={codeMirrorTheme}
+                        extensions={[
+                          yamlLanguage(),
+                          EditorView.theme({
+                            "&": {
+                              height: "100%",
+                              maxHeight: "100%"
+                            },
+                            ".cm-editor": {
+                              height: "100%"
+                            },
+                            ".cm-scroller": {
+                              maxHeight: "100%"
+                            }
+                          })
+                        ]}
+                        onChange={(value) => handleYamlChange(value)}
+                        basicSetup={{
+                          lineNumbers: true,
+                          foldGutter: true,
+                          dropCursor: false,
+                          allowMultipleSelections: false,
+                          indentOnInput: true,
+                          bracketMatching: true,
+                          closeBrackets: true,
+                          autocompletion: true,
+                          highlightSelectionMatches: false,
+                        }}
+                        className="text-sm h-full"
+                      />
+                    </div>
+                  </CardContent>
+
+                </Card>
+              </ResizablePanel>
+            </ResizablePanelGroup>
+          ) : (
+            <Card className="flex flex-col overflow-hidden h-full">
+              <CardHeader className="pb-3 flex-shrink-0">
+                <CardTitle className="text-lg">Form Editor</CardTitle>
               </CardHeader>
-              <CardContent className="p-0 flex-1 overflow-hidden">
-                <div className="h-full border rounded-b-lg overflow-hidden">
-                  <CodeMirror
-                    value={yamlContent}
-                    height="100%"
-                    theme={oneDark}
-                    extensions={[
-                      yamlLanguage(),
-                      EditorView.theme({
-                        "&": {
-                          height: "100%",
-                        },
-                        ".cm-editor": {
-                          height: "100%",
-                        },
-                        ".cm-scroller": {
-                          overflow: "auto",
-                          maxHeight: "100%",
-                        },
-                      }),
-                    ]}
-                    onChange={(value) => handleYamlChange(value)}
-                    basicSetup={{
-                      lineNumbers: true,
-                      foldGutter: true,
-                      dropCursor: false,
-                      allowMultipleSelections: false,
-                      indentOnInput: true,
-                      bracketMatching: true,
-                      closeBrackets: true,
-                      autocompletion: true,
-                      highlightSelectionMatches: false,
-                    }}
-                    className="text-sm h-full"
-                  />
-                </div>
+              <CardContent className="flex-1 overflow-hidden p-0">
+                {isLoading ? (
+                  <div className="flex items-center justify-center h-full text-muted-foreground">Loading...</div>
+                ) : (
+                  <ScrollArea className="h-full">
+                    <div className="space-y-6 p-4">{renderFormFields(formData, [], 0)}</div>
+                  </ScrollArea>
+                )}
               </CardContent>
             </Card>
           )}
@@ -1096,7 +890,7 @@ data:
       )}
 
       {/* Main Content */}
-      <div className={hideHeader ? "h-full" : "flex-1"}>
+      <div className={hideHeader ? "h-full flex flex-col" : "flex-1 flex flex-col"}>
         {renderLayout()}
       </div>
     </div>

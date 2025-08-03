@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/renderer/components/ui/dialog'
 import { Card, CardContent, CardHeader, CardTitle } from '@/renderer/components/ui/card'
 import { Button } from '@/renderer/components/ui/button'
@@ -12,14 +12,13 @@ import { Badge } from '@/renderer/components/ui/badge'
 import { Separator } from '@/renderer/components/ui/separator'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/renderer/components/ui/sheet'
 import { 
-  Eye, Download, Package, Settings, Play, FileText, Layers, 
-  Edit3, Save, X, Plus, Trash2, ChevronDown, ChevronRight,
-  Code, Zap, Package2, AlertCircle, CheckCircle,
-  ChevronLeft, Split, Maximize2
+  Eye, Package, Play, 
+  Edit3, Save, 
+  Code, Package2, 
+  Split, Maximize2
 } from 'lucide-react'
-import { Template, TemplateResource, TemplateField } from '@/shared/types/template'
-import YamlEditor, { YamlEditorProps } from '../yaml-editor'
-import { cn } from "@/lib/utils"
+import { Template } from '@/shared/types/template'
+import YamlEditor from '../yaml-editor'
 import yaml from "js-yaml"
 
 interface YamlEnabledTemplateViewProps {

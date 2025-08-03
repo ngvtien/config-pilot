@@ -519,3 +519,20 @@
   min-height: 400px;
   max-height: 800px;
 }
+
+/* Improve mouse responsiveness */
+* {
+  touch-action: manipulation;
+}
+
+[data-resizable-handle] {
+  will-change: background-color, transform;
+  backface-visibility: hidden;
+}
+
+/* Reduce motion for better performance if needed */
+@media (prefers-reduced-motion: reduce) {
+  [data-resizable-handle] {
+    transition: none !important;
+  }
+}

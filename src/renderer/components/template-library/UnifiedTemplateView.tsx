@@ -3,20 +3,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/renderer/components/
 import { Button } from '@/renderer/components/ui/button'
 import { Input } from '@/renderer/components/ui/input'
 import { Label } from '@/renderer/components/ui/label'
-import { Textarea } from '@/renderer/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs'
 import { Badge } from '@/renderer/components/ui/badge'
-import { Separator } from '@/renderer/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/renderer/components/ui/tooltip'
 import {
-  Eye, Download, Package, Settings, Play, FileText, Layers,
+  Package, FileText, Layers,
   Edit3, Save, X, Plus, Trash2, ChevronDown, ChevronRight,
-  Code, Zap, Package2, AlertCircle, CheckCircle,
+  Code, Zap, 
   ChevronLeft,
   Search
 } from 'lucide-react'
-import { Template, TemplateResource, TemplateField } from '@/shared/types/template'
-import { cn } from "@/lib/utils"
+import { Template, TemplateResource } from '@/shared/types/template'
 import yaml from 'js-yaml'
 import YamlEditor from '@/renderer/components/yaml-editor'
 import { kubernetesSchemaIndexer } from '@/renderer/services/kubernetes-schema-indexer'

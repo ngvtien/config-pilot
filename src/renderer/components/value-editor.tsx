@@ -12,6 +12,7 @@ import { yaml as yamlLanguage } from "@codemirror/lang-yaml"
 import { json as jsonLanguage } from "@codemirror/lang-json"
 import { readOnlyExtensions } from "@/renderer/lib/codemirror-themes"
 import YamlEditor, { type YamlEditorLayout } from "@/renderer/components/yaml-editor"
+import { JsonEditor } from "@/renderer/components/json-editor"
 import type { ContextData } from "@/shared/types/context-data"
 import { generateConfigMap } from "@/renderer/lib/config-generator"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/renderer/components/ui/tooltip"
@@ -143,7 +144,6 @@ resources:
       return "Error generating Config.json"
     }
   }
-
   /**
    * Copies the provided text to the clipboard
    * @param text - The text content to copy
@@ -152,51 +152,38 @@ resources:
     navigator.clipboard.writeText(text)
   }
 
+  /**
+   * Renders the display content using JsonEditor for JSON and YamlEditor for YAML
+   */
   const renderDisplayContent = () => {
-    let content = ""
-    let language: any = yamlLanguage()
-    let theme = codeMirrorTheme
-    let extensions = readOnlyExtensions
-
-    switch (displayFormat) {
-      case "configmap":
-        content = generateConfigMapOutput()
-        language = yamlLanguage()
-        theme = codeMirrorTheme
-        extensions = readOnlyExtensions
-        break
-      case "configjson":
-        content = generateConfigJsonOutput()
-        language = jsonLanguage()
-        theme = jsonCodeMirrorTheme
-        extensions = jsonExtensions
-        break
+    if (displayFormat === "configjson") {
+      const content = generateConfigJsonOutput()
+      return (
+        <div className="h-full" data-testid="json-output-editor">
+          <JsonEditor
+            readOnly={true}
+            value={content}
+            onChange={() => {}} // Read-only, no onChange needed
+            className="border-0"
+          />
+        </div>
+      )
+    } else {
+      // For ConfigMap (YAML), keep using the original CodeMirror approach
+      const content = generateConfigMapOutput()
+      return (
+        <div className="h-full" data-testid="yaml-output-editor">
+          <JsonEditor
+            readOnly={true}
+            value={content}
+            onChange={() => {}} // Read-only, no onChange needed
+            className="border-0"
+          />
+        </div>
+      )
     }
-
-    return (
-      <div className="h-full" data-testid="yaml-output-editor">
-        <CodeMirror
-          value={content}
-          height="100%"
-          theme={theme}
-          extensions={[language, ...extensions]}
-          basicSetup={{
-            lineNumbers: true,
-            foldGutter: true,
-            dropCursor: false,
-            allowMultipleSelections: false,
-            indentOnInput: false,
-            bracketMatching: true,
-            closeBrackets: false,
-            autocompletion: false,
-            highlightSelectionMatches: false,
-          }}
-          className="text-sm"
-        />
-      </div>
-    )
   }
-
+  
   if (layout === "stacked") {
     // For stacked layout, just use the YamlEditor without output panel
     return (

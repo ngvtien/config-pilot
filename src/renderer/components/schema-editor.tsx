@@ -2,7 +2,7 @@
 
 import React from "react"
 
-import { useState, useEffect, useRef, useCallback, useMemo } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { Button } from "@/renderer/components/ui/button"
 import { Textarea } from "@/renderer/components/ui/textarea"
 import { Input } from "@/renderer/components/ui/input"
@@ -43,16 +43,9 @@ import {
 } from "lucide-react"
 import { Switch } from "@/renderer/components/ui/switch"
 import { ChevronRight } from "lucide-react"
-
-import { EditorView, basicSetup } from "codemirror"
-import { json } from "@codemirror/lang-json"
-import { EditorState } from "@codemirror/state"
-import { linter, lintGutter } from "@codemirror/lint"
-import { jsonParseLinter } from "@codemirror/lang-json"
-import { syntaxHighlighting } from "@codemirror/language"
+import { JsonEditor } from "@/renderer/components/json-editor"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./ui/resizable"
 import type { ContextData } from "@/shared/types/context-data"
-import { jsonTheme, jsonHighlightStyle } from "@/renderer/lib/codemirror-themes"
 import { buildConfigPath } from "@/renderer/lib/path-utils"
 import type { SchemaProperty } from "@/shared/types/schema"
 
@@ -227,100 +220,6 @@ function useDebounce<T extends (...args: any[]) => void>(func: T, delay: number)
 
   return debouncedFunc as T
 }
-
-const EnhancedCodeMirrorEditor = React.memo(
-  ({ value, onChange }: { value: string; onChange: (value: string) => void }) => {
-    const editorRef = useRef<HTMLDivElement>(null)
-    const viewRef = useRef<EditorView | null>(null)
-    const lastValueRef = useRef(value)
-
-    // Debounce the onChange callback to reduce frequent updates
-    const debouncedOnChange = useDebounce(onChange, 150)
-
-    useEffect(() => {
-      if (!editorRef.current) return
-
-      // Only create editor if it doesn't exist
-      if (!viewRef.current) {
-        const state = EditorState.create({
-          doc: value,
-          extensions: [
-            basicSetup,
-            json(),
-            jsonTheme,
-            syntaxHighlighting(jsonHighlightStyle),
-            linter(jsonParseLinter()),
-            lintGutter(),
-            EditorView.updateListener.of((update) => {
-              if (update.docChanged) {
-                const newValue = update.state.doc.toString()
-                if (newValue !== lastValueRef.current) {
-                  lastValueRef.current = newValue
-                  debouncedOnChange(newValue)
-                }
-              }
-            }),
-            EditorView.theme({
-              "&": {
-                height: "100%",
-                fontSize: "14px",
-              },
-              ".cm-content": {
-                padding: "16px",
-              },
-              ".cm-focused": {
-                outline: "none",
-              },
-              ".cm-editor": {
-                height: "100%",
-              },
-              ".cm-scroller": {
-                height: "100%",
-              },
-            }),
-          ],
-        })
-
-        viewRef.current = new EditorView({
-          state,
-          parent: editorRef.current,
-        })
-      }
-
-      return () => {
-        // Only destroy on unmount, not on every render
-      }
-    }, []) // Empty dependency array means this only runs once on mount
-
-    // Update editor content when value changes externally (but not from editor itself)
-    useEffect(() => {
-      if (viewRef.current && value !== lastValueRef.current) {
-        lastValueRef.current = value
-        viewRef.current.dispatch({
-          changes: {
-            from: 0,
-            to: viewRef.current.state.doc.length,
-            insert: value,
-          },
-        })
-      }
-    }, [value])
-
-    // Clean up on unmount
-    useEffect(() => {
-      return () => {
-        if (viewRef.current) {
-          viewRef.current.destroy()
-          viewRef.current = null
-        }
-      }
-    }, [])
-
-    return <div ref={editorRef} className="h-full w-full rounded-lg border overflow-hidden" />
-  },
-)
-
-EnhancedCodeMirrorEditor.displayName = "EnhancedCodeMirrorEditor"
 
 // Simplified Add Property Dialog Component
 const AddPropertyDialog = React.memo(
@@ -649,8 +548,8 @@ const TreeNodeWithChildren = React.memo(
       <div className="select-none">
         <div
           className={`flex items-center py-1.5 px-2 rounded-lg cursor-pointer transition-all duration-150 group relative ${node.isSelected
-              ? "bg-primary/5 transform scale-[1.02] shadow-sm"
-              : "hover:bg-slate-100/80 dark:hover:bg-slate-800/60"
+            ? "bg-primary/5 transform scale-[1.02] shadow-sm"
+            : "hover:bg-slate-100/80 dark:hover:bg-slate-800/60"
             }`}
           style={{ paddingLeft: `${paddingLeft}px` }}
           onClick={(e) => {
@@ -796,16 +695,6 @@ export function SchemaEditor({ context, baseDirectory }: SchemaEditorProps) {
     [schema],
   )
 
-  // Memoize schema text to prevent unnecessary updates
-  const memoizedSchemaText = useMemo(() => {
-    return JSON.stringify(schema, null, 2)
-  }, [schema])
-
-  // Initialize schema text from schema object
-  useEffect(() => {
-    setSchemaText(memoizedSchemaText)
-  }, [memoizedSchemaText])
-
   // Load schema from localStorage or use mock
   useEffect(() => {
     const savedSchema = localStorage.getItem(`schema_${context.environment}_${context.product}`)
@@ -818,6 +707,21 @@ export function SchemaEditor({ context, baseDirectory }: SchemaEditorProps) {
       }
     }
   }, [context])
+
+  useEffect(() => {
+    const newSchemaText = JSON.stringify(schema, null, 2)
+    // Only update if the content is actually different to avoid infinite loops
+    if (newSchemaText !== schemaText) {
+      setSchemaText(newSchemaText)
+    }
+  }, [schema]) // Remove schemaText from dependencies to avoid infinite loops
+
+  // Initialize schemaText from schema on component mount
+  useEffect(() => {
+    if (schemaText === "") {
+      setSchemaText(JSON.stringify(schema, null, 2))
+    }
+  }, []) // Run only on mount
 
   const handleEditProperty = useCallback(
     (path: string) => {
@@ -834,8 +738,12 @@ export function SchemaEditor({ context, baseDirectory }: SchemaEditorProps) {
   const debouncedSchemaUpdate = useDebounce((value: string) => {
     try {
       const parsed = JSON.parse(value)
-      setSchema(parsed)
-      setError(null)
+
+      // Prevent update if content is the same (avoid formatting-only changes)
+      if (JSON.stringify(parsed) !== JSON.stringify(schema)) {
+        setSchema(parsed)
+        setError(null)
+      }
     } catch (e) {
       setError("Invalid JSON syntax")
     }
@@ -1800,13 +1708,18 @@ export function SchemaEditor({ context, baseDirectory }: SchemaEditorProps) {
                 <CardHeader className="p-4 pb-2 flex-shrink-0">
                   <h4 className="text-lg font-semibold">JSON Editor</h4>
                 </CardHeader>
+
                 <CardContent className="p-4 pt-0 flex-1 min-h-0">
-                  <ScrollArea className="h-full">
-                    <div className="h-full">
-                      <EnhancedCodeMirrorEditor value={schemaText} onChange={handleSchemaTextChange} />
-                    </div>
-                  </ScrollArea>
+                  <div className="h-full">
+                    <JsonEditor
+                      readOnly={true}
+                      value={schemaText}
+                      onChange={handleSchemaTextChange}
+                      className="border-0"
+                    />
+                  </div>
                 </CardContent>
+
               </Card>
             </div>
           </ResizablePanel>

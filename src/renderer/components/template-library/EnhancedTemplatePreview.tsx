@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/renderer/components/ui/card'
 import { Button } from '@/renderer/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs'
 import { Badge } from '@/renderer/components/ui/badge'
-import { Separator } from '@/renderer/components/ui/separator'
-import { Eye, Download, Package, Settings, Play, FileText, Layers } from 'lucide-react'
-import { Template, TemplateResource, TemplateField } from '@/shared/types/template'
+import { Package, Settings, Play, FileText, Layers } from 'lucide-react'
+import { Template, TemplateResource } from '@/shared/types/template'
 
 interface EnhancedTemplatePreviewProps {
   template: Template

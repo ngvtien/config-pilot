@@ -1,17 +1,15 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/renderer/components/ui/card'
 import { Input } from '@/renderer/components/ui/input'
 import { Button } from '@/renderer/components/ui/button'
 import { Badge } from '@/renderer/components/ui/badge'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/renderer/components/ui/tooltip'
-import { Settings, Play, Search, Download, Upload, Trash2, Eye, Package, RefreshCw, Filter, Grid, List, Plus } from 'lucide-react'
-import { EnhancedTemplatePreview } from './EnhancedTemplatePreview'
-//import { TemplateCustomizer } from './TemplateCustomizer'
+import { Search, Download, Upload, Trash2, Package, RefreshCw, Filter, Grid, List, Plus } from 'lucide-react'
 import { UnifiedTemplateView } from './UnifiedTemplateView'
 import { TemplateCreator } from './TemplateCreator'
 import { toast } from '@/renderer/hooks/use-toast'
 import { useDialog } from '../../hooks/useDialog';
-import { Alert, ModalAlert } from '../ui/Alert';
+import { ModalAlert } from '../ui/Alert';
 import { Confirm } from '../ui/Confirm';
 
 interface TemplateLibraryProps {
@@ -34,7 +32,6 @@ export function TemplateLibrary({ onTemplateSelect, onTemplateImport }: Template
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
-  //const [showCustomizer, setShowCustomizer] = useState(false)
   const [previewTemplate, setPreviewTemplate] = useState(null)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [filterType, setFilterType] = useState<string>('all')
