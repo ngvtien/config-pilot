@@ -20,9 +20,12 @@ import { Input } from "@/renderer/components/ui/input"
 import { Card, CardContent } from "@/renderer/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/renderer/components/ui/tabs"
 import { useToast } from "@/renderer/hooks/use-toast"
-import CodeMirror from "@uiw/react-codemirror"
-import { yaml as yamlLanguage } from "@codemirror/lang-yaml"
-import { readOnlyExtensions } from "@/renderer/lib/codemirror-themes"
+//import CodeMirror from "@uiw/react-codemirror"
+// import { yaml as yamlLanguage } from "@codemirror/lang-yaml"
+// import { readOnlyExtensions } from "@/renderer/lib/codemirror-themes"
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus, vs } from 'react-syntax-highlighter/dist/esm/styles/prism';
+
 import type { ContextData } from "@/shared/types/context-data"
 import { Alert, AlertDescription } from "@/renderer/components/ui/alert"
 import { useDialog } from '@/renderer/hooks/useDialog'
@@ -51,7 +54,7 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
   const { toast } = useToast()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { showConfirm, ConfirmDialog } = useDialog()
-  const { codeMirrorTheme } = useEditorTheme()
+  const { syntaxHighlighterTheme, syntaxHighlighterCustomStyle } = useEditorTheme()
 
   // Use provided context or create one from environment prop for backward compatibility
   const editorContext: ContextData = context || {
@@ -404,15 +407,15 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
           key: editVaultKey.toLowerCase()
         }
       }
-      
+
       // ✅ Add to real formData (this will trigger effects, but that's expected for saved secrets)
       if (!newFormData.env) newFormData.env = []
       newFormData.env.push(newSecret)
-      
+
       // ✅ Clear draft state
       setDraftSecrets([])
       setIsDraftMode(false)
-      
+
     } else if (!isNewSecret) {
       // ✅ Existing secret being updated
       if (newFormData.env && newFormData.env[editingSecretIndex]) {
@@ -431,7 +434,7 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
     setFormData(newFormData)
     const updatedYamlContent = yaml.dump(newFormData)
     setYamlContent(updatedYamlContent)
-    
+
     // ✅ Persist to localStorage and file
     localStorage.setItem(`secrets_editor_${env}`, updatedYamlContent)
     await updateSecretsSourceFile(env, updatedYamlContent)
@@ -565,12 +568,12 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
     if (editingSecretIndex === -1 && isDraftMode) {
       setDraftSecrets([])
       setIsDraftMode(false)
-      toast({ 
-        title: "Draft discarded", 
-        description: "New secret was not saved" 
+      toast({
+        title: "Draft discarded",
+        description: "New secret was not saved"
       })
     }
-    
+
     setEditingSecretIndex(null)
     setSecretInputValue("")
     setShowSecretValue(false)
@@ -635,17 +638,17 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
     // ✅ Combine real secrets with draft secrets
     const realSecrets = formData.env || []
     const allSecrets = isDraftMode ? [...realSecrets, ...draftSecrets] : realSecrets
-    
+
     if (!Array.isArray(allSecrets)) return []
 
     const filteredSecrets = allSecrets.filter((secret: SecretItem) => {
       // ✅ Add null checks to prevent TypeError
       if (!secret || !searchTerm) return !!secret
-      
+
       const nameMatch = secret.name?.toLowerCase().includes(searchTerm.toLowerCase()) || false
       const pathMatch = secret.vaultRef?.path?.toLowerCase().includes(searchTerm.toLowerCase()) || false
       const keyMatch = secret.vaultRef?.key?.toLowerCase().includes(searchTerm.toLowerCase()) || false
-      
+
       return nameMatch || pathMatch || keyMatch
     })
 
@@ -821,13 +824,18 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
                   <TabsContent value="secrets" className="mt-0 h-full">
                     <Card className="h-full border-0 rounded-none">
                       <CardContent className="p-0 h-full">
-                        <CodeMirror
-                          value={formData && formData.env ? `env:\n${yaml.dump({ env: formData.env }).substring(5)}` : "env: []"}
-                          height="100%"
-                          extensions={[yamlLanguage(), ...readOnlyExtensions]}
-                          theme={codeMirrorTheme}
-                          readOnly
-                        />
+                        <SyntaxHighlighter
+                          language="yaml"
+                          style={syntaxHighlighterTheme}
+                          showLineNumbers={true}
+                          wrapLines={true}
+                          customStyle={{
+                            ...syntaxHighlighterCustomStyle,
+                            height: '100%'
+                          }}
+                        >
+                          {formData && formData.env ? `env:\n${yaml.dump({ env: formData.env }).substring(5)}` : "env: []"}
+                        </SyntaxHighlighter>
                       </CardContent>
                     </Card>
                   </TabsContent>
@@ -835,13 +843,18 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
                   <TabsContent value="external-secrets" className="mt-0 h-full">
                     <Card className="h-full border-0 rounded-none">
                       <CardContent className="p-0 h-full">
-                        <CodeMirror
-                          value={externalSecretsYaml}
-                          height="100%"
-                          extensions={[yamlLanguage(), ...readOnlyExtensions]}
-                          theme={codeMirrorTheme}
-                          readOnly
-                        />
+                        <SyntaxHighlighter
+                          language="yaml"
+                          style={syntaxHighlighterTheme}
+                          showLineNumbers={true}
+                          wrapLines={true}
+                          customStyle={{
+                            ...syntaxHighlighterCustomStyle,
+                            height: '100%'
+                          }}
+                        >
+                          {externalSecretsYaml}
+                        </SyntaxHighlighter>
                       </CardContent>
                     </Card>
                   </TabsContent>
