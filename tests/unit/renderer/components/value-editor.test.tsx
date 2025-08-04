@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import ValueEditor from '../../../../src/renderer/components/value-editor';
+import ValuesEditor from '../../../../src/renderer/components/values-editor';
 import type { ContextData } from '../../../../src/shared/types/context-data';
 import { setupComponentTest } from '../../../utils/test-helpers';
 
@@ -80,7 +80,7 @@ beforeEach(() => {
 //     }
 // });
 
-describe('ValueEditor', () => {
+describe('ValuesEditor', () => {
     const mockContext: ContextData = {
         environment: 'dev',
         instance: 0,
@@ -103,7 +103,7 @@ describe('ValueEditor', () => {
          */
         it('should render in side-by-side layout with all panels', () => {
             render(
-                <ValueEditor
+                <ValuesEditor
                     initialValue="test: value"
                     onChange={mockOnChange}
                     context={mockContext}
@@ -122,7 +122,7 @@ describe('ValueEditor', () => {
          */
         it('should render in stacked layout with only YAML editor', () => {
             render(
-                <ValueEditor
+                <ValuesEditor
                     initialValue="test: value"
                     onChange={mockOnChange}
                     context={mockContext}
@@ -145,7 +145,7 @@ describe('ValueEditor', () => {
         it('should switch between output format tabs', async () => {
             const user = userEvent.setup();
             render(
-                <ValueEditor
+                <ValuesEditor
                     initialValue="test: value"
                     onChange={mockOnChange}
                     context={mockContext}
@@ -171,7 +171,7 @@ describe('ValueEditor', () => {
          */
         it('should generate config.json content', () => {
             render(
-                <ValueEditor
+                <ValuesEditor
                     initialValue="replicaCount: 1\nimage:\n  tag: latest"
                     onChange={mockOnChange}
                     context={mockContext}
@@ -189,7 +189,7 @@ describe('ValueEditor', () => {
         it('should generate ConfigMap content', async () => {
             const user = userEvent.setup();
             render(
-                <ValueEditor
+                <ValuesEditor
                     initialValue="replicaCount: 1\nimage:\n  tag: latest"
                     onChange={mockOnChange}
                     context={mockContext}
@@ -210,7 +210,7 @@ describe('ValueEditor', () => {
          * Test copying content to clipboard
          */
     it('should copy content to clipboard when copy button is clicked', async () => {
-        render(<ValueEditor context={mockContext} layout="side-by-side" />);
+        render(<ValuesEditor context={mockContext} layout="side-by-side" />);
         
         const copyButton = screen.getByRole('button', { name: /copy/i });
         await userEvent.click(copyButton);
@@ -226,7 +226,7 @@ describe('ValueEditor', () => {
         // it('should show toast notification after copying', async () => {
         //     const user = userEvent.setup();
         //     render(
-        //         <ValueEditor
+        //         <ValuesEditor
         //             initialValue="test: value"
         //             onChange={mockOnChange}
         //             context={mockContext}
@@ -250,7 +250,7 @@ describe('ValueEditor', () => {
         it('should call onChange when YAML content changes', async () => {
             const user = userEvent.setup();
             render(
-                <ValueEditor
+                <ValuesEditor
                     initialValue="test: value"
                     onChange={mockOnChange}
                     context={mockContext}
@@ -272,7 +272,7 @@ describe('ValueEditor', () => {
          */
         it('should handle splitter drag events', async () => {
             render(
-                <ValueEditor
+                <ValuesEditor
                     initialValue="test: value"
                     onChange={mockOnChange}
                     context={mockContext}
@@ -294,7 +294,7 @@ describe('ValueEditor', () => {
             const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
 
             render(
-                <ValueEditor
+                <ValuesEditor
                     initialValue="invalid: yaml: content: ["
                     onChange={mockOnChange}
                     context={mockContext}
@@ -315,7 +315,7 @@ describe('ValueEditor', () => {
          */
         it('should use context data for file path generation', () => {
             render(
-                <ValueEditor
+                <ValuesEditor
                     initialValue="test: value"
                     onChange={mockOnChange}
                     context={{
@@ -335,7 +335,7 @@ describe('ValueEditor', () => {
          */
         it('should use environment prop when context is not provided', () => {
             render(
-                <ValueEditor
+                <ValuesEditor
                     initialValue="test: value"
                     onChange={mockOnChange}
                     environment="staging"

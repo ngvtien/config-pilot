@@ -43,11 +43,12 @@ import {
 } from "lucide-react"
 import { Switch } from "@/renderer/components/ui/switch"
 import { ChevronRight } from "lucide-react"
-import { JsonEditor } from "@/renderer/components/json-editor"
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./ui/resizable"
 import type { ContextData } from "@/shared/types/context-data"
 import { buildConfigPath } from "@/renderer/lib/path-utils"
 import type { SchemaProperty } from "@/shared/types/schema"
+import { useEditorTheme } from '@/renderer/hooks/useEditorTheme'
 
 interface Schema {
   type: string
@@ -624,6 +625,8 @@ export function SchemaEditor({ context, baseDirectory }: SchemaEditorProps) {
     // Default to having root expanded
     return new Set(["root"])
   })
+
+  const { syntaxHighlighterTheme, syntaxHighlighterCustomStyle } = useEditorTheme()
   const [selectedProperty, setSelectedProperty] = useState<string | null>(null)
   const [editingProperty, setEditingProperty] = useState<string | null>(null)
   const [propertyForm, setPropertyForm] = useState<SchemaProperty>({
@@ -1711,12 +1714,21 @@ export function SchemaEditor({ context, baseDirectory }: SchemaEditorProps) {
 
                 <CardContent className="p-4 pt-0 flex-1 min-h-0">
                   <div className="h-full">
-                    <JsonEditor
+                    <SyntaxHighlighter
                       readOnly={true}
-                      value={schemaText}
-                      onChange={handleSchemaTextChange}
+                      language="json"
+                      style={syntaxHighlighterTheme}
+                      showLineNumbers={true}
+                      wrapLines={true}
+                      customStyle={{
+                        ...syntaxHighlighterCustomStyle,
+                        height: '100%'
+                      }}
                       className="border-0"
-                    />
+                    >
+                      {schemaText}
+                    </SyntaxHighlighter>
+
                   </div>
                 </CardContent>
 

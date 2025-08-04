@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import ValueEditor from '../../../src/renderer/components/value-editor';
+import ValuesEditor from '../../../src/renderer/components/values-editor';
 import type { ContextData } from '../../../src/shared/types/context-data';
 import { setupComponentTest, asyncAct } from '../../utils/test-helpers';
 import { describe, expect, it } from 'vitest';

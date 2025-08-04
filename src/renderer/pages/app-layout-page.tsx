@@ -12,7 +12,7 @@ import { SidebarInset, SidebarProvider } from "@/renderer/components/ui/sidebar"
 import { ContextSelector } from "@/renderer/components/context-selector"
 import { SettingsPage } from "@/renderer/pages/settings-page"
 import { SchemaEditor } from "@/renderer/components/schema-editor"
-import ValueEditor from "@/renderer/components/value-editor"
+import ValuesEditor from "@/renderer/components/values-editor"
 import SecretsEditor from "@/renderer/components/secrets-editor"
 import FileExplorerPage from "@/renderer/pages/file-explorer-page"
 import type { ContextData } from "@/shared/types/context-data"
@@ -315,7 +315,7 @@ export default function AppLayoutPage({
         )
       case "values":
         return (
-          <ValueEditor
+          <ValuesEditor
             context={context}
             schemaPath="/src/mock/schema/values.schema.json"
             baseDirectory={settings.baseDirectory}

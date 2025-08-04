@@ -20,11 +20,7 @@ import { Input } from "@/renderer/components/ui/input"
 import { Card, CardContent } from "@/renderer/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/renderer/components/ui/tabs"
 import { useToast } from "@/renderer/hooks/use-toast"
-//import CodeMirror from "@uiw/react-codemirror"
-// import { yaml as yamlLanguage } from "@codemirror/lang-yaml"
-// import { readOnlyExtensions } from "@/renderer/lib/codemirror-themes"
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus, vs } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 import type { ContextData } from "@/shared/types/context-data"
 import { Alert, AlertDescription } from "@/renderer/components/ui/alert"
