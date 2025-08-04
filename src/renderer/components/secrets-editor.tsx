@@ -27,7 +27,7 @@ import type { ContextData } from "@/shared/types/context-data"
 import { Alert, AlertDescription } from "@/renderer/components/ui/alert"
 import { useDialog } from '@/renderer/hooks/useDialog'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./ui/resizable"
-import { useTheme } from '@/renderer/components/theme-provider'
+import { useEditorTheme } from '@/renderer/hooks/useEditorTheme'
 import { SecretsTable } from "./secrets/SecretsTable"
 import { SecretEditModal } from "./secrets/SecretEditModal"
 
@@ -47,12 +47,11 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
   onChange,
   environment = "dev",
   context,
-  baseDirectory = "/opt/config-pilot/configs",
 }) => {
   const { toast } = useToast()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { showConfirm, ConfirmDialog } = useDialog()
-  const { theme } = useTheme()
+  const { codeMirrorTheme } = useEditorTheme()
 
   // Use provided context or create one from environment prop for backward compatibility
   const editorContext: ContextData = context || {
@@ -675,7 +674,7 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
       }
 
       const comparison = aValue.localeCompare(bValue)
-      return sortConfig.direction === 'asc' ? comparison : -comparison
+      return sortConfig.direction === 'ascending' ? comparison : -comparison
     })
   }
 
@@ -826,7 +825,7 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
                           value={formData && formData.env ? `env:\n${yaml.dump({ env: formData.env }).substring(5)}` : "env: []"}
                           height="100%"
                           extensions={[yamlLanguage(), ...readOnlyExtensions]}
-                          theme={theme === 'dark' ? 'dark' : 'light'}
+                          theme={codeMirrorTheme}
                           readOnly
                         />
                       </CardContent>
@@ -840,7 +839,7 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
                           value={externalSecretsYaml}
                           height="100%"
                           extensions={[yamlLanguage(), ...readOnlyExtensions]}
-                          theme={theme === 'dark' ? 'dark' : 'light'}
+                          theme={codeMirrorTheme}
                           readOnly
                         />
                       </CardContent>

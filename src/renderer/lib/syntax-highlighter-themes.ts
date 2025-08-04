@@ -1,5 +1,5 @@
-import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { vs } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 
 /**
  * Get the appropriate syntax highlighter theme based on the current theme
@@ -7,7 +7,7 @@ import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism'
  * @returns The appropriate syntax highlighter theme
  */
 export const getSyntaxHighlighterTheme = (isDark: boolean) => {
-  return isDark ? oneDark : oneLight
+  return isDark ? vscDarkPlus : vs
 }
 
 /**
@@ -19,10 +19,10 @@ export const getSyntaxHighlighterCustomStyle = (isDark: boolean) => {
   return {
     margin: 0,
     padding: '1rem',
-    background: isDark ? '#1f2937' : '#ffffff',
+    background: isDark ? '#1e1e1e' : '#ffffff', // VS Code dark background
     fontSize: '14px',
     lineHeight: '1.5',
-    border: isDark ? '1px solid #374151' : '1px solid #e5e7eb',
+    border: isDark ? '1px solid #3c3c3c' : '1px solid #e5e7eb', // VS Code border colors
   }
 }
 
@@ -35,8 +35,8 @@ export const getSyntaxHighlighterLineNumberStyle = (isDark: boolean) => {
   return {
     minWidth: '3em',
     paddingRight: '1em',
-    color: isDark ? '#6b7280' : '#6a737d',
-    borderRight: isDark ? '1px solid #374151' : '1px solid #e5e7eb',
+    color: isDark ? '#858585' : '#237893', // VS Code line number colors
+    borderRight: isDark ? '1px solid #3c3c3c' : '1px solid #e5e7eb',
     marginRight: '1em'
   }
 }

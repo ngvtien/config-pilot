@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/renderer/components/ui/card'
 import { Button } from '@/renderer/components/ui/button'
 import { Input } from '@/renderer/components/ui/input'
@@ -9,12 +9,11 @@ import { Badge } from '@/renderer/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs'
 import { Alert, AlertDescription } from '@/renderer/components/ui/alert'
 import { ScrollArea } from '@/renderer/components/ui/scroll-area'
-import { Separator } from '@/renderer/components/ui/separator'
 import { Save, FileText, Code, AlertTriangle, CheckCircle, RefreshCw } from 'lucide-react'
 import yaml from 'js-yaml'
 import CodeMirror from '@uiw/react-codemirror'
 import { yaml as yamlLanguage } from '@codemirror/lang-yaml'
-import { oneDark } from '@codemirror/theme-one-dark'
+import { useEditorTheme } from '@/renderer/hooks/useEditorTheme'
 import type { ContextData } from '@/shared/types/context-data'
 import type { SettingsData } from '@/shared/types/settings-data'
 import type { 
@@ -57,6 +56,8 @@ export function KubernetesResourceCreator({
   const [currentSchema, setCurrentSchema] = useState<any>(null)
   const [isLoadingSchema, setIsLoadingSchema] = useState(false)
   
+  const { codeMirrorTheme } = useEditorTheme()
+
   // Add userDataDir state
   const [userDataDir, setUserDataDir] = useState<string>('')
   
@@ -442,7 +443,7 @@ export function KubernetesResourceCreator({
                     value={yamlContent}
                     onChange={setYamlContent}
                     extensions={[yamlLanguage()]}
-                    theme={settings.darkMode ? oneDark : undefined}
+                    theme={codeMirrorTheme}
                     className="text-sm"
                     basicSetup={{
                       lineNumbers: true,

@@ -17,7 +17,7 @@ import { useTheme } from '@/renderer/components/theme-provider'
 import CodeMirror from "@uiw/react-codemirror"
 import { yaml as yamlLanguage } from "@codemirror/lang-yaml"
 import { json as jsonLanguage } from "@codemirror/lang-json"
-import { oneDark } from "@codemirror/theme-one-dark"
+import { useEditorTheme } from '@/renderer/hooks/useEditorTheme'
 import { EditorView } from "@codemirror/view"
 import { joinPath } from '@/renderer/lib/path-utils'
 
@@ -696,6 +696,8 @@ export default function KubernetesSchemaEditor({
         resourceTypeFilter: `k8s-resource-filter-${context.product}-${context.customer}-${context.environment}`
     }
 
+    const { codeMirrorTheme } = useEditorTheme()
+
     // Helper function to get cached data
     const getCachedData = (key: string, defaultValue: any) => {
         try {
@@ -1263,7 +1265,7 @@ export default function KubernetesSchemaEditor({
                             <CodeMirror
                                 value={yamlPreview}
                                 height="100%"
-                                theme={isDarkMode ? oneDark : undefined}
+                                theme={codeMirrorTheme}
                                 extensions={[
                                     yamlLanguage(),
                                     ...readOnlyExtensions,

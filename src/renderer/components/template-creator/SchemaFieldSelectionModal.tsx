@@ -20,8 +20,7 @@ import type { TemplateField, TemplateResource } from '@/shared/types/template'
 import { SchemaProperty, SchemaTreeNode } from '../../../shared/types/schema';
 import { SchemaTreeView } from './SchemaTreeView';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import { EnhancedTemplateField, ArrayItemFieldConfig } from '@/shared/types/enhanced-template-field'
+import { useEditorTheme } from '@/renderer/hooks/useEditorTheme'
 import { normalizeFieldPath } from '../../utils/pathNormalization'
 import { EnhancedPropertyEditor } from '../enhanced-property-editor'
 
@@ -93,54 +92,6 @@ const getFieldConfiguration = (resourceKey: string, fieldPath: string): JSONSche
     return {}
 }
 
-/**
- * Helper function to update field configuration in JSONSchema7 format
- * Only stores properties that have actual values
- */
-const updateFieldConfiguration = (
-    resourceKey: string,
-    fieldPath: string,
-    updates: Partial<JSONSchema7FieldConfig>
-): JSONSchema7FieldConfig => {
-    const allConfigs = getPersistedFieldConfigurations(resourceKey)
-    let currentConfig = allConfigs[fieldPath] || {}
-
-    // Ensure currentConfig is an object (handle backward compatibility)
-    if (typeof currentConfig !== 'object' || Array.isArray(currentConfig)) {
-        currentConfig = { default: currentConfig }
-    }
-
-    // Apply updates
-    const mergedConfig = { ...currentConfig, ...updates }
-
-    // Clean the configuration - only keep properties with actual values
-    const cleanConfig: any = {}
-
-    if (mergedConfig.default !== undefined && mergedConfig.default !== null && mergedConfig.default !== '') {
-        cleanConfig.default = mergedConfig.default
-    }
-    if (mergedConfig.title && typeof mergedConfig.title === 'string' && mergedConfig.title.trim()) {
-        cleanConfig.title = mergedConfig.title.trim()
-    }
-    if (mergedConfig.description && typeof mergedConfig.description === 'string' && mergedConfig.description.trim()) {
-        cleanConfig.description = mergedConfig.description.trim()
-    }
-    if (mergedConfig.format && typeof mergedConfig.format === 'string' && mergedConfig.format.trim()) {
-        cleanConfig.format = mergedConfig.format.trim()
-    }
-
-    // If clean config is empty, remove the field entirely
-    if (Object.keys(cleanConfig).length === 0) {
-        delete allConfigs[fieldPath]
-    } else {
-        allConfigs[fieldPath] = cleanConfig
-    }
-
-    persistFieldConfigurations(resourceKey, allConfigs)
-
-    // Return the current configuration
-    return getFieldConfiguration(resourceKey, fieldPath)
-}
 
 // Local interface for UI rendering - properties as array for easier iteration
 export interface UISchemaProperty {
@@ -255,9 +206,6 @@ export const setEffectiveFieldConfiguration = (resourceKey: string, fieldPath: s
     return getFieldConfiguration(resourceKey, fieldPath)
 }
 
-/**
- * Clear all field configurations
- */
 /**
  * Clear all field configurations and cached data
  */
@@ -452,6 +400,8 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
     const [schemaTimestamp, setSchemaTimestamp] = useState(Date.now())
 
     const [currentFieldStates, setCurrentFieldStates] = useState<Record<string, SchemaProperty>>({});
+
+    const { syntaxHighlighterTheme, syntaxHighlighterCustomStyle } = useEditorTheme()
 
     const memoizedFullSchema = useMemo(() => {
         if (!resource?.schema) return '{}'
@@ -952,7 +902,7 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
             const indent = '  '.repeat(depth);
             const properties: any = {};
 
-            nodes.forEach((node, index) => {
+            nodes.forEach((node) => {
                 const isSelected = selectedPaths.has(node.path);
                 const hasSelectedChildren = hasSelectedChildrenByPath(node.path, selectedPaths);
 
@@ -1212,28 +1162,6 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
     }, [expandedFieldPath]);
 
     // Enhanced scroll function with better positioning
-    const scrollToField = (fieldPath: string) => {
-        const fieldElement = document.querySelector(`[data-field-path="${fieldPath}"]`);
-        const scrollContainer = selectedFieldsScrollRef.current;
-
-        if (fieldElement && scrollContainer) {
-            const containerRect = scrollContainer.getBoundingClientRect();
-            const fieldRect = fieldElement.getBoundingClientRect();
-
-            // Check if field is already visible
-            const isVisible = (
-                fieldRect.top >= containerRect.top &&
-                fieldRect.bottom <= containerRect.bottom
-            );
-
-            if (!isVisible) {
-                fieldElement.scrollIntoView({
-                    behavior: 'smooth',
-                    block: 'center'
-                });
-            }
-        }
-    };
 
     /**
      * Parse schema properties with reference resolution
@@ -1760,7 +1688,7 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
                                     </div>
                                 ) : (
                                     <div className="space-y-2">
-                                        {localSelectedFields.map((field, index) => (
+                                        {localSelectedFields.map((field) => (
                                             <div key={field.path}
                                                 className="border rounded-lg"
                                                 data-field-path={field.path}>
@@ -1867,17 +1795,6 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
                             Cancel
                         </Button>
 
-                        {/* <Button
-                            variant="secondary"
-                            onClick={() => {
-                                onFieldsChange(localSelectedFields)
-                                onOpenConfiguration?.(localSelectedFields)
-                            }}
-                            disabled={localSelectedFields.length === 0}
-                        >
-                            Configure Fields ({localSelectedFields.length})
-                        </Button> */}
-
                         <Button onClick={handleSave}>
                             Save Selection ({localSelectedFields.length} fields)
                         </Button>
@@ -1915,7 +1832,7 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
                                 <ScrollArea className="h-full">
                                     <SyntaxHighlighter
                                         language="json"
-                                        style={oneDark}
+                                        style={syntaxHighlighterTheme}
                                         showLineNumbers={true}
                                         lineNumberStyle={{
                                             minWidth: '3em',
@@ -1926,7 +1843,7 @@ export const SchemaFieldSelectionModal: React.FC<SchemaFieldSelectionModalProps>
                                             textAlign: 'right'
                                         }}
                                         customStyle={{
-                                            margin: 0,
+                                            ...syntaxHighlighterCustomStyle,  // Use centralized custom style as base
                                             borderRadius: '0.5rem',
                                             fontSize: '0.875rem',
                                             lineHeight: '1.5'
