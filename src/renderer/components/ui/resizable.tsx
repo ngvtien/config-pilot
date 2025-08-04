@@ -150,7 +150,7 @@ interface ResizableHandleProps extends React.HTMLAttributes<HTMLDivElement> {
 
 const ResizableHandle = React.forwardRef<HTMLDivElement, ResizableHandleProps>(
   ({ className, withHandle = false, ...props }, ref) => {
-    const { direction, getPanels } = useResizablePanelGroup()
+    const context = useResizablePanelGroup()
     const [isDragging, setIsDragging] = React.useState(false)
     const [isHovering, setIsHovering] = React.useState(false)
     const dragStateRef = React.useRef<{
@@ -162,194 +162,147 @@ const ResizableHandle = React.forwardRef<HTMLDivElement, ResizableHandleProps>(
       containerSize: number
     } | null>(null)
 
+    const { direction } = context
+
     /**
-     * Handle mouse enter for better cursor feedback
+     * Handle mouse enter event to show hover state
      */
     const handleMouseEnter = React.useCallback(() => {
       setIsHovering(true)
-      document.body.style.cursor = direction === "horizontal" ? "col-resize" : "row-resize"
-    }, [direction])
+    }, [])
 
     /**
-     * Handle mouse leave to reset cursor
+     * Handle mouse leave event to hide hover state
      */
     const handleMouseLeave = React.useCallback(() => {
-      if (!isDragging) {
-        setIsHovering(false)
-        document.body.style.cursor = ""
-      }
-    }, [isDragging])
+      setIsHovering(false)
+    }, [])
 
     /**
-     * Enhanced mouse down handler with aggressive event capture
-     */
-    const handleMouseDown = React.useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-      e.preventDefault()
-      e.stopPropagation()
-
-      // Immediate visual feedback - set cursor and styles before any async operations
-      const handle = e.currentTarget
-      document.body.style.cursor = direction === "horizontal" ? "col-resize" : "row-resize"
-      document.body.style.userSelect = "none"
-      document.body.style.pointerEvents = "none" // Prevent interference from other elements
-      handle.style.backgroundColor = "hsl(var(--accent))"
-      handle.style.zIndex = "9999" // Ensure handle stays on top
-
-      // Add capture listeners immediately for better responsiveness
-      const handleGlobalMouseMove = (e: MouseEvent) => {
-        e.preventDefault()
-        e.stopPropagation()
-        handleMouseMove(e)
-      }
-
-      const handleGlobalMouseUp = (e: MouseEvent) => {
-        e.preventDefault()
-        e.stopPropagation()
-        document.removeEventListener('mousemove', handleGlobalMouseMove, true)
-        document.removeEventListener('mouseup', handleGlobalMouseUp, true)
-        handleMouseUp()
-      }
-      // Use capture phase for immediate response
-      document.addEventListener('mousemove', handleGlobalMouseMove, true)
-      document.addEventListener('mouseup', handleGlobalMouseUp, true)
-
-      const container = handle.parentElement
-      if (!container) return
-
-      const panels = getPanels()
-      const containerChildren = Array.from(container.children)
-      const handleIndex = containerChildren.indexOf(handle)
-
-      // Find adjacent panels efficiently
-      let beforePanel: HTMLElement | null = null
-      let afterPanel: HTMLElement | null = null
-
-      for (let i = handleIndex - 1; i >= 0; i--) {
-        const child = containerChildren[i] as HTMLElement
-        const panelId = child.getAttribute('data-panel-id')
-        if (panelId && panels.has(panelId)) {
-          beforePanel = child
-          break
-        }
-      }
-
-      for (let i = handleIndex + 1; i < containerChildren.length; i++) {
-        const child = containerChildren[i] as HTMLElement
-        const panelId = child.getAttribute('data-panel-id')
-        if (panelId && panels.has(panelId)) {
-          afterPanel = child
-          break
-        }
-      }
-
-      if (!beforePanel || !afterPanel) {
-        // Reset styles if panels not found
-        document.body.style.cursor = ""
-        document.body.style.userSelect = ""
-        handle.style.backgroundColor = ""
-        return
-      }
-
-      const containerRect = container.getBoundingClientRect()
-      const beforeRect = beforePanel.getBoundingClientRect()
-      const afterRect = afterPanel.getBoundingClientRect()
-
-      dragStateRef.current = {
-        startPos: direction === "horizontal" ? e.clientX : e.clientY,
-        beforePanel,
-        afterPanel,
-        beforeStartSize: direction === "horizontal" ? beforeRect.width : beforeRect.height,
-        afterStartSize: direction === "horizontal" ? afterRect.width : afterRect.height,
-        containerSize: direction === "horizontal" ? containerRect.width : containerRect.height
-      }
-
-      // Set dragging state after immediate visual feedback
-      setIsDragging(true)
-    }, [direction, getPanels])
-
-    /**
-     * Enhanced mouse up handler with proper cleanup
-     */
-    const handleMouseUp = React.useCallback(() => {
-      if (isDragging) {
-        setIsDragging(false)
-        dragStateRef.current = null
-
-        // Reset all styles immediately
-        document.body.style.cursor = ""
-        document.body.style.userSelect = ""
-        document.body.style.pointerEvents = ""
-
-        // Reset handle styles
-        const handles = document.querySelectorAll('[data-resizable-handle]')
-        handles.forEach(handle => {
-          if (handle instanceof HTMLElement) {
-            handle.style.backgroundColor = ""
-            handle.style.zIndex = ""
-          }
-        })
-      }
-    }, [isDragging])
-
-    /**
-     * Optimized mouse move handler using requestAnimationFrame
+     * Handle mouse move during drag operation
+     * Updates panel sizes based on mouse position
      */
     const handleMouseMove = React.useCallback((e: MouseEvent) => {
-      if (!isDragging || !dragStateRef.current) return
+      if (!dragStateRef.current) return
 
       const { startPos, beforePanel, afterPanel, beforeStartSize, afterStartSize, containerSize } = dragStateRef.current
       const currentPos = direction === "horizontal" ? e.clientX : e.clientY
       const delta = currentPos - startPos
 
-      // Calculate new sizes with constraints
+      // Calculate new sizes with constraints (10% min, 90% max)
       const beforeNewSize = Math.max(10, Math.min(90, ((beforeStartSize + delta) / containerSize) * 100))
       const afterNewSize = Math.max(10, Math.min(90, ((afterStartSize - delta) / containerSize) * 100))
 
-      // Use requestAnimationFrame for smooth updates
-      requestAnimationFrame(() => {
-        if (beforePanel && afterPanel) {
-          beforePanel.style.flexBasis = `${beforeNewSize}%`
-          afterPanel.style.flexBasis = `${afterNewSize}%`
+      // Apply direct style updates for immediate response
+      if (beforePanel && afterPanel) {
+        beforePanel.style.flexBasis = `${beforeNewSize}%`
+        afterPanel.style.flexBasis = `${afterNewSize}%`
 
-          // For vertical layouts, explicitly set height
-          if (direction === "vertical") {
-            beforePanel.style.height = `${beforeNewSize}%`
-            afterPanel.style.height = `${afterNewSize}%`
-            // Ensure flex properties don't interfere
-            beforePanel.style.flexGrow = "0"
-            beforePanel.style.flexShrink = "0"
-            afterPanel.style.flexGrow = "0"
-            afterPanel.style.flexShrink = "0"
-          } else {
-            // For horizontal layouts, explicitly set width
-            beforePanel.style.width = `${beforeNewSize}%`
-            afterPanel.style.width = `${afterNewSize}%`
-            // Ensure flex properties don't interfere
-            beforePanel.style.flexGrow = "0"
-            beforePanel.style.flexShrink = "0"
-            afterPanel.style.flexGrow = "0"
-            afterPanel.style.flexShrink = "0"
-          }
-        }
-      })
-    }, [isDragging, direction])
-
-    // Optimized event listeners with passive option
-    React.useEffect(() => {
-      if (isDragging) {
-        document.addEventListener("mousemove", handleMouseMove, { passive: true })
-        document.addEventListener("mouseup", handleMouseUp)
-        document.body.style.cursor = direction === "horizontal" ? "col-resize" : "row-resize"
-        document.body.style.userSelect = "none"
-
-        return () => {
-          document.removeEventListener("mousemove", handleMouseMove)
-          document.removeEventListener("mouseup", handleMouseUp)
-          document.body.style.cursor = ""
-          document.body.style.userSelect = ""
+        if (direction === "vertical") {
+          beforePanel.style.height = `${beforeNewSize}%`
+          afterPanel.style.height = `${afterNewSize}%`
+          beforePanel.style.flexGrow = "0"
+          beforePanel.style.flexShrink = "0"
+          afterPanel.style.flexGrow = "0"
+          afterPanel.style.flexShrink = "0"
+        } else {
+          beforePanel.style.width = `${beforeNewSize}%`
+          afterPanel.style.width = `${afterNewSize}%`
+          beforePanel.style.flexGrow = "0"
+          beforePanel.style.flexShrink = "0"
+          afterPanel.style.flexGrow = "0"
+          afterPanel.style.flexShrink = "0"
         }
       }
-    }, [isDragging, handleMouseMove, handleMouseUp, direction])
+    }, [direction])
+
+    /**
+     * Handle mouse up event to end drag operation
+     * Cleans up event listeners and resets state
+     */
+    const handleMouseUp = React.useCallback(() => {
+      // Clean up drag state
+      dragStateRef.current = null
+      setIsDragging(false)
+      
+      // Remove event listeners
+      document.removeEventListener("mousemove", handleMouseMove)
+      document.removeEventListener("mouseup", handleMouseUp)
+      
+      // Reset cursor and selection
+      document.body.style.cursor = ""
+      document.body.style.userSelect = ""
+    }, [handleMouseMove])
+
+    /**
+     * Handle mouse down event to start drag operation
+     * Finds adjacent panels and sets up drag state
+     */
+    const handleMouseDown = React.useCallback((e: React.MouseEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+
+      const handleElement = e.currentTarget as HTMLElement
+      const container = handleElement.parentElement // The ResizablePanelGroup container
+      
+      if (!container) return
+
+      // Get all direct children that are panels (not handles)
+      const allChildren = Array.from(container.children) as HTMLElement[]
+      const panels = allChildren.filter(child => child.hasAttribute('data-panel-id'))
+      
+      if (panels.length < 2) return
+
+      // Find the handle's position among siblings
+      const handleIndex = allChildren.indexOf(handleElement)
+      
+      // Find adjacent panels by looking at siblings around the handle
+      let beforePanel: HTMLElement | null = null
+      let afterPanel: HTMLElement | null = null
+      
+      // Look backwards for the before panel
+      for (let i = handleIndex - 1; i >= 0; i--) {
+        if (allChildren[i].hasAttribute('data-panel-id')) {
+          beforePanel = allChildren[i]
+          break
+        }
+      }
+      
+      // Look forwards for the after panel
+      for (let i = handleIndex + 1; i < allChildren.length; i++) {
+        if (allChildren[i].hasAttribute('data-panel-id')) {
+          afterPanel = allChildren[i]
+          break
+        }
+      }
+
+      if (!beforePanel || !afterPanel) return
+
+      // Store initial drag state
+      const containerSize = direction === "horizontal" ? container.offsetWidth : container.offsetHeight
+      const beforeStartSize = direction === "horizontal" ? beforePanel.offsetWidth : beforePanel.offsetHeight
+      const afterStartSize = direction === "horizontal" ? afterPanel.offsetWidth : afterPanel.offsetHeight
+      const startPos = direction === "horizontal" ? e.clientX : e.clientY
+
+      dragStateRef.current = {
+        startPos,
+        beforePanel,
+        afterPanel,
+        beforeStartSize,
+        afterStartSize,
+        containerSize
+      }
+
+      setIsDragging(true)
+      
+      // Set cursor and prevent text selection
+      document.body.style.cursor = direction === "horizontal" ? "col-resize" : "row-resize"
+      document.body.style.userSelect = "none"
+      
+      // Add event listeners - single system only
+      document.addEventListener("mousemove", handleMouseMove)
+      document.addEventListener("mouseup", handleMouseUp)
+    }, [context, direction, handleMouseMove, handleMouseUp])
 
     return (
       <div
@@ -358,8 +311,8 @@ const ResizableHandle = React.forwardRef<HTMLDivElement, ResizableHandleProps>(
         className={cn(
           "relative flex items-center justify-center bg-transparent transition-all duration-100 group",
           direction === "horizontal"
-            ? "w-4 cursor-col-resize hover:bg-accent/20" // Increased from w-3 to w-4
-            : "h-4 cursor-row-resize hover:bg-accent/20", // Increased from h-3 to h-4
+            ? "w-4 cursor-col-resize hover:bg-accent/20"
+            : "h-4 cursor-row-resize hover:bg-accent/20",
           isDragging && "bg-accent/30",
           isHovering && "bg-accent/10",
           className
@@ -374,9 +327,9 @@ const ResizableHandle = React.forwardRef<HTMLDivElement, ResizableHandleProps>(
           className={cn(
             "absolute bg-border transition-all duration-100",
             direction === "horizontal"
-              ? "w-0.5 h-full group-hover:w-1 group-hover:bg-accent" // Thicker default line
+              ? "w-0.5 h-full group-hover:w-1 group-hover:bg-accent"
               : "h-0.5 w-full group-hover:h-1 group-hover:bg-accent",
-            isDragging && "bg-accent w-1 h-1", // Even thicker when dragging
+            isDragging && "bg-accent w-1 h-1",
             isHovering && "bg-accent/70"
           )}
         />
@@ -387,7 +340,7 @@ const ResizableHandle = React.forwardRef<HTMLDivElement, ResizableHandleProps>(
             "absolute rounded-sm bg-muted-foreground/30 transition-all duration-100",
             "group-hover:bg-muted-foreground/70",
             direction === "horizontal"
-              ? "h-10 w-1.5 group-hover:w-2" // Larger and more visible
+              ? "h-10 w-1.5 group-hover:w-2"
               : "h-1.5 w-10 group-hover:h-2",
             isDragging && "bg-muted-foreground",
             isHovering && "bg-muted-foreground/50"
@@ -395,9 +348,7 @@ const ResizableHandle = React.forwardRef<HTMLDivElement, ResizableHandleProps>(
         />
       </div>
     )
-
   }
 )
 ResizableHandle.displayName = "ResizableHandle"
-
 export { ResizablePanelGroup, ResizablePanel, ResizableHandle }
