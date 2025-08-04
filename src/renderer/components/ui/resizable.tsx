@@ -11,6 +11,8 @@ interface ResizablePanelGroupContextValue {
   registerPanel: (id: string, element: HTMLElement) => void
   unregisterPanel: (id: string) => void
   getPanels: () => Map<string, HTMLElement>
+  persistenceKey?: string
+  savePanelSizes: () => void
 }
 
 const ResizablePanelGroupContext = React.createContext<ResizablePanelGroupContextValue | null>(null)
@@ -27,27 +29,80 @@ const useResizablePanelGroup = () => {
 }
 
 /**
- * Resizable panel group component with optimized panel management
+ * Resizable panel group component with optimized panel management and persistence
  */
 interface ResizablePanelGroupProps extends React.HTMLAttributes<HTMLDivElement> {
   direction: "horizontal" | "vertical"
+  persistenceKey?: string
 }
 
 const ResizablePanelGroup = React.forwardRef<HTMLDivElement, ResizablePanelGroupProps>(
-  ({ className, direction, children, ...props }, ref) => {
+  ({ className, direction, children, persistenceKey, ...props }, ref) => {
     const panelsRef = React.useRef<Map<string, HTMLElement>>(new Map())
+    const [isInitialized, setIsInitialized] = React.useState(false)
 
     /**
-     * Register a panel element for resizing operations
+     * Load saved panel sizes from localStorage
+     */
+    const loadSavedSizes = React.useCallback(() => {
+      if (!persistenceKey) return {}
+      
+      try {
+        const saved = localStorage.getItem(`resizable-${persistenceKey}`)
+        if (saved) {
+          const sizes = JSON.parse(saved)
+          console.log(`[Resizable] Loaded saved sizes for ${persistenceKey}:`, sizes)
+          return sizes
+        }
+      } catch (e) {
+        console.warn('[Resizable] Failed to load saved sizes:', e)
+      }
+      return {}
+    }, [persistenceKey])
+
+    /**
+     * Apply saved size to a panel element
+     */
+    const applySavedSize = React.useCallback((element: HTMLElement, size: number) => {
+      console.log(`[Resizable] Applying saved size ${size}% to panel`)
+      
+      // Only set flexBasis and flex properties, avoid explicit width/height
+      element.style.flexBasis = `${size}%`
+      element.style.flexGrow = "0"
+      element.style.flexShrink = "0"
+      
+      // Remove any explicit width/height that might interfere with flex layout
+      if (direction === "horizontal") {
+        element.style.removeProperty('width')
+        element.style.removeProperty('height')
+      } else {
+        element.style.removeProperty('height')
+        element.style.removeProperty('width')
+      }
+    }, [direction])
+    /**
+     * Register a panel element
      */
     const registerPanel = React.useCallback((id: string, element: HTMLElement) => {
+      console.log(`[Resizable] Registering panel: ${id}`)
       panelsRef.current.set(id, element)
-    }, [])
+      
+      // Apply saved size after a short delay to ensure DOM is ready
+      if (persistenceKey && isInitialized) {
+        setTimeout(() => {
+          const savedSizes = loadSavedSizes()
+          if (savedSizes[id]) {
+            applySavedSize(element, savedSizes[id])
+          }
+        }, 50)
+      }
+    }, [persistenceKey, isInitialized, loadSavedSizes, applySavedSize])
 
     /**
      * Unregister a panel element
      */
     const unregisterPanel = React.useCallback((id: string) => {
+      console.log(`[Resizable] Unregistering panel: ${id}`)
       panelsRef.current.delete(id)
     }, [])
 
@@ -58,13 +113,82 @@ const ResizablePanelGroup = React.forwardRef<HTMLDivElement, ResizablePanelGroup
       return panelsRef.current
     }, [])
 
-    // Create a stable context value to prevent unnecessary re-renders
+    /**
+     * Save current panel sizes to localStorage
+     */
+    const savePanelSizes = React.useCallback(() => {
+      if (!persistenceKey || panelsRef.current.size === 0) {
+        console.log('[Resizable] Skipping save - no persistence key or panels')
+        return
+      }
+      
+      const sizes: Record<string, number> = {}
+      let containerSize = 0
+      
+      // Get container size from first panel's parent
+      const firstPanel = Array.from(panelsRef.current.values())[0]
+      if (firstPanel?.parentElement) {
+        containerSize = direction === "horizontal" 
+          ? firstPanel.parentElement.offsetWidth 
+          : firstPanel.parentElement.offsetHeight
+      }
+      
+      if (containerSize === 0) {
+        console.warn('[Resizable] Container size is 0, skipping save')
+        return
+      }
+      
+      panelsRef.current.forEach((element, id) => {
+        const elementSize = direction === "horizontal" 
+          ? element.offsetWidth 
+          : element.offsetHeight
+        sizes[id] = Math.round((elementSize / containerSize) * 100)
+      })
+      
+      console.log(`[Resizable] Saving panel sizes for ${persistenceKey}:`, sizes)
+      localStorage.setItem(`resizable-${persistenceKey}`, JSON.stringify(sizes))
+    }, [persistenceKey, direction])
+
+    /**
+     * Initialize saved sizes after component mounts
+     */
+    React.useEffect(() => {
+      if (persistenceKey) {
+        // Wait for panels to register, then apply saved sizes
+        const timer = setTimeout(() => {
+          setIsInitialized(true)
+          const savedSizes = loadSavedSizes()
+          
+          panelsRef.current.forEach((element, id) => {
+            if (savedSizes[id]) {
+              applySavedSize(element, savedSizes[id])
+            }
+          })
+        }, 100)
+        
+        return () => clearTimeout(timer)
+      }
+    }, [persistenceKey, loadSavedSizes, applySavedSize])
+
+    // Create stable context value
     const contextValue = React.useMemo(() => ({
       direction,
       registerPanel,
       unregisterPanel,
-      getPanels
-    }), [direction, registerPanel, unregisterPanel, getPanels])
+      getPanels,
+      persistenceKey,
+      savePanelSizes
+    }), [direction, registerPanel, unregisterPanel, getPanels, persistenceKey, savePanelSizes])
+
+    // Save sizes when component unmounts
+    React.useEffect(() => {
+      return () => {
+        if (persistenceKey) {
+          console.log('[Resizable] Component unmounting, saving sizes')
+          savePanelSizes()
+        }
+      }
+    }, [savePanelSizes, persistenceKey])
 
     return (
       <ResizablePanelGroupContext.Provider value={contextValue}>
@@ -83,10 +207,11 @@ const ResizablePanelGroup = React.forwardRef<HTMLDivElement, ResizablePanelGroup
     )
   }
 )
+
 ResizablePanelGroup.displayName = "ResizablePanelGroup"
 
 /**
- * Optimized resizable panel component
+ * Optimized resizable panel component with persistence support
  */
 interface ResizablePanelProps extends React.HTMLAttributes<HTMLDivElement> {
   defaultSize?: number
@@ -102,11 +227,17 @@ const ResizablePanel = React.forwardRef<HTMLDivElement, ResizablePanelProps>(
     const finalId = id || panelId
     const elementRef = React.useRef<HTMLDivElement>(null)
 
-    // Register/unregister panel on mount/unmount
+    // Register/unregister panel with enhanced timing
     React.useEffect(() => {
       if (elementRef.current) {
-        registerPanel(finalId, elementRef.current)
+        // Use requestAnimationFrame to ensure DOM is ready
+        requestAnimationFrame(() => {
+          if (elementRef.current) {
+            registerPanel(finalId, elementRef.current)
+          }
+        })
       }
+      
       return () => {
         unregisterPanel(finalId)
       }
@@ -139,10 +270,11 @@ const ResizablePanel = React.forwardRef<HTMLDivElement, ResizablePanelProps>(
     )
   }
 )
+
 ResizablePanel.displayName = "ResizablePanel"
 
 /**
- * High-performance resizable handle component
+ * High-performance resizable handle component with persistence
  */
 interface ResizableHandleProps extends React.HTMLAttributes<HTMLDivElement> {
   withHandle?: boolean
@@ -162,7 +294,7 @@ const ResizableHandle = React.forwardRef<HTMLDivElement, ResizableHandleProps>(
       containerSize: number
     } | null>(null)
 
-    const { direction } = context
+    const { direction, savePanelSizes } = context
 
     /**
      * Handle mouse enter event to show hover state
@@ -180,7 +312,6 @@ const ResizableHandle = React.forwardRef<HTMLDivElement, ResizableHandleProps>(
 
     /**
      * Handle mouse move during drag operation
-     * Updates panel sizes based on mouse position
      */
     const handleMouseMove = React.useCallback((e: MouseEvent) => {
       if (!dragStateRef.current) return
@@ -193,34 +324,36 @@ const ResizableHandle = React.forwardRef<HTMLDivElement, ResizableHandleProps>(
       const beforeNewSize = Math.max(10, Math.min(90, ((beforeStartSize + delta) / containerSize) * 100))
       const afterNewSize = Math.max(10, Math.min(90, ((afterStartSize - delta) / containerSize) * 100))
 
-      // Apply direct style updates for immediate response
+      // Apply direct style updates for immediate response - use only flexBasis
       if (beforePanel && afterPanel) {
         beforePanel.style.flexBasis = `${beforeNewSize}%`
         afterPanel.style.flexBasis = `${afterNewSize}%`
-
-        if (direction === "vertical") {
-          beforePanel.style.height = `${beforeNewSize}%`
-          afterPanel.style.height = `${afterNewSize}%`
-          beforePanel.style.flexGrow = "0"
-          beforePanel.style.flexShrink = "0"
-          afterPanel.style.flexGrow = "0"
-          afterPanel.style.flexShrink = "0"
+        beforePanel.style.flexGrow = "0"
+        beforePanel.style.flexShrink = "0"
+        afterPanel.style.flexGrow = "0"
+        afterPanel.style.flexShrink = "0"
+        
+        // Remove explicit width/height to prevent layout conflicts
+        if (direction === "horizontal") {
+          beforePanel.style.removeProperty('width')
+          afterPanel.style.removeProperty('width')
         } else {
-          beforePanel.style.width = `${beforeNewSize}%`
-          afterPanel.style.width = `${afterNewSize}%`
-          beforePanel.style.flexGrow = "0"
-          beforePanel.style.flexShrink = "0"
-          afterPanel.style.flexGrow = "0"
-          afterPanel.style.flexShrink = "0"
+          beforePanel.style.removeProperty('height')
+          afterPanel.style.removeProperty('height')
         }
       }
     }, [direction])
-
     /**
      * Handle mouse up event to end drag operation
-     * Cleans up event listeners and resets state
      */
     const handleMouseUp = React.useCallback(() => {
+      console.log('[Resizable] Drag ended, saving panel sizes')
+      
+      // Save sizes immediately after drag
+      setTimeout(() => {
+        savePanelSizes()
+      }, 10)
+      
       // Clean up drag state
       dragStateRef.current = null
       setIsDragging(false)
@@ -232,31 +365,25 @@ const ResizableHandle = React.forwardRef<HTMLDivElement, ResizableHandleProps>(
       // Reset cursor and selection
       document.body.style.cursor = ""
       document.body.style.userSelect = ""
-    }, [handleMouseMove])
+    }, [savePanelSizes])
 
     /**
      * Handle mouse down event to start drag operation
-     * Finds adjacent panels and sets up drag state
      */
     const handleMouseDown = React.useCallback((e: React.MouseEvent) => {
       e.preventDefault()
       e.stopPropagation()
 
       const handleElement = e.currentTarget as HTMLElement
-      const container = handleElement.parentElement // The ResizablePanelGroup container
+      const container = handleElement.parentElement
       
       if (!container) return
 
-      // Get all direct children that are panels (not handles)
+      // Get all direct children that are panels
       const allChildren = Array.from(container.children) as HTMLElement[]
-      const panels = allChildren.filter(child => child.hasAttribute('data-panel-id'))
-      
-      if (panels.length < 2) return
-
-      // Find the handle's position among siblings
       const handleIndex = allChildren.indexOf(handleElement)
       
-      // Find adjacent panels by looking at siblings around the handle
+      // Find adjacent panels
       let beforePanel: HTMLElement | null = null
       let afterPanel: HTMLElement | null = null
       
@@ -299,56 +426,47 @@ const ResizableHandle = React.forwardRef<HTMLDivElement, ResizableHandleProps>(
       document.body.style.cursor = direction === "horizontal" ? "col-resize" : "row-resize"
       document.body.style.userSelect = "none"
       
-      // Add event listeners - single system only
+      // Add event listeners
       document.addEventListener("mousemove", handleMouseMove)
       document.addEventListener("mouseup", handleMouseUp)
-    }, [context, direction, handleMouseMove, handleMouseUp])
+    }, [direction, handleMouseMove, handleMouseUp])
 
     return (
       <div
         ref={ref}
-        data-resizable-handle
         className={cn(
-          "relative flex items-center justify-center bg-transparent transition-all duration-100 group",
+          "relative flex items-center justify-center transition-colors flex-shrink-0",
           direction === "horizontal"
-            ? "w-4 cursor-col-resize hover:bg-accent/20"
-            : "h-4 cursor-row-resize hover:bg-accent/20",
-          isDragging && "bg-accent/30",
-          isHovering && "bg-accent/10",
+            ? "w-2 cursor-col-resize hover:bg-border min-w-[8px]"
+            : "h-2 cursor-row-resize hover:bg-border min-h-[8px]",
+          isDragging && "bg-border",
+          isHovering && "bg-muted",
           className
         )}
+        style={{
+          flexShrink: 0,
+          flexGrow: 0,
+          ...(direction === "horizontal" ? { minWidth: '8px', width: '8px' } : { minHeight: '8px', height: '8px' })
+        }}
         onMouseDown={handleMouseDown}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         {...props}
       >
-        {/* More prominent visual indicator */}
-        <div
-          className={cn(
-            "absolute bg-border transition-all duration-100",
-            direction === "horizontal"
-              ? "w-0.5 h-full group-hover:w-1 group-hover:bg-accent"
-              : "h-0.5 w-full group-hover:h-1 group-hover:bg-accent",
-            isDragging && "bg-accent w-1 h-1",
-            isHovering && "bg-accent/70"
-          )}
-        />
-
-        {/* Always show handle for better visibility */}
-        <div
-          className={cn(
-            "absolute rounded-sm bg-muted-foreground/30 transition-all duration-100",
-            "group-hover:bg-muted-foreground/70",
-            direction === "horizontal"
-              ? "h-10 w-1.5 group-hover:w-2"
-              : "h-1.5 w-10 group-hover:h-2",
-            isDragging && "bg-muted-foreground",
-            isHovering && "bg-muted-foreground/50"
-          )}
-        />
+        {withHandle && (
+          <div
+            className={cn(
+              "rounded-sm bg-border transition-colors",
+              direction === "horizontal" ? "h-4 w-1" : "h-1 w-4",
+              isDragging && "bg-ring"
+            )}
+          />
+        )}
       </div>
     )
   }
 )
+
 ResizableHandle.displayName = "ResizableHandle"
+
 export { ResizablePanelGroup, ResizablePanel, ResizableHandle }

@@ -45,6 +45,7 @@ export interface YamlEditorProps {
   hideHeader?: boolean
   /** Custom action buttons to display in header */
   customActions?: React.ReactNode
+  persistenceKey?: string 
 }
 
 
@@ -60,6 +61,7 @@ const YamlEditor: React.FC<YamlEditorProps> = ({
   title,
   hideHeader = false,
   customActions,
+  persistenceKey
 }) => {
   const [yamlContent, setYamlContent] = useState(initialContent)
   const [formData, setFormData] = useState<any>({})
@@ -645,6 +647,15 @@ data:
     })
   }
 
+  // Generate unique persistence key based on context or use provided one
+  const generatePersistenceKey = (suffix: string) => {
+    if (persistenceKey) {
+      return `${persistenceKey}-${suffix}`
+    }
+    // Fallback to context-based key
+    return `yaml-editor-${targetYamlFilename}-${suffix}`
+  }
+
   /**
    * Renders the layout based on the selected layout mode
    * For side-by-side: Form editor on left, YAML editor on right with 50:50 default split
@@ -656,9 +667,9 @@ data:
     return (
       <div className="flex flex-col flex-1 min-h-0 h-full">
         {showYamlEditor ? (
-          <ResizablePanelGroup direction="horizontal" className="flex-1 h-full">
+          <ResizablePanelGroup persistenceKey={generatePersistenceKey("horizontal")} direction="horizontal" className="flex-1 h-full">
             {/* Form Editor Panel */}
-            <ResizablePanel defaultSize={65} minSize={20} maxSize={80}>
+            <ResizablePanel id="form-editor" defaultSize={65} minSize={20} maxSize={80}>
               <Card className="flex flex-col m-4 mr-2 overflow-hidden h-full">
                 {!hideHeader && (
                   <CardHeader className="pb-3 flex-shrink-0">
@@ -681,7 +692,7 @@ data:
             <ResizableHandle withHandle />
 
             {/* YAML Editor Panel */}
-            <ResizablePanel defaultSize={35} minSize={20} maxSize={80}>
+            <ResizablePanel id="yaml-editor" defaultSize={35} minSize={20} maxSize={80}>
               <Card className="flex flex-col m-4 ml-2 overflow-hidden h-full">
                 {!hideHeader && (
                   <CardHeader className="pb-2 flex-shrink-0">
@@ -758,9 +769,9 @@ data:
       return (
         <div className="flex flex-col flex-1 min-h-0 h-full">
           {showYamlEditor ? (
-            <ResizablePanelGroup direction="vertical" className="flex-1 h-full">
+            <ResizablePanelGroup persistenceKey={generatePersistenceKey("vertical")} direction="vertical" className="flex-1 h-full">
               {/* Form Editor Panel */}
-              <ResizablePanel defaultSize={60} minSize={20} maxSize={80}>
+              <ResizablePanel id="form-editor" defaultSize={60} minSize={20} maxSize={80}>
                 <Card className="flex flex-col overflow-hidden h-full">
                   <CardHeader className="pb-3 flex-shrink-0">
                     <CardTitle className="text-lg">Form Editor</CardTitle>
@@ -781,7 +792,7 @@ data:
               <ResizableHandle withHandle />
 
               {/* YAML Editor Panel */}
-              <ResizablePanel defaultSize={40} minSize={20} maxSize={80}>
+              <ResizablePanel id="yaml-editor" defaultSize={40} minSize={20} maxSize={80}>
                 <Card className="flex flex-col overflow-hidden h-full">
                   <CardHeader className="pb-2 flex-shrink-0">
                     <div className="flex items-center justify-between">

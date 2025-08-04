@@ -214,9 +214,9 @@ resources:
 
       {/* Main Content with ResizablePanelGroup */}
       <div className="flex-1 overflow-hidden">
-        <ResizablePanelGroup direction="horizontal" className="h-full">
+        <ResizablePanelGroup direction="horizontal" persistenceKey="values-panel-form" className="h-full">
           {/* Left Panel - YamlEditor */}
-          <ResizablePanel defaultSize={60} minSize={30}>
+          <ResizablePanel id="left-panel-form" defaultSize={60} minSize={30}>
             <div className="h-full flex flex-col">
               <YamlEditor
                 targetYamlFilename="values.yaml"
@@ -226,6 +226,7 @@ resources:
                 initialContent={initialValue}
                 onChange={handleYamlChange}
                 title=""
+                persistenceKey="value-editor"
               />
             </div>
           </ResizablePanel>
@@ -233,7 +234,7 @@ resources:
           <ResizableHandle />
 
           {/* Right Panel - Output Display */}
-          <ResizablePanel defaultSize={40} minSize={30}>
+          <ResizablePanel id="right-panel-form" defaultSize={40} minSize={30}>
             <div className="h-full flex flex-col">
               <Card className="flex flex-col m-4 ml-2 overflow-hidden h-full">
                 <CardHeader className="pb-0 flex-shrink-0">

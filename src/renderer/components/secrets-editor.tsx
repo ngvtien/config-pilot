@@ -734,9 +734,9 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
 
       {/* Main content */}
       <div className="flex-1 overflow-hidden">
-        <ResizablePanelGroup direction="horizontal" className="h-full">
+        <ResizablePanelGroup direction="horizontal" persistenceKey="secrets-editor" className="h-full">
           {/* Left Panel - Secrets Management */}
-          <ResizablePanel defaultSize={60} minSize={30}>
+          <ResizablePanel id="secrets-list" defaultSize={60} minSize={30}>
             <div className="h-full flex flex-col">
               {/* Search and Actions */}
               <div className="p-4 border-b space-y-4">
@@ -794,7 +794,7 @@ const SecretsEditor: React.FC<SecretEditorProps> = ({
           <ResizableHandle />
 
           {/* Right Panel - YAML Preview */}
-          <ResizablePanel defaultSize={40} minSize={30}>
+          <ResizablePanel id="yaml-preview" defaultSize={40} minSize={30}>
             <div className="h-full flex flex-col">
               <div className="border-b">
                 <Tabs value={activeTab} onValueChange={(value: any) => setActiveTab(value as TabType)}>

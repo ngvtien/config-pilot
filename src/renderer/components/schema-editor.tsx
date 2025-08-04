@@ -1654,12 +1654,12 @@ export function SchemaEditor({ context, baseDirectory }: SchemaEditorProps) {
 
     return (
       <div className="h-full">
-        <ResizablePanelGroup direction="horizontal" className="h-full">
+        <ResizablePanelGroup persistenceKey="schema-editor" direction="horizontal" className="h-full">
           {/* Left Panel: Schema Tree + Property Editor - Now Horizontal */}
-          <ResizablePanel defaultSize={60} minSize={40} maxSize={75}>
-            <ResizablePanelGroup direction="horizontal" className="h-full">
+          <ResizablePanel id="schema-tree-panel" defaultSize={60} minSize={40} maxSize={75}>
+            <ResizablePanelGroup persistenceKey="schema-tree" direction="horizontal" className="h-full">
               {/* Schema Tree Section */}
-              <ResizablePanel defaultSize={50} minSize={30}>
+              <ResizablePanel id="schema-tree" defaultSize={50} minSize={30}>
                 <Card className="h-full border-0 shadow-sm flex flex-col">
                   <CardHeader className="p-4 pb-2 flex-shrink-0">
                     <div className="flex items-center justify-between">
@@ -1686,7 +1686,7 @@ export function SchemaEditor({ context, baseDirectory }: SchemaEditorProps) {
               <ResizableHandle />
 
               {/* Property Editor Section */}
-              <ResizablePanel defaultSize={50} minSize={30}>
+              <ResizablePanel id="property-editor-panel" defaultSize={50} minSize={30}>
                 <Card className="h-full border-0 shadow-sm flex flex-col">
                   <CardHeader className="p-4 pb-2 flex-shrink-0">
                     <h4 className="text-lg font-semibold">Property Editor</h4>
@@ -1702,7 +1702,7 @@ export function SchemaEditor({ context, baseDirectory }: SchemaEditorProps) {
           <ResizableHandle />
 
           {/* Right Panel: JSON Editor */}
-          <ResizablePanel defaultSize={40} minSize={25}>
+          <ResizablePanel id="json-editor-panel" defaultSize={40} minSize={25}>
             <div className="h-full flex flex-col">
               <Card className="h-full border-0 shadow-sm flex flex-col">
                 <CardHeader className="p-4 pb-2 flex-shrink-0">

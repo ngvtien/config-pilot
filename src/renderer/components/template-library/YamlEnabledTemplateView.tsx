@@ -489,6 +489,7 @@ export function YamlEnabledTemplateView({
           initialContent={yamlContent}
           onChange={handleYamlChange}
           title={`${editedTemplate.name} Configuration`}
+          persistenceKey={`template-view-${editedTemplate.name}`}
         />
       </div>
     )
