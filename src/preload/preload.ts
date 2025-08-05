@@ -3,6 +3,10 @@ import { contextBridge, ipcRenderer } from "electron"
 const splashAPI = {
   onSplashStatus: (callback: (status: string) => void) => {
     ipcRenderer.on('splash-status', (_event, status) => callback(status));
+  },
+  // Add acknowledgment sender
+  sendStatusReceived: () => {
+    ipcRenderer.send('splash-status-received');
   }
 };
 
@@ -215,6 +219,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
 
   onSplashStatus: splashAPI.onSplashStatus,
+  sendStatusReceived: splashAPI.sendStatusReceived,
 
   // Window controls
   minimize: () => ipcRenderer.send("window:minimize"),

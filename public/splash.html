@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,7 +11,7 @@
             padding: 0;
             box-sizing: border-box;
         }
-        
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: #0a0a0a;
@@ -23,7 +24,7 @@
             -webkit-user-select: none;
             user-select: none;
         }
-        
+
         .splash-container {
             display: flex;
             flex-direction: column;
@@ -32,7 +33,7 @@
             text-align: center;
             padding: 2rem;
         }
-        
+
         .logo {
             font-size: 4.5rem;
             font-weight: bold;
@@ -40,19 +41,19 @@
             margin-bottom: 0.5rem;
             text-shadow: 0 0 20px rgba(255, 165, 0, 0.3);
         }
-        
+
         .app-name {
             font-size: 1.8rem;
             font-weight: 500;
             margin-bottom: 2rem;
             color: #ffffff;
         }
-        
+
         .loading-container {
             width: 100%;
             max-width: 300px;
         }
-        
+
         .loading-bar {
             width: 100%;
             height: 4px;
@@ -61,7 +62,7 @@
             overflow: hidden;
             margin-bottom: 1rem;
         }
-        
+
         .loading-progress {
             height: 100%;
             background: linear-gradient(90deg, #FFA500, #FF8C00);
@@ -69,13 +70,24 @@
             animation: loading 2s ease-in-out infinite;
             box-shadow: 0 0 10px rgba(255, 165, 0, 0.5);
         }
-        
+
         @keyframes loading {
-            0% { width: 0%; transform: translateX(-100%); }
-            50% { width: 100%; transform: translateX(0%); }
-            100% { width: 100%; transform: translateX(100%); }
+            0% {
+                width: 0%;
+                transform: translateX(-100%);
+            }
+
+            50% {
+                width: 100%;
+                transform: translateX(0%);
+            }
+
+            100% {
+                width: 100%;
+                transform: translateX(100%);
+            }
         }
-        
+
         .status-text {
             font-size: 0.9rem;
             color: #ccc;
@@ -83,7 +95,7 @@
             min-height: 1.2rem;
             opacity: 0.8;
         }
-        
+
         .version {
             position: absolute;
             bottom: 20px;
@@ -93,6 +105,7 @@
         }
     </style>
 </head>
+
 <body>
     <div class="splash-container">
         <div class="logo">CP</div>
@@ -105,10 +118,10 @@
         </div>
     </div>
     <div class="version">v1.0.0</div>
-    
+
     <script>
         console.log('Splash screen script loaded');
-        
+
         // Listen for status updates from main process
         if (window.electronAPI && window.electronAPI.onSplashStatus) {
             window.electronAPI.onSplashStatus((status) => {
@@ -116,16 +129,25 @@
                 const statusElement = document.getElementById('status');
                 if (statusElement) {
                     statusElement.textContent = status;
+
+                    // Send acknowledgment back to main process
+                    if (window.electronAPI.sendStatusReceived) {
+                        // Use requestAnimationFrame to ensure DOM update completes
+                        requestAnimationFrame(() => {
+                            window.electronAPI.sendStatusReceived();
+                        });
+                    }
                 }
             });
         } else {
             console.warn('electronAPI not available');
         }
-        
+
         // Ensure DOM is ready
         document.addEventListener('DOMContentLoaded', () => {
             console.log('Splash screen DOM ready');
         });
     </script>
 </body>
+
 </html>

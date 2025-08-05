@@ -124,26 +124,65 @@ function createSplashWindow() {
 }
 
 /**
- * Updates splash screen status
+ * Updates splash screen status and waits for acknowledgment
  */
-function updateSplashStatus(status: string) {
-  console.log('Splash status:', status);
-  if (splashWindow && !splashWindow.isDestroyed()) {
-    // Wait for webContents to be ready before sending
-    if (splashWindow.webContents.isLoading()) {
-      splashWindow.webContents.once('did-finish-load', () => {
-        // Add a small delay to ensure the JavaScript is fully initialized
-        setTimeout(() => {
-          splashWindow?.webContents.send('splash-status', status);
-        }, 100);
-      });
+function updateSplashStatusAsync(status: string): Promise<void> {
+  return new Promise((resolve) => {
+    console.log('Splash status:', status);
+    
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      // Set up one-time listener for acknowledgment
+      const handleAck = () => {
+        ipcMain.removeListener('splash-status-received', handleAck);
+        resolve();
+      };
+      ipcMain.once('splash-status-received', handleAck);
+      
+      // Send the status message
+      const sendMessage = () => {
+        if (splashWindow && !splashWindow.isDestroyed()) {
+          splashWindow.webContents.send('splash-status', status);
+          
+          // Fallback timeout in case acknowledgment is never received
+          setTimeout(() => {
+            ipcMain.removeListener('splash-status-received', handleAck);
+            resolve();
+          }, 1000); // 1 second fallback
+        } else {
+          resolve();
+        }
+      };
+
+      if (splashWindow.webContents.isLoading()) {
+        splashWindow.webContents.once('did-finish-load', sendMessage);
+      } else {
+        // Small delay to ensure JavaScript is initialized
+        setTimeout(sendMessage, 50);
+      }
     } else {
-      // Add a small delay even when not loading to ensure JS is ready
-      setTimeout(() => {
-        splashWindow?.webContents.send('splash-status', status);
-      }, 50);
+      resolve();
     }
-  }
+  });
+}
+
+/**
+ * Waits for splash screen to be fully loaded and ready
+ */
+function waitForSplashReady(): Promise<void> {
+  return new Promise((resolve) => {
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      if (splashWindow.webContents.isLoading()) {
+        splashWindow.webContents.once('did-finish-load', () => {
+          // Give splash screen time to initialize its JavaScript
+          setTimeout(resolve, 100);
+        });
+      } else {
+        setTimeout(resolve, 50);
+      }
+    } else {
+      resolve();
+    }
+  });
 }
 
 /**
@@ -164,8 +203,7 @@ function closeSplashAndShowMain() {
 }
 
 async function createWindow() {
-  updateSplashStatus('Creating main window...');
-  await new Promise(resolve => setTimeout(resolve, 300));
+  await updateSplashStatusAsync('Creating main window...');
 
   const windowState = getValidWindowState();
 
@@ -219,28 +257,28 @@ async function createWindow() {
   // Load app with better error handling
   try {
     if (isDev) {
-      updateSplashStatus('Starting development server...');
+      await updateSplashStatusAsync('Starting development server...');
       await waitOn({ resources: ['http://localhost:5125'], delay: 1000, interval: 100, timeout: 30000 }); // Increased timeout
-      updateSplashStatus('Loading application...');
+      await updateSplashStatusAsync('Loading application...');
       await mainWindow.loadURL('http://localhost:5125');
     } else {
-      updateSplashStatus('Loading application...');
+      await updateSplashStatusAsync('Loading application...');
       // await mainWindow.loadFile(path.join(__dirname, '../renderer/index.prod.html'));
       await mainWindow.loadFile(path.join(__dirname, '../dist-react/index.html'));
     }
   } catch (err) {
     console.error('Failed to load main application:', err);
-    updateSplashStatus('Loading fallback...');
+    await updateSplashStatusAsync('Loading fallback...');
     await mainWindow.loadFile(path.join(__dirname, '../renderer/fallback.html'));
   }
 
   // Multiple event handlers to ensure splash closes
   let splashClosed = false;
   
-  const closeSplashOnce = () => {
+  const closeSplashOnce = async () => {
     if (!splashClosed) {
       splashClosed = true;
-      updateSplashStatus('Application ready!');
+      await updateSplashStatusAsync('Application ready!');
       setTimeout(() => {
         closeSplashAndShowMain();
       }, 500);
@@ -248,24 +286,17 @@ async function createWindow() {
   };
 
   // Simplified event handling - just use did-finish-load
-  mainWindow.webContents.once('did-finish-load', () => {
+  mainWindow.webContents.once('did-finish-load', async () => {
     console.log('Main window finished loading');
-    updateSplashStatus('Application ready!');
-    
-    // Give user time to see the "ready" message
-    setTimeout(() => {
-      closeSplashAndShowMain();
-    }, 1000);
+    await closeSplashOnce(); // Call closeSplashOnce instead of just updating status
   });
 
   // Reduced timeout and better error handling
-  setTimeout(() => {
+  setTimeout(async() => {
     if (splashWindow && !splashWindow.isDestroyed()) {
       console.warn('Splash screen timeout - forcing close after 15 seconds');
-      updateSplashStatus('Timeout - opening application...');
-      setTimeout(() => {
-        closeSplashAndShowMain();
-      }, 1000);
+      await updateSplashStatusAsync('Timeout - opening application...');
+      closeSplashAndShowMain(); // Actually close the splash and show main window
     }
   }, 15000); // 15 second timeout
 
@@ -283,14 +314,10 @@ app.on('ready', () => {
 app.whenReady().then(async () => {
   console.log('Electron app ready, creating splash screen...');
 
-  // Show splash screen immediately
-  //createSplashWindow();
+  // Wait for splash to be fully ready
+  await waitForSplashReady();
 
-  // Wait longer to ensure splash is fully loaded
-  await new Promise(resolve => setTimeout(resolve, 200));
-
-  updateSplashStatus('Initializing services...');
-  await new Promise(resolve => setTimeout(resolve, 200));
+  await updateSplashStatusAsync('Initializing services...');
 
   const savedConfigPath = store.get('kubeConfigPath') as string | undefined;
   setupIpcHandlers();
@@ -299,22 +326,18 @@ app.whenReady().then(async () => {
   registerProductComponentHandlers();
 
   // template service initialization
-  updateSplashStatus('Loading templates...');
+  await updateSplashStatusAsync('Loading templates...');
   await templateManager.initialize();
-  await new Promise(resolve => setTimeout(resolve, 200));
 
   // customer service initialization
-  updateSplashStatus('Initializing customer service...');
+  await updateSplashStatusAsync('Initializing customer service...');
   await CustomerService.initialize();
-  await new Promise(resolve => setTimeout(resolve, 200));
 
   // product service initialization
-  updateSplashStatus('Initializing product service...');
+  await updateSplashStatusAsync('Initializing product service...');
   await ProductService.initialize();
-  await new Promise(resolve => setTimeout(resolve, 200));
 
-  // **ADD LOGGING TO LIST ALL GIT SERVERS**
-  updateSplashStatus('Configuring Git services...');
+  await updateSplashStatusAsync('Configuring Git services...');
   console.log('=== GIT SERVERS STARTUP LOGGING ===');
   try {
     const allServers = gitService.getServers();
@@ -337,14 +360,12 @@ app.whenReady().then(async () => {
     console.error('❌ Error listing Git servers:', error);
   }
   console.log('=== END GIT SERVERS LOGGING ===\n');
-  await new Promise(resolve => setTimeout(resolve, 200));
 
   // Add window control handlers
-  updateSplashStatus('Setting up window handlers...');
+  await updateSplashStatusAsync('Setting up window handlers...');
   ipcMain.on('window:minimize', () => {
     if (mainWindow) mainWindow.minimize();
   });
-  await new Promise(resolve => setTimeout(resolve, 200));
 
   ipcMain.on('window:maximize', () => {
     if (mainWindow) {
@@ -375,11 +396,10 @@ app.whenReady().then(async () => {
     }
   });
 
-  updateSplashStatus('Initializing Kubernetes service...');
+  await updateSplashStatusAsync('Initializing Kubernetes service...');
   initK8sService(savedConfigPath)
-  await new Promise(resolve => setTimeout(resolve, 200));
 
-  updateSplashStatus('Creating main window...');
+  await updateSplashStatusAsync('Creating main window...');
   createWindow();
 
   app.on('activate', () => {
