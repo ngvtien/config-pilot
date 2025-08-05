@@ -434,3 +434,5 @@ export const jsonReadOnlyExtensions = [
   EditorView.editable.of(false),
   syntaxHighlighting(jsonHighlightStyle),
 ]
+
+
