@@ -1,7 +1,7 @@
 import { useTheme } from '@/renderer/components/theme-provider'
-import { oneDark } from '@codemirror/theme-one-dark'
 import { jsonTheme, jsonLightTheme, yamlLightTheme, getJsonExtensions, getYamlExtensions } from '@/renderer/lib/codemirror-themes'
 import { getSyntaxHighlighterTheme, getSyntaxHighlighterCustomStyle, getSyntaxHighlighterLineNumberStyle } from '@/renderer/lib/syntax-highlighter-themes'
+import { yamlDarkTheme } from '@/renderer/lib/codemirror-themes'
 
 /**
  * Custom hook to get theme-appropriate editor configurations
@@ -16,7 +16,7 @@ export const useEditorTheme = () => {
   return {
     isDark,
     // CodeMirror themes
-    codeMirrorTheme: isDark ? oneDark : yamlLightTheme,
+    codeMirrorTheme: isDark ? yamlDarkTheme : yamlLightTheme,
     jsonCodeMirrorTheme: isDark ? jsonTheme : jsonLightTheme,
     
     // CodeMirror extensions

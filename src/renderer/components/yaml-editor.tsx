@@ -718,11 +718,6 @@ data:
                       extensions={[
                         yamlLanguage(),
                         ...yamlExtensions,
-                        EditorView.theme({
-                          "&": { height: "100%" },
-                          ".cm-editor": { height: "100%" },
-                          ".cm-scroller": { overflow: "auto", maxHeight: "100%" },
-                        }),
                       ]}
                       onChange={(value) => handleYamlChange(value)}
                       basicSetup={{
@@ -816,18 +811,7 @@ data:
                         theme={codeMirrorTheme}
                         extensions={[
                           yamlLanguage(),
-                          EditorView.theme({
-                            "&": {
-                              height: "100%",
-                              maxHeight: "100%"
-                            },
-                            ".cm-editor": {
-                              height: "100%"
-                            },
-                            ".cm-scroller": {
-                              maxHeight: "100%"
-                            }
-                          })
+                          ...yamlExtensions,
                         ]}
                         onChange={(value) => handleYamlChange(value)}
                         basicSetup={{

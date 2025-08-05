@@ -182,7 +182,7 @@ resources:
         <div className="h-full" data-testid="yaml-output-editor">
           <SyntaxHighlighter
             readOnly={true}
-            language="json"
+            language="yaml"
             style={syntaxHighlighterTheme}
             showLineNumbers={true}
             wrapLines={true}
