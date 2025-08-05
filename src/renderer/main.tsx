@@ -19,7 +19,7 @@ if (metaDescription) {
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <div className="font-sans antialiased">
+    <div className="font-sans antialiased tracking-tight">
       <App />
     </div>
   </StrictMode>,
