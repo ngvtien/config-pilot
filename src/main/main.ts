@@ -74,8 +74,8 @@ function getValidWindowState(): WindowState {
  */
 function createSplashWindow() {
   splashWindow = new BrowserWindow({
-    width: 450,
-    height: 350,
+    width: 380,  // Reduced from 450
+    height: 280, // Reduced from 350
     frame: false,
     alwaysOnTop: true,
     transparent: false,
