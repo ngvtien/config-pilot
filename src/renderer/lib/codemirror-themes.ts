@@ -141,75 +141,6 @@ export const jsonLightHighlightStyle = HighlightStyle.define([
   { tag: t.invalid, color: "#cb2431" },
 ])
 
-// export const yamlLightTheme = EditorView.theme({
-//   "&": {
-//     color: "#24292e",
-//     backgroundColor: "#ffffff",
-//   },
-//   ".cm-content": {
-//     padding: "16px",
-//     caretColor: "#24292e",
-//   },
-//   ".cm-focused": {
-//     outline: "none",
-//   },
-//   ".cm-editor": {
-//     borderRadius: "0",
-//   },
-//   ".cm-scroller": {
-//     fontFamily: "Fira Code, Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace",
-//   },
-//   ".cm-gutters": {
-//     backgroundColor: "#f6f8fa",
-//     color: "#6a737d",
-//     border: "none",
-//   },
-//   ".cm-lineNumbers": {
-//     color: "#6a737d",
-//   },
-//   ".cm-activeLine": {
-//     backgroundColor: "#f1f8ff",
-//   },
-//   ".cm-activeLineGutter": {
-//     backgroundColor: "#f1f8ff",
-//   },
-//   ".cm-selectionMatch": {
-//     backgroundColor: "#c8e1ff",
-//   },
-//   ".cm-searchMatch": {
-//     backgroundColor: "#ffdf5d",
-//     outline: "1px solid #d1b60a",
-//   },
-//   ".cm-cursor": {
-//     borderLeftColor: "#24292e",
-//   },
-//   ".cm-selection": {
-//     backgroundColor: "#c8e1ff",
-//   },
-// })
-
-// export const yamlLightHighlightStyle = HighlightStyle.define([
-//   { tag: t.keyword, color: "#d73a49" },
-//   { tag: [t.name, t.deleted, t.character, t.propertyName, t.macroName], color: "#005cc5" },
-//   { tag: [t.function(t.variableName), t.labelName], color: "#22863a" },
-//   { tag: [t.color, t.constant(t.name), t.standard(t.name)], color: "#6f42c1" },
-//   { tag: [t.definition(t.name), t.separator], color: "#24292e" },
-//   {
-//     tag: [t.typeName, t.className, t.number, t.changed, t.annotation, t.modifier, t.self, t.namespace],
-//     color: "#005cc5",
-//   },
-//   { tag: [t.operator, t.operatorKeyword, t.url, t.escape, t.regexp, t.link, t.special(t.string)], color: "#d73a49" },
-//   { tag: [t.meta, t.comment], color: "#6a737d" },
-//   { tag: t.strong, fontWeight: "bold" },
-//   { tag: t.emphasis, fontStyle: "italic" },
-//   { tag: t.strikethrough, textDecoration: "line-through" },
-//   { tag: t.link, color: "#005cc5", textDecoration: "underline" },
-//   { tag: t.heading, fontWeight: "bold", color: "#6f42c1" },
-//   { tag: [t.atom, t.bool, t.special(t.variableName)], color: "#6f42c1" },
-//   { tag: [t.processingInstruction, t.string, t.inserted], color: "#032f62" },
-//   { tag: t.invalid, color: "#cb2431" },
-// ])
-
 export const yamlLightTheme = EditorView.theme({
   "&": {
     color: "#24292e",
@@ -257,13 +188,49 @@ export const yamlLightTheme = EditorView.theme({
     borderLeftColor: "#24292e",
   },
   ".cm-selection": {
-    backgroundColor: "#c8e1ff",
+    backgroundColor: "#c8e1ff !important", // Light blue selection for light mode
+  },
+  ".cm-editor .cm-selection": {
+    backgroundColor: "#c8e1ff !important",
+  },
+  ".cm-editor.cm-focused .cm-selection": {
+    backgroundColor: "#c8e1ff !important",
+  },
+  "&.cm-focused .cm-selection": {
+    backgroundColor: "#c8e1ff !important",
+  },
+  ".cm-selectionLayer .cm-selection": {
+    backgroundColor: "#c8e1ff !important",
+  },
+  // Add light mode specific selectors
+  ".light & ::selection": {
+    backgroundColor: "#c8e1ff !important",
+  },
+  ".light & ::-moz-selection": {
+    backgroundColor: "#c8e1ff !important",
+  },
+  // Target CodeMirror content specifically for light mode
+  ".cm-content ::selection": {
+    backgroundColor: "#c8e1ff !important",
+  },
+  ".cm-content ::-moz-selection": {
+    backgroundColor: "#3367d1 !important",
+    color: "#ffffff !important", // White text on selection
+  },
+  // Ultra-specific selector for light mode
+  "html.light & *::selection": {
+    backgroundColor: "#3367d1 !important",
+    color: "#ffffff !important", // White text on selection
+  },
+  "html.light & *::-moz-selection": {
+    backgroundColor: "#3367d1 !important",
+    color: "#ffffff !important", // White text on selection
   },
 })
 
 export const yamlLightHighlightStyle = HighlightStyle.define([
   { tag: t.keyword, color: "#d73a49" },
-  { tag: [t.name, t.deleted, t.character, t.propertyName, t.macroName], color: "#D7BA7D" }, // Orange/amber for properties/keys (like in attachment)
+  { tag: [t.name, t.deleted, t.character, t.propertyName, t.macroName], color: "#002cff" }, 
   { tag: [t.function(t.variableName), t.labelName], color: "#22863a" },
   { tag: [t.color, t.constant(t.name), t.standard(t.name)], color: "#6f42c1" },
   { tag: [t.definition(t.name), t.separator], color: "#24292e" },
@@ -281,6 +248,8 @@ export const yamlLightHighlightStyle = HighlightStyle.define([
   { tag: [t.atom, t.bool, t.special(t.variableName)], color: "#6f42c1" },
   { tag: [t.processingInstruction, t.string, t.inserted], color: "#032f62" },
   { tag: t.invalid, color: "#cb2431" },
+
+  //{ tag: t.content, color: "#d73a49" }, // Red/pink color for YAML content (numbers, booleans, strings) in light mode
 ])
 
 // Base theme for consistent styling
@@ -347,40 +316,40 @@ export const yamlDarkTheme = EditorView.theme({
     borderLeftColor: "#d4d4d4",
   },
   ".cm-selection": {
-    backgroundColor: "#2b53e3 !important",
+    backgroundColor: "#bf920d !important",
   },
   ".cm-editor .cm-selection": {
-    backgroundColor: "#2b53e3 !important",
+    backgroundColor: "#bf920d !important",
   },
   ".cm-editor.cm-focused .cm-selection": {
-    backgroundColor: "#2b53e3 !important",
+    backgroundColor: "#bf920d !important",
   },
   "&.cm-focused .cm-selection": {
-    backgroundColor: "#2b53e3 !important",
+    backgroundColor: "#bf920d !important",
   },
   ".cm-selectionLayer .cm-selection": {
-    backgroundColor: "#2b53e3 !important",
+    backgroundColor: "#bf920d !important",
   },
   // Add these new more specific selectors to override global ::selection
   ".dark & ::selection": {
-    backgroundColor: "#2b53e3 !important",
+    backgroundColor: "#bf920d !important",
   },
   ".dark & ::-moz-selection": {
-    backgroundColor: "#2b53e3 !important",
+    backgroundColor: "#bf920d !important",
   },
   // Target CodeMirror content specifically
   ".cm-content ::selection": {
-    backgroundColor: "#2b53e3 !important",
+    backgroundColor: "#bf920d !important",
   },
   ".cm-content ::-moz-selection": {
-    backgroundColor: "#2b53e3 !important",
+    backgroundColor: "#bf920d !important",
   },
   // Ultra-specific selector to override global .dark ::selection
   "html.dark & *::selection": {
-    backgroundColor: "#2b53e3 !important",
+    backgroundColor: "#bf920d !important",
   },
   "html.dark & *::-moz-selection": {
-    backgroundColor: "#2b53e3 !important",
+    backgroundColor: "#bf920d !important",
   },
 
 })
