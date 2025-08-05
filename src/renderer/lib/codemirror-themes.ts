@@ -347,19 +347,59 @@ export const yamlDarkTheme = EditorView.theme({
     borderLeftColor: "#d4d4d4",
   },
   ".cm-selection": {
-    backgroundColor: "#264f78",
+    backgroundColor: "#2b53e3 !important",
   },
+  ".cm-editor .cm-selection": {
+    backgroundColor: "#2b53e3 !important",
+  },
+  ".cm-editor.cm-focused .cm-selection": {
+    backgroundColor: "#2b53e3 !important",
+  },
+  "&.cm-focused .cm-selection": {
+    backgroundColor: "#2b53e3 !important",
+  },
+  ".cm-selectionLayer .cm-selection": {
+    backgroundColor: "#2b53e3 !important",
+  },
+  // Add these new more specific selectors to override global ::selection
+  ".dark & ::selection": {
+    backgroundColor: "#2b53e3 !important",
+  },
+  ".dark & ::-moz-selection": {
+    backgroundColor: "#2b53e3 !important",
+  },
+  // Target CodeMirror content specifically
+  ".cm-content ::selection": {
+    backgroundColor: "#2b53e3 !important",
+  },
+  ".cm-content ::-moz-selection": {
+    backgroundColor: "#2b53e3 !important",
+  },
+  // Ultra-specific selector to override global .dark ::selection
+  "html.dark & *::selection": {
+    backgroundColor: "#2b53e3 !important",
+  },
+  "html.dark & *::-moz-selection": {
+    backgroundColor: "#2b53e3 !important",
+  },
+
 })
 
 export const yamlDarkHighlightStyle = HighlightStyle.define([
   { tag: t.keyword, color: "#569cd6" }, // Blue keywords
-  { tag: [t.name, t.deleted, t.character, t.propertyName, t.macroName], color: "#D7BA7D" }, // Orange/amber for properties/keys (like in attachment)
+  { tag: [t.name, t.deleted, t.character, t.propertyName, t.macroName], color: "#ce9178" },
   { tag: [t.function(t.variableName), t.labelName], color: "#dcdcaa" },
   { tag: [t.color, t.constant(t.name), t.standard(t.name)], color: "#4ec9b0" },
   { tag: [t.definition(t.name), t.separator], color: "#d4d4d4" },
+  // Specific mappings for numbers and booleans FIRST to ensure priority
+  { tag: t.number, color: "#B5CEA8" }, // Light green for numbers - specific mapping
+  { tag: t.bool, color: "#569CD6" }, // Light blue for booleans - specific mapping
+  { tag: [t.literal, t.unit], color: "#B5CEA8" }, // For numeric literals and units
+  { tag: [t.constant(t.bool)], color: "#569CD6" }, // For boolean constants
+  // General type mappings WITHOUT t.number to avoid conflicts
   {
-    tag: [t.typeName, t.className, t.number, t.changed, t.annotation, t.modifier, t.self, t.namespace],
-    color: "#b5cea8", // Green for numbers
+    tag: [t.typeName, t.className, t.changed, t.annotation, t.modifier, t.self, t.namespace],
+    color: "#4ec9b0", // Cyan for other types (changed from #B5CEA8 to avoid number conflicts)
   },
   { tag: [t.operator, t.operatorKeyword, t.url, t.escape, t.regexp, t.link, t.special(t.string)], color: "#d7ba7d" },
   { tag: [t.meta, t.comment], color: "#6a9955" }, // Green comments
@@ -368,7 +408,7 @@ export const yamlDarkHighlightStyle = HighlightStyle.define([
   { tag: t.strikethrough, textDecoration: "line-through" },
   { tag: t.link, color: "#3794ff", textDecoration: "underline" },
   { tag: t.heading, fontWeight: "bold", color: "#569cd6" },
-  { tag: [t.atom, t.bool, t.special(t.variableName)], color: "#569cd6" },
+  { tag: [t.atom, t.special(t.variableName)], color: "#569CD6" },
   { tag: [t.processingInstruction, t.string, t.inserted], color: "#ce9178" }, // Orange strings
   { tag: t.invalid, color: "#f44747" },
 ])
@@ -381,6 +421,7 @@ export const getJsonExtensions = (isDark: boolean) => [
 
 export const getYamlExtensions = (isDark: boolean) => [
   baseEditorTheme,
+  isDark ? yamlDarkTheme : yamlLightTheme, // Apply the specific YAML theme after base theme
   syntaxHighlighting(isDark ? yamlDarkHighlightStyle : yamlLightHighlightStyle),
 ]
 

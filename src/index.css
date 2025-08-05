@@ -252,3 +252,14 @@
     transition: none !important;
   }
 }
+
+  /* Enhanced selection colors - exclude CodeMirror elements */
+  .dark :not(.cm-editor):not(.cm-content):not(.cm-line) ::selection {
+    background: hsl(var(--selection-bg) / 0.8);
+    color: hsl(var(--selection-fg));
+  }
+
+  .dark :not(.cm-editor):not(.cm-content):not(.cm-line) ::-moz-selection {
+    background: hsl(var(--selection-bg) / 0.8);
+    color: hsl(var(--selection-fg));
+  }
