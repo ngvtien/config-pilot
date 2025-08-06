@@ -51,7 +51,7 @@ const ResizablePanelGroup = React.forwardRef<HTMLDivElement, ResizablePanelGroup
         const saved = localStorage.getItem(`resizable-${persistenceKey}`)
         if (saved) {
           const sizes = JSON.parse(saved)
-          console.log(`[Resizable] Loaded saved sizes for ${persistenceKey}:`, sizes)
+          //console.log(`[Resizable] Loaded saved sizes for ${persistenceKey}:`, sizes)
           return sizes
         }
       } catch (e) {
@@ -64,7 +64,7 @@ const ResizablePanelGroup = React.forwardRef<HTMLDivElement, ResizablePanelGroup
      * Apply saved size to a panel element
      */
     const applySavedSize = React.useCallback((element: HTMLElement, size: number) => {
-      console.log(`[Resizable] Applying saved size ${size}% to panel`)
+      //console.log(`[Resizable] Applying saved size ${size}% to panel`)
       
       // Only set flexBasis and flex properties, avoid explicit width/height
       element.style.flexBasis = `${size}%`
@@ -84,7 +84,7 @@ const ResizablePanelGroup = React.forwardRef<HTMLDivElement, ResizablePanelGroup
      * Register a panel element
      */
     const registerPanel = React.useCallback((id: string, element: HTMLElement) => {
-      console.log(`[Resizable] Registering panel: ${id}`)
+      //console.log(`[Resizable] Registering panel: ${id}`)
       panelsRef.current.set(id, element)
       
       // Apply saved size after a short delay to ensure DOM is ready
@@ -102,7 +102,7 @@ const ResizablePanelGroup = React.forwardRef<HTMLDivElement, ResizablePanelGroup
      * Unregister a panel element
      */
     const unregisterPanel = React.useCallback((id: string) => {
-      console.log(`[Resizable] Unregistering panel: ${id}`)
+      //console.log(`[Resizable] Unregistering panel: ${id}`)
       panelsRef.current.delete(id)
     }, [])
 
@@ -118,7 +118,7 @@ const ResizablePanelGroup = React.forwardRef<HTMLDivElement, ResizablePanelGroup
      */
     const savePanelSizes = React.useCallback(() => {
       if (!persistenceKey || panelsRef.current.size === 0) {
-        console.log('[Resizable] Skipping save - no persistence key or panels')
+        //console.log('[Resizable] Skipping save - no persistence key or panels')
         return
       }
       
@@ -145,7 +145,7 @@ const ResizablePanelGroup = React.forwardRef<HTMLDivElement, ResizablePanelGroup
         sizes[id] = Math.round((elementSize / containerSize) * 100)
       })
       
-      console.log(`[Resizable] Saving panel sizes for ${persistenceKey}:`, sizes)
+      //console.log(`[Resizable] Saving panel sizes for ${persistenceKey}:`, sizes)
       localStorage.setItem(`resizable-${persistenceKey}`, JSON.stringify(sizes))
     }, [persistenceKey, direction])
 
@@ -184,7 +184,7 @@ const ResizablePanelGroup = React.forwardRef<HTMLDivElement, ResizablePanelGroup
     React.useEffect(() => {
       return () => {
         if (persistenceKey) {
-          console.log('[Resizable] Component unmounting, saving sizes')
+          //console.log('[Resizable] Component unmounting, saving sizes')
           savePanelSizes()
         }
       }
@@ -347,7 +347,7 @@ const ResizableHandle = React.forwardRef<HTMLDivElement, ResizableHandleProps>(
      * Handle mouse up event to end drag operation
      */
     const handleMouseUp = React.useCallback(() => {
-      console.log('[Resizable] Drag ended, saving panel sizes')
+      //console.log('[Resizable] Drag ended, saving panel sizes')
       
       // Save sizes immediately after drag
       setTimeout(() => {

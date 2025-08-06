@@ -4,7 +4,6 @@ import * as path from 'path';
 import { exec } from "child_process"
 import util from "util"
 import yaml from "js-yaml"
-import Store from 'electron-store';
 import { VaultService } from './vault-service'
 import { VaultCredentialManager } from './vault-credential-manager'
 import { ArgoCDService } from './argocd-service'
@@ -24,12 +23,13 @@ import { templateService } from "./services/template-service";
 import { CustomerService } from './services/customer-service'
 import { ProductService } from './services/product-service'
 import { gitService } from './services/git-service';
-//import { GitRepositoryStore } from './services/git-repository-store';
-import { GitRepository, GitValidationResult, GitCredentials } from '../shared/types/git-repository';
-//import { GitAuthService } from './services/git-auth-service';
-//import { UnifiedGitService } from './services/unified-git-service';
+import { GitRepository, GitValidationResult } from '../shared/types/git-repository';
 import { ProductComponentService } from './services/product-component-service'
 import { Environment } from "@/shared/types/context-data";
+import Logger, { updateLoggerConfig } from './logger';
+import { LoggingSettings } from '../shared/types/settings-data';
+import log from 'electron-log';
+import Store from 'electron-store';
 
 const execPromise = util.promisify(exec)
 
@@ -41,6 +41,60 @@ const execPromise = util.promisify(exec)
 // const gitRepositoryStore = new GitRepositoryStore();
 
 let platformDetectionService: PlatformDetectionService | null = null
+
+/**
+ * Register logging configuration IPC handlers
+ */
+export function registerLoggerHandlers() {
+  // Update logger configuration
+  ipcMain.handle('logger:updateConfig', async (_, settings: LoggingSettings) => {
+    try {
+      updateLoggerConfig(settings);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Set log level for specific transport
+  ipcMain.handle('logger:setLogLevel', async (event, { transport, level }) => {
+    try {
+      if (transport === 'file') {
+        log.transports.file.level = level as Logger.LevelOption;
+      } else if (transport === 'console') {
+        log.transports.console.level = level as Logger.LevelOption;
+      }
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Toggle file logging
+  ipcMain.handle('logger:toggleFileLogging', async (_, enabled: boolean) => {
+    try {
+      log.transports.file.level = enabled ? 'info' : false;
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Update file configuration
+  ipcMain.handle('logger:updateFileConfig', async (_, config: { maxSize?: number; location?: string }) => {
+    try {
+      if (config.maxSize) {
+        log.transports.file.maxSize = config.maxSize * 1024 * 1024; // Convert MB to bytes
+      }
+      if (config.location && config.location.trim()) {
+        log.transports.file.resolvePathFn = () => path.join(config.location!, 'main.log');
+      }
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+}
 
 /**
  * Register unified Git handlers that consolidate server and repository management
@@ -334,7 +388,7 @@ export function registerUnifiedGitHandlers() {
       console.error('Failed to create customer environment branches:', error);
       throw new Error(`Failed to create customer environment branches: ${error.message}`);
     }
-  });  
+  });
 
   // Add these missing handlers after the existing ones:
   ipcMain.handle('git:updateServer', async (_, serverId: string, updates: any) => {
@@ -353,7 +407,7 @@ export function registerUnifiedGitHandlers() {
       console.error('Failed to test server connection:', error);
       throw new Error(`Failed to test server connection: ${error.message}`);
     }
-  });  
+  });
 }
 
 export function registerProductHandlers() {
@@ -1740,5 +1794,19 @@ export function registerCustomerHandlers() {
       throw new Error(error.message)
     }
   })
+
+  /**
+ * Save settings to electron-store for persistence across app restarts
+ */
+  ipcMain.handle('settings:save', async (_, settings: any) => {
+    try {
+      const store = new Store() as any;
+      store.set('settings', settings);
+      return { success: true };
+    } catch (error: any) {
+      console.error('Failed to save settings to electron-store:', error);
+      return { success: false, error: error.message };
+    }
+  });
 
 }

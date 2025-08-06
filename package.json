@@ -26,7 +26,6 @@
     "dist:linux": "npm run transpile:electron && npm run build && electron-builder --linux --x64",
     "download-libs": "node scripts/download-libs.js",
     "setup-splash": "npm run download-libs"
-
   },
   "dependencies": {
     "@apidevtools/json-schema-ref-parser": "^13.0.4",
@@ -62,6 +61,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "codemirror": "^6.0.1",
+    "electron-log": "^5.4.2",
     "electron-store": "^10.1.0",
     "git-url-parse": "^16.1.0",
     "immer": "^10.1.1",

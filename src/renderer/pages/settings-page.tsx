@@ -9,7 +9,6 @@ import {
   GitBranch,
   CheckCircle,
   Loader2,
-  Key,
   ZoomIn,
   ZoomOut,
   RotateCcw,
@@ -18,16 +17,14 @@ import {
   Code,
   RefreshCw,
   Server,
-  Eye, EyeOff
+  FileText
 } from "lucide-react"
-import { gitCredentialManager } from "@/renderer/services/git-credential-manager"
-import { Alert, AlertDescription } from "@/renderer/components/ui/alert"
 import { AuthenticationModal } from "@/renderer/components/authentication-modal"
 import { useTheme } from "@/renderer/components/theme-provider"
 import { useZoom } from "@/renderer/hooks/use-zoom"
 import type { ContextData } from "@/shared/types/context-data"
 import type { GitRepository } from "@/shared/types/git-repository"
-import type { SettingsData } from "@/shared/types/settings-data"
+import type { SettingsData, LoggingSettings } from "@/shared/types/settings-data"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/renderer/components/ui/tabs"
 import { joinPath } from "@/renderer/lib/path-utils"
 import { KubernetesVersionSelector } from '@/renderer/components/kubernetes-version-selector'
@@ -40,7 +37,7 @@ import { useDialog } from '@/renderer/hooks/useDialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/renderer/components/ui/select"
 import { GitRepositoryService } from "@/renderer/services/git-repository.service"
 import { GitConfigurationSection } from "@/renderer/components/git/git-configuration-section"
-
+import { Switch } from "@/renderer/components/ui/switch"
 
 interface SettingsPageProps {
   context: ContextData
@@ -348,6 +345,7 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
       }
     }
   }, [context.environment])
+
   const handleSettingChange = (key: keyof SettingsData, value: any) => {
     const updatedSettings = { ...localSettings, [key]: value }
     setLocalSettings(updatedSettings)
@@ -360,17 +358,27 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
     setHasContextChanges(true)
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (hasSettingsChanges) {
-      onSettingsChange(localSettings)
-      setHasSettingsChanges(false)
+      onSettingsChange(localSettings);
+
+      // Also save to electron-store for persistence across app restarts
+      try {
+        if (window.electronAPI?.settings?.save) {
+          await window.electronAPI.settings.save(localSettings);
+        }
+      } catch (error) {
+        console.error('Failed to save settings to electron-store:', error);
+      }
+
+      setHasSettingsChanges(false);
     }
 
     if (hasContextChanges) {
-      onContextChange(localContext)
-      setHasContextChanges(false)
+      onContextChange(localContext);
+      setHasContextChanges(false);
     }
-  }
+  };
 
   const handleReset = () => {
     setLocalSettings(settings)
@@ -380,7 +388,6 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
   }
 
   const [isSelectingFile, setIsSelectingFile] = useState(false);
-
 
   const handleKubeConfigSelect = async () => {
     setIsSelectingFile(true);
@@ -492,6 +499,74 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
     }
   }
 
+  /**
+   * Handle logging settings changes and apply them to the logger
+   */
+  const handleLoggingSettingsChange = async (newSettings: LoggingSettings) => {
+    try {
+      // Update the local settings in state
+      setLocalSettings(prev => ({
+        ...prev,
+        loggingSettings: newSettings
+      }));
+
+      // Mark that settings have changed
+      setHasSettingsChanges(true);
+
+      // Apply the settings to the actual logger (if the API exists)
+      if (window.electronAPI?.logger?.updateConfig) {
+        const result = await window.electronAPI.logger.updateConfig(newSettings);
+
+        if (!result.success) {
+          console.error('Failed to update logger configuration:', result.error);
+          // Optionally show user notification
+        }
+      } else {
+        console.warn('Logger API not available - settings saved locally only');
+      }
+    } catch (error) {
+      console.error('Error updating logging settings:', error);
+    }
+  };
+  /**
+   * Handle changes to logging settings
+   */
+  const handleLoggingSettingChange = (key: keyof LoggingSettings, value: any) => {
+    const updatedSettings = {
+      ...localSettings,
+      loggingSettings: {
+        ...localSettings.loggingSettings,
+        [key]: value,
+      },
+    }
+    setLocalSettings(updatedSettings)
+    setHasSettingsChanges(true)
+  }
+
+  /**
+   * Handle log directory selection
+   */
+  const handleLogDirectorySelect = async () => {
+    try {
+      const selectedPath = await window.electronAPI.selectDirectory({
+        title: 'Select Log Directory',
+        defaultPath: localSettings.loggingSettings?.logFileLocation || localSettings.baseDirectory,
+      })
+
+      if (selectedPath) {
+        // Verify the directory exists and is accessible
+        const dirInfo = await window.electronAPI.directoryExists(selectedPath)
+        if (dirInfo.exists && dirInfo.isDirectory) {
+          handleLoggingSettingChange('logFileLocation', selectedPath)
+        } else {
+          console.error('Selected path is not a valid directory')
+        }
+      }
+    } catch (error) {
+      console.error('Failed to select log directory:', error)
+    }
+  }
+
   const ToggleSwitch = ({ enabled, onChange }: { enabled: boolean; onChange: (value: boolean) => void }) => (
     <button
       onClick={() => onChange(!enabled)}
@@ -598,6 +673,255 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
                   enabled={localSettings.autoSave}
                   onChange={(value) => handleSettingChange("autoSave", value)}
                 />
+              </div>
+            </div>
+          </div>
+
+          {/* Logging Settings */}
+          <div className="border rounded-lg p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <FileText className="h-5 w-5" />
+              <h3 className="text-lg font-semibold">Logging</h3>
+            </div>
+
+            <div className="space-y-6">
+              {/* Log Levels */}
+              <div className="space-y-4">
+                <h4 className="font-medium">Log Levels</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <Label className="text-sm font-medium">Main Process</Label>
+                    <Select
+                      value={settings.loggingSettings?.mainProcessLogLevel || 'info'}
+                      onValueChange={(value: any) => {
+                        const newSettings = {
+                          ...settings.loggingSettings,
+                          mainProcessLogLevel: value as 'error' | 'warn' | 'info' | 'debug'
+                        };
+                        handleLoggingSettingsChange(newSettings);
+                      }}
+                    >
+                      <SelectTrigger className="mt-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="error">Error</SelectItem>
+                        <SelectItem value="warn">Warning</SelectItem>
+                        <SelectItem value="info">Info</SelectItem>
+                        <SelectItem value="debug">Debug</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium">Renderer Process</Label>
+                    <Select
+                      value={localSettings.loggingSettings?.rendererProcessLogLevel || 'info'}
+                      onValueChange={(value) => handleLoggingSettingChange('rendererProcessLogLevel', value)}
+                    >
+                      <SelectTrigger className="mt-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="error">Error</SelectItem>
+                        <SelectItem value="warn">Warning</SelectItem>
+                        <SelectItem value="info">Info</SelectItem>
+                        <SelectItem value="debug">Debug</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium">IPC Communication</Label>
+                    <Select
+                      value={localSettings.loggingSettings?.ipcLogLevel || 'warn'}
+                      onValueChange={(value) => handleLoggingSettingChange('ipcLogLevel', value)}
+                    >
+                      <SelectTrigger className="mt-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="error">Error</SelectItem>
+                        <SelectItem value="warn">Warning</SelectItem>
+                        <SelectItem value="info">Info</SelectItem>
+                        <SelectItem value="debug">Debug</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+
+              {/* File Logging Configuration */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-medium">File Logging</h4>
+                    <p className="text-sm text-muted-foreground">Save logs to files with automatic rotation</p>
+                  </div>
+                  <Switch
+                    checked={localSettings.loggingSettings?.enableFileLogging || false}  // ✅ Use localSettings
+                    onCheckedChange={(checked: any) => {
+                      const newSettings = {
+                        ...localSettings.loggingSettings,  // ✅ Use localSettings
+                        enableFileLogging: checked
+                      };
+                      handleLoggingSettingsChange(newSettings);
+                    }}
+                  />
+                </div>
+
+                {localSettings.loggingSettings?.enableFileLogging !== false && (
+                  <div className="space-y-4 pl-4 border-l-2 border-muted">
+                    <div>
+                      <Label className="text-sm font-medium">Log File Location</Label>
+                      <div className="flex gap-2 mt-1">
+                        <Input
+                          value={localSettings.loggingSettings?.logFileLocation || ''}
+                          onChange={(e) => handleLoggingSettingChange('logFileLocation', e.target.value)}
+                          placeholder="Select log file directory"
+                          className="flex-1"
+                        />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleLogDirectorySelect}
+                          className="flex items-center gap-2"
+                        >
+                          <FolderOpen className="h-4 w-4" />
+                          Browse
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <Label className="text-sm font-medium">Max File Size (MB)</Label>
+                        <Input
+                          type="number"
+                          min="1"
+                          max="100"
+                          value={localSettings.loggingSettings?.maxLogFileSize || 10}
+                          onChange={(e: any) => {
+                            const newSettings = {
+                              ...settings.loggingSettings,
+                              maxLogFileSize: parseInt(e.target.value) || 10
+                            };
+                            handleLoggingSettingsChange(newSettings);
+                          }}
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium">Max Log Files</Label>
+                        <Input
+                          type="number"
+                          min="1"
+                          max="20"
+                          value={localSettings.loggingSettings?.maxLogFiles || 5}
+                          onChange={(e) => handleLoggingSettingChange('maxLogFiles', parseInt(e.target.value))}
+                          className="mt-1"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Console Logging Options */}
+              <div className="space-y-4">
+                <h4 className="font-medium">Console Output</h4>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-sm font-medium">Enable Console Logging</Label>
+                      <p className="text-xs text-muted-foreground">Show logs in the development console</p>
+                    </div>
+                    <ToggleSwitch
+                      enabled={localSettings.loggingSettings?.enableConsoleLogging ?? true}
+                      onChange={(value) => handleLoggingSettingChange('enableConsoleLogging', value)}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-sm font-medium">Colored Output</Label>
+                      <p className="text-xs text-muted-foreground">Use colors to distinguish log levels</p>
+                    </div>
+                    <ToggleSwitch
+                      enabled={localSettings.loggingSettings?.enableColoredOutput ?? true}
+                      onChange={(value) => handleLoggingSettingChange('enableColoredOutput', value)}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Advanced Options */}
+              <div className="space-y-4">
+                <h4 className="font-medium">Advanced Options</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-sm font-medium">Timestamps</Label>
+                      <p className="text-xs text-muted-foreground">Include timestamps in logs</p>
+                    </div>
+                    <ToggleSwitch
+                      enabled={localSettings.loggingSettings?.enableTimestamps ?? true}
+                      onChange={(value) => handleLoggingSettingChange('enableTimestamps', value)}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-sm font-medium">Process Labels</Label>
+                      <p className="text-xs text-muted-foreground">Show [MAIN] and [RENDERER] labels</p>
+                    </div>
+                    <ToggleSwitch
+                      enabled={localSettings.loggingSettings?.enableProcessLabels ?? true}
+                      onChange={(value) => handleLoggingSettingChange('enableProcessLabels', value)}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <Label className="text-sm font-medium">Log Format</Label>
+                  <Select
+                    value={localSettings.loggingSettings?.logFormat || 'detailed'}
+                    onValueChange={(value) => handleLoggingSettingChange('logFormat', value)}
+                  >
+                    <SelectTrigger className="mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="simple">Simple</SelectItem>
+                      <SelectItem value="detailed">Detailed</SelectItem>
+                      <SelectItem value="json">JSON</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Performance Logging */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-medium">Performance Logging</h4>
+                    <p className="text-sm text-muted-foreground">Log operations that exceed threshold</p>
+                  </div>
+                  <ToggleSwitch
+                    enabled={localSettings.loggingSettings?.enablePerformanceLogging ?? false}
+                    onChange={(value) => handleLoggingSettingChange('enablePerformanceLogging', value)}
+                  />
+                </div>
+
+                {localSettings.loggingSettings?.enablePerformanceLogging && (
+                  <div className="pl-4 border-l-2 border-muted">
+                    <Label className="text-sm font-medium">Threshold (milliseconds)</Label>
+                    <Input
+                      type="number"
+                      min="100"
+                      max="10000"
+                      value={localSettings.loggingSettings?.performanceLogThreshold || 1000}
+                      onChange={(e) => handleLoggingSettingChange('performanceLogThreshold', parseInt(e.target.value))}
+                      className="mt-1 max-w-xs"
+                    />
+                  </div>
+                )}
               </div>
             </div>
           </div>

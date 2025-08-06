@@ -36,6 +36,9 @@ export interface SettingsData {
   // Schema management settings
   schemaSettings?: SchemaSettings
 
+  // Logging settings
+  loggingSettings?: LoggingSettings
+
   // Vault configurations
   vaultConfigurations?: {
     [key in Environment]?: {
@@ -72,6 +75,36 @@ export interface SettingsData {
   platformType: 'kubernetes' | 'openshift' | 'auto-detect'
   platformSettings?: PlatformSettings
 
+}
+
+export interface LoggingSettings {
+  // Log levels
+  mainProcessLogLevel: 'error' | 'warn' | 'info' | 'debug'
+  rendererProcessLogLevel: 'error' | 'warn' | 'info' | 'debug'
+  ipcLogLevel: 'error' | 'warn' | 'info' | 'debug'
+  
+  // File logging configuration
+  enableFileLogging: boolean
+  logFileLocation: string
+  maxLogFileSize: number // in MB
+  maxLogFiles: number // number of rotated files to keep
+  
+  // Console logging
+  enableConsoleLogging: boolean
+  enableColoredOutput: boolean
+  
+  // Advanced options
+  enableTimestamps: boolean
+  enableProcessLabels: boolean
+  logFormat: 'simple' | 'detailed' | 'json'
+  
+  // Performance logging
+  enablePerformanceLogging: boolean
+  performanceLogThreshold: number // in milliseconds
+  
+  // Development options
+  enableDebugMode: boolean
+  enableVerboseLogging: boolean
 }
 
 // Add new platform settings interface
@@ -373,6 +406,25 @@ export const createDefaultSettings = (): SettingsData => ({
     },
   },
   kubernetesVersion: "",
+  
+  loggingSettings: {
+    mainProcessLogLevel: 'info',
+    rendererProcessLogLevel: 'info',
+    ipcLogLevel: 'warn',
+    enableFileLogging: true,
+    logFileLocation: '',
+    maxLogFileSize: 10,
+    maxLogFiles: 5,
+    enableConsoleLogging: true,
+    enableColoredOutput: true,
+    enableTimestamps: true,
+    enableProcessLabels: true,
+    logFormat: 'detailed',
+    enablePerformanceLogging: false,
+    performanceLogThreshold: 1000,
+    enableDebugMode: false,
+    enableVerboseLogging: false,
+  },
 
   // Platform defaults
   platformType: 'auto-detect',

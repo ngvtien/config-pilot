@@ -1,13 +1,14 @@
 import { app, BrowserWindow, nativeTheme, screen, session, ipcMain, shell } from 'electron';
 import Store from 'electron-store';
 import path from 'path';
-import { initializeSchemaHandlers, setupIpcHandlers, registerProductComponentHandlers, registerUnifiedGitHandlers } from './ipc-handlers';
+import { initializeSchemaHandlers, setupIpcHandlers, registerProductComponentHandlers, registerUnifiedGitHandlers, registerLoggerHandlers } from './ipc-handlers';
 import waitOn from 'wait-on';
 import { initK8sService } from './k8s-service-client';
 import { templateManager } from './template-manager';
 import { CustomerService } from './services/customer-service';
 import { ProductService } from './services/product-service'
 import { gitService } from './services/git-service';
+import { configureLogger, mainLog, serviceLog, perfLog, updateLoggerConfig } from './logger';
 
 interface WindowState {
   width: number;
@@ -16,6 +17,12 @@ interface WindowState {
   y?: number;
   isMaximized: boolean;
 }
+
+// Configure logger immediately
+configureLogger();
+
+mainLog.info('🚀 Application starting up');
+serviceLog.debug('🔧 Initializing services');
 
 const store = new Store() as any;
 
@@ -389,30 +396,44 @@ app.on('window-all-closed', () => {
 });
 
 app.whenReady().then(async () => {
-  console.log('Electron app ready, creating splash screen...');
+  mainLog.info('Electron app ready, creating splash screen...');
   const appStartTime = Date.now();
+  perfLog.time('app-startup');
+
+  // Load and apply logging settings
+  try {
+    const store = new Store();
+    const settings = (store as any).get('settings') as any;
+    if (settings?.loggingSettings) {
+      updateLoggerConfig(settings.loggingSettings);
+    }
+  } catch (error) {
+    console.error('Failed to load logging settings on startup:', error);
+  }
 
   // Wait for splash to be fully ready
   const splashStartTime = Date.now();
   await waitForSplashReady();
-  console.log(`⏱️ Splash ready time: ${Date.now() - splashStartTime}ms`);
+  perfLog.timeEnd('splash-ready', { duration: Date.now() - splashStartTime });
 
   await updateSplashStatusAsync('Initializing services...');
 
   const savedConfigPath = store.get('kubeConfigPath') as string | undefined;
 
   // Phase 1: Setup IPC handlers immediately (no dependencies)
-  const ipcStartTime = Date.now();
+  perfLog.time('ipc-setup');
   setupIpcHandlers();
+  registerLoggerHandlers();
   initializeSchemaHandlers();
   registerUnifiedGitHandlers();
   registerProductComponentHandlers();
   setupWindowHandlers();
-  console.log(`⏱️ IPC handlers setup time: ${Date.now() - ipcStartTime}ms`);
+  perfLog.timeEnd('ipc-setup');
+  serviceLog.info('✅ IPC handlers configured');
 
   // Phase 2: Parallel initialization of independent services with timing
   await updateSplashStatusAsync('Loading core services...');
-  const coreServicesStartTime = Date.now();
+  perfLog.time('core-services');
 
   const [templateResult, customerResult, productResult] = await Promise.allSettled([
     // Template service initialization with timing
@@ -420,10 +441,10 @@ app.whenReady().then(async () => {
       const start = Date.now();
       try {
         const result = await templateManager.initialize();
-        console.log(`⏱️ ✅ Template service: ${Date.now() - start}ms`);
+        serviceLog.info(`✅ Template service initialized (${Date.now() - start}ms)`);
         return result;
       } catch (error) {
-        console.log(`⏱️ ❌ Template service failed: ${Date.now() - start}ms`);
+        serviceLog.error(`❌ Template service failed (${Date.now() - start}ms):`, error);
         throw error;
       }
     })(),
@@ -433,10 +454,10 @@ app.whenReady().then(async () => {
       const start = Date.now();
       try {
         const result = await CustomerService.initialize();
-        console.log(`⏱️ ✅ Customer service: ${Date.now() - start}ms`);
+        serviceLog.info(`✅ Customer service initialized (${Date.now() - start}ms)`);
         return result;
       } catch (error) {
-        console.log(`⏱️ ❌ Customer service failed: ${Date.now() - start}ms`);
+        serviceLog.error(`❌ Customer service failed (${Date.now() - start}ms):`, error);
         throw error;
       }
     })(),
@@ -446,58 +467,51 @@ app.whenReady().then(async () => {
       const start = Date.now();
       try {
         const result = await ProductService.initialize();
-        console.log(`⏱️ ✅ Product service: ${Date.now() - start}ms`);
+        serviceLog.info(`✅ Product service initialized (${Date.now() - start}ms)`);
         return result;
       } catch (error) {
-        console.log(`⏱️ ❌ Product service failed: ${Date.now() - start}ms`);
+        serviceLog.error(`❌ Product service failed (${Date.now() - start}ms):`, error);
         throw error;
       }
     })()
   ]);
 
-  console.log(`⏱️ Core services parallel time: ${Date.now() - coreServicesStartTime}ms`);
+  perfLog.timeEnd('core-services');
 
   // Handle any initialization failures
   [templateResult, customerResult, productResult].forEach((result, index) => {
     const serviceName = ['Template', 'Customer', 'Product'][index];
     if (result.status === 'rejected') {
-      console.error(`❌ ${serviceName} service failed to initialize:`, result.reason);
+      serviceLog.error(`❌ ${serviceName} service failed to initialize:`, result.reason);
     } else {
-      console.log(`✅ ${serviceName} service initialized successfully`);
+      serviceLog.info(`✅ ${serviceName} service initialized successfully`);
     }
   });
 
   // Phase 3: Git services configuration (can run in parallel with K8s)
   await updateSplashStatusAsync('Configuring services...');
-  const configServicesStartTime = Date.now();
+  perfLog.time('config-services');
 
   const [gitConfigResult, k8sInitResult] = await Promise.allSettled([
     // Git services configuration with timing
     (async () => {
       const start = Date.now();
       try {
-        console.log('=== GIT SERVERS STARTUP LOGGING ===');
+        serviceLog.info('=== GIT SERVERS STARTUP LOGGING ===');
         const allServers = gitService.getServers();
-        console.log(`Total Git servers found: ${allServers.length}`);
+        serviceLog.info(`Total Git servers found: ${allServers.length}`);
 
         if (allServers.length === 0) {
-          console.log('❌ NO GIT SERVERS CONFIGURED!');
+          serviceLog.warn('❌ NO GIT SERVERS CONFIGURED!');
         } else {
           allServers.forEach((server, index) => {
-            console.log(`\n📡 Server ${index + 1}:`);
-            console.log(`  - ID: ${server.id}`);
-            console.log(`  - Base URL: ${server.baseUrl}`);
-            console.log(`  - Provider: ${server.provider}`);
-            console.log(`  - Name: ${server.name || 'N/A'}`);
-            console.log(`  - Created: ${server.createdAt}`);
-            console.log(`  - Updated: ${server.updatedAt}`);
+            serviceLog.info(`📡 Server ${index + 1}: ${server.name} (${server.provider}) - ${server.baseUrl}`);
           });
         }
-        console.log('=== END GIT SERVERS LOGGING ===\n');
-        console.log(`⏱️ ✅ Git configuration: ${Date.now() - start}ms`);
+        serviceLog.info('=== END GIT SERVERS LOGGING ===');
+        serviceLog.info(`✅ Git configuration completed (${Date.now() - start}ms)`);
       } catch (error) {
-        console.log(`⏱️ ❌ Git configuration failed: ${Date.now() - start}ms`);
-        console.error('❌ Error listing Git servers:', error);
+        serviceLog.error(`❌ Git configuration failed (${Date.now() - start}ms):`, error);
         throw error;
       }
     })(),
@@ -507,34 +521,36 @@ app.whenReady().then(async () => {
       const start = Date.now();
       try {
         const result = await initK8sService(savedConfigPath);
-        console.log(`⏱️ ✅ Kubernetes service: ${Date.now() - start}ms`);
+        serviceLog.info(`✅ Kubernetes service initialized (${Date.now() - start}ms)`);
         return result;
       } catch (error) {
-        console.log(`⏱️ ❌ Kubernetes service failed: ${Date.now() - start}ms`);
+        serviceLog.error(`❌ Kubernetes service failed (${Date.now() - start}ms):`, error);
         throw error;
       }
     })()
   ]);
 
-  console.log(`⏱️ Config services parallel time: ${Date.now() - configServicesStartTime}ms`);
+  perfLog.timeEnd('config-services');
 
   // Handle service configuration results
   if (gitConfigResult.status === 'rejected') {
-    console.error('❌ Git configuration failed:', gitConfigResult.reason);
+    serviceLog.error('❌ Git configuration failed:', gitConfigResult.reason);
   }
   if (k8sInitResult.status === 'rejected') {
-    console.error('❌ Kubernetes initialization failed:', k8sInitResult.reason);
+    serviceLog.error('❌ Kubernetes initialization failed:', k8sInitResult.reason);
   }
 
-  const windowStartTime = Date.now();
+  perfLog.time('window-creation');
   await updateSplashStatusAsync('Creating main window...');
   createWindow();
-  console.log(`⏱️ Window creation time: ${Date.now() - windowStartTime}ms`);
+  perfLog.timeEnd('window-creation');
 
-  console.log(`🏁 TOTAL APP STARTUP TIME: ${Date.now() - appStartTime}ms`);
+  perfLog.timeEnd('app-startup');
+  mainLog.info(`🏁 Application startup completed`);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
+      mainLog.info('Activating app - creating windows');
       createSplashWindow();
       createWindow();
     }

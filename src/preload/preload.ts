@@ -14,6 +14,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   invoke: (channel: string, ...args: any[]) => {
     const validChannels = [
       'splash-status',
+
+      'settings:save',
       
       // Kubernetes channels
       'k8s:getContexts',
@@ -211,7 +213,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
       'git:updateServer',
       'git:testServerConnection',
 
+      'logger:updateConfig',
+      'logger:setLogLevel',
+      'logger:toggleFileLogging',
+      'logger:updateFileConfig',
     ]
+
     if (validChannels.includes(channel)) {
       return ipcRenderer.invoke(channel, ...args)
     }
@@ -260,6 +267,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   // Add to electronAPI object
   getUserDataPath: () => ipcRenderer.invoke('app:getUserDataPath'),
+
+  settings: {
+    save: (settings: any) => ipcRenderer.invoke('settings:save', settings)
+  },
 
   // Vault operations
   vault: {
@@ -492,5 +503,31 @@ contextBridge.exposeInMainWorld("electronAPI", {
     getDuplicateServers: () => ipcRenderer.invoke('git:getDuplicateServers'),
     updateServer: (serverId: string, updates: any) => ipcRenderer.invoke('git:updateServer', serverId, updates),
     testServerConnection: (serverId: string) => ipcRenderer.invoke('git:testServerConnection', serverId),
+  },
+
+  // Logger API
+  logger: {
+    /**
+     * Update complete logger configuration
+     */
+    updateConfig: (settings: any) => ipcRenderer.invoke('logger:updateConfig', settings),
+
+    /**
+     * Set log level for specific transport
+     */
+    setLogLevel: (transport: 'file' | 'console', level: string) =>
+      ipcRenderer.invoke('logger:setLogLevel', transport, level),
+
+    /**
+     * Toggle file logging on/off
+     */
+    toggleFileLogging: (enabled: boolean) =>
+      ipcRenderer.invoke('logger:toggleFileLogging', enabled),
+
+    /**
+     * Update file logging configuration
+     */
+    updateFileConfig: (config: { maxSize?: number; location?: string }) =>
+      ipcRenderer.invoke('logger:updateFileConfig', config),
   },
 })
