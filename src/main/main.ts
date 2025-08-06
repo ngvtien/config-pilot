@@ -78,8 +78,8 @@ function createSplashWindow() {
     height: 280, // Reduced from 350
     frame: false,
     alwaysOnTop: true,
-    transparent: false,
-    backgroundColor: '#0a0a0a',
+    transparent: true,  // Changed from false to true
+    // backgroundColor: '#0a0a0a',  // Removed - let the HTML handle background
     resizable: false,
     center: true,
     show: true,
@@ -93,12 +93,12 @@ function createSplashWindow() {
   });
 
   // Load splash screen with corrected path
-  const splashPath = isDev 
+  const splashPath = isDev
     ? path.join(__dirname, '../../public/splash.html')
     : path.join(__dirname, '../dist-react/splash.html');
-  
+
   console.log('Loading splash from:', splashPath);
-  
+
   splashWindow.loadFile(splashPath)
     .then(() => {
       console.log('Splash screen loaded successfully');
@@ -108,15 +108,15 @@ function createSplashWindow() {
     })
     .catch((error) => {
       console.error('Failed to load splash screen:', error);
-      // Create a simple fallback splash
-      splashWindow?.loadURL('data:text/html,<html><body style="background:#0a0a0a;color:white;display:flex;align-items:center;justify-content:center;font-family:Arial;font-size:24px;">Loading ConfigPilot...</body></html>');
+      // Create a transparent fallback splash
+      splashWindow?.loadURL('data:text/html,<html><body style="background:rgba(10,10,10,0.95);color:white;display:flex;align-items:center;justify-content:center;font-family:Arial;font-size:24px;border-radius:12px;margin:10px;">Loading ConfigPilot...</body></html>');
     });
-  
+
   // Single event handler for content loading
   splashWindow.webContents.on('did-finish-load', () => {
     console.log('Splash screen content loaded');
   });
-  
+
   // Error handling
   splashWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
     console.error('Splash screen failed to load:', errorCode, errorDescription);
@@ -129,7 +129,7 @@ function createSplashWindow() {
 function updateSplashStatusAsync(status: string): Promise<void> {
   return new Promise((resolve) => {
     console.log('Splash status:', status);
-    
+
     if (splashWindow && !splashWindow.isDestroyed()) {
       // Set up one-time listener for acknowledgment
       const handleAck = () => {
@@ -137,12 +137,12 @@ function updateSplashStatusAsync(status: string): Promise<void> {
         resolve();
       };
       ipcMain.once('splash-status-received', handleAck);
-      
+
       // Send the status message
       const sendMessage = () => {
         if (splashWindow && !splashWindow.isDestroyed()) {
           splashWindow.webContents.send('splash-status', status);
-          
+
           // Fallback timeout in case acknowledgment is never received
           setTimeout(() => {
             ipcMain.removeListener('splash-status-received', handleAck);
@@ -190,12 +190,12 @@ function waitForSplashReady(): Promise<void> {
  */
 function closeSplashAndShowMain() {
   console.log('Closing splash and showing main window');
-  
+
   if (splashWindow && !splashWindow.isDestroyed()) {
     splashWindow.close();
     splashWindow = null;
   }
-  
+
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.show();
     mainWindow.focus();
@@ -254,51 +254,124 @@ async function createWindow() {
     return { action: 'allow' } // Allow internal navigation
   })
 
-  // Load app with better error handling
+// Load app with better error handling
   try {
     if (isDev) {
       await updateSplashStatusAsync('Starting development server...');
-      await waitOn({ resources: ['http://localhost:5125'], delay: 1000, interval: 100, timeout: 30000 }); // Increased timeout
+      console.log('Waiting for development server at http://localhost:5125');
+      await waitOn({
+        resources: ['http://localhost:5125'],
+        delay: 1000,
+        interval: 100,
+        timeout: 10000
+      });
+      console.log('Development server is ready');
+
       await updateSplashStatusAsync('Loading application...');
+      
+      // Add more granular status updates during the loading phase
+      setTimeout(async () => {
+        await updateSplashStatusAsync('Connecting to React app...');
+      }, 500);
+      
+      setTimeout(async () => {
+        await updateSplashStatusAsync('Initializing UI components...');
+      }, 1500);
+      
+      setTimeout(async () => {
+        await updateSplashStatusAsync('Loading application data...');
+      }, 3000);
+      
       await mainWindow.loadURL('http://localhost:5125');
+      console.log('Main window URL loaded');
+
+      // More status updates during rendering
+      await updateSplashStatusAsync('Rendering interface...');
+      
+      setTimeout(async () => {
+        await updateSplashStatusAsync('Finalizing setup...');
+      }, 200);
+      
+      setTimeout(async () => {
+        await updateSplashStatusAsync('Application ready!');
+        setTimeout(() => {
+          closeSplashAndShowMain();
+        }, 300);
+      }, 700);
+
     } else {
       await updateSplashStatusAsync('Loading application...');
-      // await mainWindow.loadFile(path.join(__dirname, '../renderer/index.prod.html'));
+      
+      // Add status updates for production build too
+      setTimeout(async () => {
+        await updateSplashStatusAsync('Loading application bundle...');
+      }, 200);
+      
+      setTimeout(async () => {
+        await updateSplashStatusAsync('Initializing components...');
+      }, 800);
+      
       await mainWindow.loadFile(path.join(__dirname, '../dist-react/index.html'));
+      
+      await updateSplashStatusAsync('Rendering interface...');
+      
+      setTimeout(async () => {
+        await updateSplashStatusAsync('Application ready!');
+        setTimeout(() => {
+          closeSplashAndShowMain();
+        }, 300);
+      }, 500);
     }
   } catch (err) {
     console.error('Failed to load main application:', err);
     await updateSplashStatusAsync('Loading fallback...');
     await mainWindow.loadFile(path.join(__dirname, '../renderer/fallback.html'));
-  }
-
-  // Multiple event handlers to ensure splash closes
-  let splashClosed = false;
-  
-  const closeSplashOnce = async () => {
-    if (!splashClosed) {
-      splashClosed = true;
-      await updateSplashStatusAsync('Application ready!');
+    
+    // Even for fallback, provide status feedback
+    setTimeout(async () => {
+      await updateSplashStatusAsync('Fallback loaded - opening app...');
       setTimeout(() => {
         closeSplashAndShowMain();
       }, 500);
+    }, 1000);
+  }
+
+  // Simplified backup handlers (since we now have manual control)
+  let splashClosed = false;
+
+  const closeSplashOnce = async () => {
+    if (!splashClosed) {
+      splashClosed = true;
+      console.log('Backup: Closing splash screen - app is ready');
+      closeSplashAndShowMain();
     }
   };
 
-  // Simplified event handling - just use did-finish-load
+  // Reduced timeout as final safety net
+  setTimeout(async () => {
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      console.warn('⚠️ Final safety net: Force closing splash after 8 seconds');
+      await updateSplashStatusAsync('Opening application...');
+      closeSplashAndShowMain();
+    }
+  }, 8000);
+
+  // Backup event handlers (in case the manual close fails)
   mainWindow.webContents.once('did-finish-load', async () => {
-    console.log('Main window finished loading');
-    await closeSplashOnce(); // Call closeSplashOnce instead of just updating status
+    console.log('Backup: Main window finished loading');
+    setTimeout(async () => {
+      await closeSplashOnce();
+    }, 500);
   });
 
-  // Reduced timeout and better error handling
-  setTimeout(async() => {
+  // Reduced timeout as final fallback
+  setTimeout(async () => {
     if (splashWindow && !splashWindow.isDestroyed()) {
-      console.warn('Splash screen timeout - forcing close after 15 seconds');
+      console.warn('⚠️ Final fallback: Splash screen timeout after 5 seconds');
       await updateSplashStatusAsync('Timeout - opening application...');
-      closeSplashAndShowMain(); // Actually close the splash and show main window
+      closeSplashAndShowMain();
     }
-  }, 15000); // 15 second timeout
+  }, 5000);
 
   nativeTheme.on('updated', () => {
     mainWindow?.webContents.send('system-theme-changed', nativeTheme.shouldUseDarkColors);
@@ -311,58 +384,167 @@ app.on('ready', () => {
   createSplashWindow();
 });
 
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit();
+});
+
 app.whenReady().then(async () => {
   console.log('Electron app ready, creating splash screen...');
+  const appStartTime = Date.now();
 
   // Wait for splash to be fully ready
+  const splashStartTime = Date.now();
   await waitForSplashReady();
+  console.log(`⏱️ Splash ready time: ${Date.now() - splashStartTime}ms`);
 
   await updateSplashStatusAsync('Initializing services...');
 
   const savedConfigPath = store.get('kubeConfigPath') as string | undefined;
+
+  // Phase 1: Setup IPC handlers immediately (no dependencies)
+  const ipcStartTime = Date.now();
   setupIpcHandlers();
   initializeSchemaHandlers();
   registerUnifiedGitHandlers();
   registerProductComponentHandlers();
+  setupWindowHandlers();
+  console.log(`⏱️ IPC handlers setup time: ${Date.now() - ipcStartTime}ms`);
 
-  // template service initialization
-  await updateSplashStatusAsync('Loading templates...');
-  await templateManager.initialize();
+  // Phase 2: Parallel initialization of independent services with timing
+  await updateSplashStatusAsync('Loading core services...');
+  const coreServicesStartTime = Date.now();
 
-  // customer service initialization
-  await updateSplashStatusAsync('Initializing customer service...');
-  await CustomerService.initialize();
+  const [templateResult, customerResult, productResult] = await Promise.allSettled([
+    // Template service initialization with timing
+    (async () => {
+      const start = Date.now();
+      try {
+        const result = await templateManager.initialize();
+        console.log(`⏱️ ✅ Template service: ${Date.now() - start}ms`);
+        return result;
+      } catch (error) {
+        console.log(`⏱️ ❌ Template service failed: ${Date.now() - start}ms`);
+        throw error;
+      }
+    })(),
 
-  // product service initialization
-  await updateSplashStatusAsync('Initializing product service...');
-  await ProductService.initialize();
+    // Customer service initialization with timing
+    (async () => {
+      const start = Date.now();
+      try {
+        const result = await CustomerService.initialize();
+        console.log(`⏱️ ✅ Customer service: ${Date.now() - start}ms`);
+        return result;
+      } catch (error) {
+        console.log(`⏱️ ❌ Customer service failed: ${Date.now() - start}ms`);
+        throw error;
+      }
+    })(),
 
-  await updateSplashStatusAsync('Configuring Git services...');
-  console.log('=== GIT SERVERS STARTUP LOGGING ===');
-  try {
-    const allServers = gitService.getServers();
-    console.log(`Total Git servers found: ${allServers.length}`);
+    // Product service initialization with timing
+    (async () => {
+      const start = Date.now();
+      try {
+        const result = await ProductService.initialize();
+        console.log(`⏱️ ✅ Product service: ${Date.now() - start}ms`);
+        return result;
+      } catch (error) {
+        console.log(`⏱️ ❌ Product service failed: ${Date.now() - start}ms`);
+        throw error;
+      }
+    })()
+  ]);
 
-    if (allServers.length === 0) {
-      console.log('❌ NO GIT SERVERS CONFIGURED!');
+  console.log(`⏱️ Core services parallel time: ${Date.now() - coreServicesStartTime}ms`);
+
+  // Handle any initialization failures
+  [templateResult, customerResult, productResult].forEach((result, index) => {
+    const serviceName = ['Template', 'Customer', 'Product'][index];
+    if (result.status === 'rejected') {
+      console.error(`❌ ${serviceName} service failed to initialize:`, result.reason);
     } else {
-      allServers.forEach((server, index) => {
-        console.log(`\n📡 Server ${index + 1}:`);
-        console.log(`  - ID: ${server.id}`);
-        console.log(`  - Base URL: ${server.baseUrl}`);
-        console.log(`  - Provider: ${server.provider}`);
-        console.log(`  - Name: ${server.name || 'N/A'}`);
-        console.log(`  - Created: ${server.createdAt}`);
-        console.log(`  - Updated: ${server.updatedAt}`);
-      });
+      console.log(`✅ ${serviceName} service initialized successfully`);
     }
-  } catch (error) {
-    console.error('❌ Error listing Git servers:', error);
-  }
-  console.log('=== END GIT SERVERS LOGGING ===\n');
+  });
 
-  // Add window control handlers
-  await updateSplashStatusAsync('Setting up window handlers...');
+  // Phase 3: Git services configuration (can run in parallel with K8s)
+  await updateSplashStatusAsync('Configuring services...');
+  const configServicesStartTime = Date.now();
+
+  const [gitConfigResult, k8sInitResult] = await Promise.allSettled([
+    // Git services configuration with timing
+    (async () => {
+      const start = Date.now();
+      try {
+        console.log('=== GIT SERVERS STARTUP LOGGING ===');
+        const allServers = gitService.getServers();
+        console.log(`Total Git servers found: ${allServers.length}`);
+
+        if (allServers.length === 0) {
+          console.log('❌ NO GIT SERVERS CONFIGURED!');
+        } else {
+          allServers.forEach((server, index) => {
+            console.log(`\n📡 Server ${index + 1}:`);
+            console.log(`  - ID: ${server.id}`);
+            console.log(`  - Base URL: ${server.baseUrl}`);
+            console.log(`  - Provider: ${server.provider}`);
+            console.log(`  - Name: ${server.name || 'N/A'}`);
+            console.log(`  - Created: ${server.createdAt}`);
+            console.log(`  - Updated: ${server.updatedAt}`);
+          });
+        }
+        console.log('=== END GIT SERVERS LOGGING ===\n');
+        console.log(`⏱️ ✅ Git configuration: ${Date.now() - start}ms`);
+      } catch (error) {
+        console.log(`⏱️ ❌ Git configuration failed: ${Date.now() - start}ms`);
+        console.error('❌ Error listing Git servers:', error);
+        throw error;
+      }
+    })(),
+
+    // Kubernetes service initialization with timing
+    (async () => {
+      const start = Date.now();
+      try {
+        const result = await initK8sService(savedConfigPath);
+        console.log(`⏱️ ✅ Kubernetes service: ${Date.now() - start}ms`);
+        return result;
+      } catch (error) {
+        console.log(`⏱️ ❌ Kubernetes service failed: ${Date.now() - start}ms`);
+        throw error;
+      }
+    })()
+  ]);
+
+  console.log(`⏱️ Config services parallel time: ${Date.now() - configServicesStartTime}ms`);
+
+  // Handle service configuration results
+  if (gitConfigResult.status === 'rejected') {
+    console.error('❌ Git configuration failed:', gitConfigResult.reason);
+  }
+  if (k8sInitResult.status === 'rejected') {
+    console.error('❌ Kubernetes initialization failed:', k8sInitResult.reason);
+  }
+
+  const windowStartTime = Date.now();
+  await updateSplashStatusAsync('Creating main window...');
+  createWindow();
+  console.log(`⏱️ Window creation time: ${Date.now() - windowStartTime}ms`);
+
+  console.log(`🏁 TOTAL APP STARTUP TIME: ${Date.now() - appStartTime}ms`);
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createSplashWindow();
+      createWindow();
+    }
+  });
+});
+
+/**
+ * Setup window control handlers - extracted for better organization
+ */
+function setupWindowHandlers() {
   ipcMain.on('window:minimize', () => {
     if (mainWindow) mainWindow.minimize();
   });
@@ -389,27 +571,9 @@ app.whenReady().then(async () => {
     return mainWindow ? mainWindow.isMaximized() : false;
   });
 
-  // Add new setTitle handler
   ipcMain.on('window:setTitle', (_event, title: string) => {
     if (mainWindow) {
       mainWindow.setTitle(title);
     }
   });
-
-  await updateSplashStatusAsync('Initializing Kubernetes service...');
-  initK8sService(savedConfigPath)
-
-  await updateSplashStatusAsync('Creating main window...');
-  createWindow();
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createSplashWindow();
-      createWindow();
-    }
-  });
-});
-
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
-});
+}

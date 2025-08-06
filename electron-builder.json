@@ -1,6 +1,6 @@
 {
     "appId": "au.com.da.config-pilot",
-    "files": ["dist-electron", "dist-react"],
+    "files": ["dist-electron", "dist-react", "public"],
     "icon": "./desktop-icon.png",
     "directories": {
         "buildResources": "build"

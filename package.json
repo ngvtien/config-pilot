@@ -23,7 +23,10 @@
     "transpile:electron": "tsc --project src/main/tsconfig.json",
     "dist:mac": "npm run transpile:electron && npm run build && electron-builder --mac --arm64",
     "dist:win": "npm run transpile:electron && npm run build && electron-builder --win --x64",
-    "dist:linux": "npm run transpile:electron && npm run build && electron-builder --linux --x64"
+    "dist:linux": "npm run transpile:electron && npm run build && electron-builder --linux --x64",
+    "download-libs": "node scripts/download-libs.js",
+    "setup-splash": "npm run download-libs"
+
   },
   "dependencies": {
     "@apidevtools/json-schema-ref-parser": "^13.0.4",
