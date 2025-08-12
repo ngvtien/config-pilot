@@ -4,7 +4,6 @@ import React from "react"
 import { Card, CardContent } from "@/renderer/components/ui/card"
 import { Badge } from "@/renderer/components/ui/badge"
 import { Button } from "@/renderer/components/ui/button"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/renderer/components/ui/tooltip"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,13 +12,13 @@ import {
   DropdownMenuTrigger,
   DropdownMenuShortcut
 } from "@/renderer/components/ui/dropdown-menu"
-import { 
-  Component, 
-  Edit, 
-  Trash2, 
-  FileText, 
-  Settings, 
-  Database, 
+import {
+  Component,
+  Edit,
+  Trash2,
+  FileText,
+  Settings,
+  Database,
   MoreVertical,
   GitBranch,
   History,
@@ -125,11 +124,77 @@ export const ProductComponentTiles: React.FC<ProductComponentTilesProps> = ({
   return (
     <div className="border-b bg-muted/20">
       <div className="p-4">
-        <div className="mb-3">
-          <h3 className={typography.card.title}>Product Components</h3>
-          <p className={typography.card.subtitle}>{productName}</p>
-        </div>
+        {/* Header with title on left and MoreVertical on far right */}
+        <div className="flex items-start justify-between mb-3">
+          <div>
+            <h3 className={typography.card.title}>Product Components</h3>
+            <p className={typography.card.subtitle}>{productName}</p>
+          </div>
 
+          {/* MoreVertical positioned on the far right */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0 zoom-exclude">
+                <MoreVertical className="h-4 w-4 text-muted-foreground zoom-exclude" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              {/* Git Section Label */}
+              <div className="px-3 py-1.5 text-xs font-semibold text-muted-foreground/80 uppercase tracking-wider">
+                Git Operations
+              </div>
+
+              {/* Git menu items */}
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation()
+                  // TODO: Implement git diff functionality for Resource File Explorer
+                }}
+                className="group flex items-center px-3 py-2.5 text-sm transition-colors hover:bg-blue-500/10 focus:bg-blue-500/10 dark:hover:bg-blue-400/10 dark:focus:bg-blue-400/10"
+              >
+                <Diff className="h-4 w-4 mr-3 text-blue-600 dark:text-blue-400 group-hover:text-blue-700 dark:group-hover:text-blue-300 transition-colors zoom-exclude" />
+                <span className="font-medium text-blue-700 dark:text-blue-300">Git Diff</span>
+                <DropdownMenuShortcut className="text-xs text-muted-foreground/60">⌘D</DropdownMenuShortcut>
+              </DropdownMenuItem>
+
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation()
+                  // TODO: Implement git history functionality for Resource File Explorer
+                }}
+                className="group flex items-center px-3 py-2.5 text-sm transition-colors hover:bg-green-500/10 focus:bg-green-500/10 dark:hover:bg-green-400/10 dark:focus:bg-green-400/10"
+              >
+                <History className="h-4 w-4 mr-3 text-green-600 dark:text-green-400 group-hover:text-green-700 dark:group-hover:text-green-300 transition-colors zoom-exclude" />
+                <span className="font-medium text-green-700 dark:text-green-300">History</span>
+                <DropdownMenuShortcut className="text-xs text-muted-foreground/60">⌘H</DropdownMenuShortcut>
+              </DropdownMenuItem>
+
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation()
+                  // TODO: Implement create PR functionality for Resource File Explorer
+                }}
+                className="group flex items-center px-3 py-2.5 text-sm transition-colors hover:bg-purple-500/10 focus:bg-purple-500/10 dark:hover:bg-purple-400/10 dark:focus:bg-purple-400/10"
+              >
+                <GitPullRequest className="h-4 w-4 mr-3 text-purple-600 dark:text-purple-400 group-hover:text-purple-700 dark:group-hover:text-purple-300 transition-colors zoom-exclude" />
+                <span className="font-medium text-purple-700 dark:text-purple-300">Create PR</span>
+                <DropdownMenuShortcut className="text-xs text-muted-foreground/60">⌘P</DropdownMenuShortcut>
+              </DropdownMenuItem>
+
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation()
+                  // TODO: Implement git merge functionality for Resource File Explorer
+                }}
+                className="group flex items-center px-3 py-2.5 text-sm transition-colors hover:bg-orange-500/10 focus:bg-orange-500/10 dark:hover:bg-orange-400/10 dark:focus:bg-orange-400/10"
+              >
+                <GitMerge className="h-4 w-4 mr-3 text-orange-600 dark:text-orange-400 group-hover:text-orange-700 dark:group-hover:text-orange-300 transition-colors zoom-exclude" />
+                <span className="font-medium text-orange-700 dark:text-orange-300">Merge</span>
+                <DropdownMenuShortcut className="text-xs text-muted-foreground/60">⌘M</DropdownMenuShortcut>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
         {/* Changed from grid to single column for full width */}
         <div className="space-y-3">
           {components.map((component) => (
@@ -210,69 +275,9 @@ export const ProductComponentTiles: React.FC<ProductComponentTilesProps> = ({
                           <span className="font-medium">Delete {component.name}</span>
                         </DropdownMenuItem>
                       )}
-                      
-                      {/* Enhanced Git Operations Separator */}
-                      <DropdownMenuSeparator className="my-2 bg-border/60" />
-                      
-                      {/* Git Section Label */}
-                      <div className="px-3 py-1.5 text-xs font-semibold text-muted-foreground/80 uppercase tracking-wider">
-                        Git Operations
-                      </div>
-                      
-                      {/* Git-related menu items with enhanced styling */}
-                      <DropdownMenuItem
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          console.log('Git diff clicked for:', component.name)
-                          // TODO: Implement git diff functionality for Resource File Explorer
-                        }}
-                        className="group flex items-center px-3 py-2.5 text-sm transition-colors hover:bg-blue-500/10 focus:bg-blue-500/10 dark:hover:bg-blue-400/10 dark:focus:bg-blue-400/10"
-                      >
-                        <Diff className="h-4 w-4 mr-3 text-blue-600 dark:text-blue-400 group-hover:text-blue-700 dark:group-hover:text-blue-300 transition-colors zoom-exclude" />
-                        <span className="font-medium text-blue-700 dark:text-blue-300">Git Diff</span>
-                        <DropdownMenuShortcut className="text-xs text-muted-foreground/60">⌘D</DropdownMenuShortcut>
-                      </DropdownMenuItem>
-                      
-                      <DropdownMenuItem
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          console.log('Git history clicked for:', component.name)
-                          // TODO: Implement git history functionality for Resource File Explorer
-                        }}
-                        className="group flex items-center px-3 py-2.5 text-sm transition-colors hover:bg-green-500/10 focus:bg-green-500/10 dark:hover:bg-green-400/10 dark:focus:bg-green-400/10"
-                      >
-                        <History className="h-4 w-4 mr-3 text-green-600 dark:text-green-400 group-hover:text-green-700 dark:group-hover:text-green-300 transition-colors zoom-exclude" />
-                        <span className="font-medium text-green-700 dark:text-green-300">History</span>
-                        <DropdownMenuShortcut className="text-xs text-muted-foreground/60">⌘H</DropdownMenuShortcut>
-                      </DropdownMenuItem>
-                      
-                      <DropdownMenuItem
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          console.log('Create PR clicked for:', component.name)
-                          // TODO: Implement create PR functionality for Resource File Explorer
-                        }}
-                        className="group flex items-center px-3 py-2.5 text-sm transition-colors hover:bg-purple-500/10 focus:bg-purple-500/10 dark:hover:bg-purple-400/10 dark:focus:bg-purple-400/10"
-                      >
-                        <GitPullRequest className="h-4 w-4 mr-3 text-purple-600 dark:text-purple-400 group-hover:text-purple-700 dark:group-hover:text-purple-300 transition-colors zoom-exclude" />
-                        <span className="font-medium text-purple-700 dark:text-purple-300">Create PR</span>
-                        <DropdownMenuShortcut className="text-xs text-muted-foreground/60">⌘P</DropdownMenuShortcut>
-                      </DropdownMenuItem>
-                      
-                      <DropdownMenuItem
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          console.log('Git merge clicked for:', component.name)
-                          // TODO: Implement git merge functionality for Resource File Explorer
-                        }}
-                        className="group flex items-center px-3 py-2.5 text-sm transition-colors hover:bg-orange-500/10 focus:bg-orange-500/10 dark:hover:bg-orange-400/10 dark:focus:bg-orange-400/10"
-                      >
-                        <GitMerge className="h-4 w-4 mr-3 text-orange-600 dark:text-orange-400 group-hover:text-orange-700 dark:group-hover:text-orange-300 transition-colors zoom-exclude" />
-                        <span className="font-medium text-orange-700 dark:text-orange-300">Merge</span>
-                        <DropdownMenuShortcut className="text-xs text-muted-foreground/60">⌘M</DropdownMenuShortcut>
-                      </DropdownMenuItem>
+
                     </DropdownMenuContent>
-                  </DropdownMenu>                  
+                  </DropdownMenu>
                 </div>
               </CardContent>
             </Card>
