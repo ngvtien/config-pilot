@@ -22,6 +22,7 @@ import { ScrollArea } from "@/renderer/components/ui/scroll-area"
 import { Badge } from "@/renderer/components/ui/badge"
 import { Card, CardHeader } from "@/renderer/components/ui/card"
 import { typography } from '../lib/typography';
+import { ProductComponentTiles, mockProductComponents } from "./products/product-component-tiles"
 
 // Context types
 interface FileExplorerContext {
@@ -56,6 +57,13 @@ interface FileExplorerProps {
   onFileSelect?: (file: FileSystemItem) => void
   onContextChange?: (newContext: Partial<FileExplorerContext>) => void
   className?: string
+  // New props for product-component integration
+  selectedProductId?: string
+  selectedProductName?: string
+  selectedComponentId?: string
+  onComponentSelect?: (component: any) => void
+  onEditComponent?: (component: any) => void
+  onDeleteComponent?: (component: any) => void
 }
 
 // Mock data generator based on context
@@ -587,7 +595,18 @@ const ContextBreadcrumb = ({
 }
 
 // Main File Explorer Component
-export const FileExplorer = ({ context, onFileSelect, onContextChange, className }: FileExplorerProps) => {
+export const FileExplorer = ({ 
+  context, 
+  onFileSelect, 
+  onContextChange, 
+  className,
+  selectedProductId,
+  selectedProductName,
+  selectedComponentId,
+  onComponentSelect,
+  onEditComponent,
+  onDeleteComponent
+}: FileExplorerProps) => {
   const [expandedItems, setExpandedItems] = useState<Set<string>>(
     new Set(["customers", "products", "environments", "instances"]),
   )
@@ -599,6 +618,20 @@ export const FileExplorer = ({ context, onFileSelect, onContextChange, className
       <CardHeader className="pb-3">
         <ContextBreadcrumb context={context} onContextChange={onContextChange} />
       </CardHeader>
+      
+      {/* Product Component Tiles - Added on top of file explorer */}
+      {selectedProductId && (
+        <ProductComponentTiles
+          productId={selectedProductId}
+          productName={selectedProductName}
+          components={mockProductComponents}
+          selectedComponentId={selectedComponentId}
+          onComponentSelect={onComponentSelect}
+          onEditComponent={onEditComponent}
+          onDeleteComponent={onDeleteComponent}
+        />
+      )}
+      
       <ScrollArea className="flex-1">
         <div className="p-6 space-y-1">
           {fileSystemData.map((item) => (

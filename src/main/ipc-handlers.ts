@@ -1024,7 +1024,19 @@ export function setupIpcHandlers(): void {
     }
   })
 
-
+  /**
+   * Delete file
+   */
+  ipcMain.handle('fs:deleteFile', async (_event, filePath: string) => {
+    try {
+      await fs.unlink(filePath)
+      return { success: true }
+    } catch (error: any) {
+      console.error('Failed to delete file:', error)
+      throw new Error(`Failed to delete file: ${error.message}`)
+    }
+  })
+  
   /**
    * Check if file exists
    */

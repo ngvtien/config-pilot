@@ -1,0 +1,13 @@
+# networkpolicy.yaml
+# Content for /resources/networkpolicy.yaml
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: resource-name
+  labels:
+    app: component-name
+    version: v1.0.0
+    component: networkpolicy
+spec:
+  # Add NetworkPolicy specific configuration here

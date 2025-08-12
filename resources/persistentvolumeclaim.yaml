@@ -1,0 +1,13 @@
+# persistentvolumeclaim.yaml
+# Content for /resources/persistentvolumeclaim.yaml
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: resource-name
+  labels:
+    app: component-name
+    version: v1.0.0
+    component: persistentvolumeclaim
+spec:
+  # Add PersistentVolumeClaim specific configuration here

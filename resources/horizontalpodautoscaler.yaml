@@ -1,0 +1,13 @@
+# horizontalpodautoscaler.yaml
+# Content for /resources/horizontalpodautoscaler.yaml
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: resource-name
+  labels:
+    app: component-name
+    version: v1.0.0
+    component: horizontalpodautoscaler
+spec:
+  # Add HorizontalPodAutoscaler specific configuration here

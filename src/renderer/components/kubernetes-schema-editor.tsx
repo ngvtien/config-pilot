@@ -1334,13 +1334,14 @@ export default function KubernetesSchemaEditor({
                             <CodeMirror
                                 value={rawSchemaContent || ''}
                                 height="100%"
-                                theme={isDarkMode ? oneDark : undefined}
+                                //theme={isDarkMode ? oneDark : undefined}
+                                theme={codeMirrorTheme}
                                 extensions={[
                                     jsonLanguage(),
-                                    EditorView.lineWrapping,
-                                    ...readOnlyExtensions
+                                    //EditorView.lineWrapping,
+                                    //...readOnlyExtensions
                                 ]}
-                                editable={false}
+                                editable={true}
                                 basicSetup={{
                                     lineNumbers: true,
                                     foldGutter: true,

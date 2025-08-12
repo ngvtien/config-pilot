@@ -269,8 +269,16 @@ export const generateResourceYamlPreview = (resource: any, templateName: string)
   // Add selected fields to the structure with simple placeholder values
   if (resource.selectedFields && resource.selectedFields.length > 0) {
     resource.selectedFields.forEach((field: any) => {
+      // Handle both string arrays (requiredFields) and object arrays (with path property)
+      const fieldPath = typeof field === 'string' ? field : field.path
+      
+      // Skip if no valid path
+      if (!fieldPath) {
+        return
+      }
+      
       // Extract field path after the resource kind - completely dynamic!
-      const cleanPath = extractFieldPathAfterKind(field.path, resource.kind)
+      const cleanPath = extractFieldPathAfterKind(fieldPath, resource.kind)
       
       // Skip if the cleaned path is empty (means it was just the resource definition itself)
       if (!cleanPath) {

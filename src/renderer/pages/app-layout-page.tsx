@@ -26,26 +26,12 @@ import { ProjectComposerPage } from "@/renderer/pages/project-composer-page"
 import { CustomerManagementPage } from "@/renderer/pages/customer-management-page"
 import { ProductManagementPage } from '@/renderer/pages/product-management-page'
 import { EnhancedProductManagementPage } from '@/renderer/pages/enhanced-product-management-page'
+import { ProductDeploymentDesignerPoC } from '@/renderer/pages/product-deployment-designer-poc'
+import { WorkspaceDemoPage } from '@/renderer/pages/workspace-demo-page'
+import { ProductWorkspacePage } from "./product-workspace-page"
+import { EnhancedProductWorkspacePage } from "./enhanced-product-workspace-page"
 
-type UserRole = "developer" | "devops" | "operations"
-type ViewType =
-  | "schema"
-  | "values"
-  | "secrets"
-  | "chart-builder"
-  | "template-editor"
-  | "template-library"
-  | "oci-registry"
-  | "kubernetes"
-  | "k8s-resources"
-  | "k8s-dashboard"
-  | "argocd"
-  | "git-repos"
-  | "file-explorer"
-  | "settings"
-  | "project-composer"
-  | "customer-management"
-  | "product-management"
+import { UserRole, ViewType } from "components/types/app-types"
 
 interface AppLayoutPageProps {
   contextData?: ContextData
@@ -287,6 +273,8 @@ export default function AppLayoutPage({
         return "Customer Management"
       case "product-management":
         return "Product Management"
+      case "workspace-demo":
+        return "Workspace Demo"
       default:
         return viewType.charAt(0).toUpperCase() + viewType.slice(1)
     }
@@ -410,12 +398,18 @@ export default function AppLayoutPage({
           />
         )
 
-    case "product-management":
-      return (
-        <EnhancedProductManagementPage 
-          onNavigateBack={() => setView("schema")} 
-        />
-      )
+      case "product-management":
+        return (
+          <EnhancedProductManagementPage
+            onNavigateBack={() => setView("schema")}
+          />
+        )
+
+    case "product-workspace":
+      return <EnhancedProductWorkspacePage />
+
+      case "workspace-demo":
+        return <ProductDeploymentDesignerPoC />
 
       default:
         return (

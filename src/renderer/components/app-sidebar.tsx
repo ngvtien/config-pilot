@@ -17,7 +17,8 @@ import {
   FolderOpen,
   Activity,
   Library,
-  FolderPlus
+  FolderPlus,
+  Package
 } from "lucide-react"
 
 import {
@@ -37,21 +38,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/renderer/components/ui/select"
 import KubernetesContextSelector from "@/renderer/components/kubernetes-context-selector"
 import { NavProjects } from "@/renderer/components/nav-projects"
-
-type UserRole = "developer" | "devops" | "operations"
-type ViewType =
-  | "schema"
-  | "values"
-  | "secrets"
-  | "chart-builder"
-  | "template-editor"
-  | "template-library"
-  | "oci-registry"
-  | "kubernetes"
-  | "argocd"
-  | "git-repos"
-  | "file-explorer"
-  | "settings"
+import { UserRole, ViewType } from "./types/app-types"
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   userRole: UserRole
@@ -120,10 +107,21 @@ const developerTools = [
     view: "project-composer" as ViewType,
   },  
   {
+    title: "Product Workspace",
+    icon: Package,
+    view: "product-workspace" as ViewType,
+  },
+  {
     title: "OCI Registry",
     icon: Archive,
     view: "oci-registry" as ViewType,
   },
+  {
+    title: "Workspace Demo",
+    icon: Boxes,
+    view: "workspace-demo" as ViewType,
+  },
+
 ]
 
 const devopsTools = [
@@ -138,6 +136,11 @@ const devopsTools = [
     view: "k8s-resources" as ViewType,
   },
   {
+    title: "Product Workspace",
+    icon: Package,
+    view: "product-workspace" as ViewType,
+  },
+  {
     title: "ArgoCD",
     icon: GitBranch,
     view: "argocd" as ViewType,
@@ -146,6 +149,11 @@ const devopsTools = [
     title: "Git Repositories",
     icon: FolderGit2,
     view: "git-repos" as ViewType,
+  },
+    {
+    title: "Workspace Demo",
+    icon: Boxes,
+    view: "workspace-demo" as ViewType,
   },
 ]
 
@@ -333,7 +341,7 @@ export function AppSidebar({
             <div className="px-2">
               <Select
                 value={environment}
-                onValueChange={(value) => {
+                onValueChange={(value: string) => {
                   setEnvironment(value)
                   onSaveContext()
                   console.log("Environment changed to:", value)

@@ -3,6 +3,11 @@ import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog"
 import { cn } from "@/lib/utils"
 import { buttonVariants } from "@/renderer/components/ui/button"
 
+// Add explicit type checking
+if (!AlertDialogPrimitive) {
+  throw new Error('AlertDialogPrimitive not loaded properly')
+}
+
 /**
  * AlertDialog root component
  */

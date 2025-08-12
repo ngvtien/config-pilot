@@ -255,7 +255,7 @@ export const yamlLightHighlightStyle = HighlightStyle.define([
 // Base theme for consistent styling
 const baseEditorTheme = EditorView.theme({
   "&": {
-    fontSize: "14px",
+    fontSize: "15px",
   },
   ".cm-content": {
     padding: "16px",
