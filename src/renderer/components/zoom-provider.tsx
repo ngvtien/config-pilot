@@ -26,7 +26,7 @@ export function ZoomProvider({ children }: ZoomProviderProps) {
 
     document.addEventListener("wheel", handleWheel, { passive: false })
     return () => document.removeEventListener("wheel", handleWheel)
-  }, [zoom])
+  }, [zoom.decreaseZoom, zoom.increaseZoom]) // Fixed: Added proper dependencies
 
   return <ZoomContext.Provider value={zoom}>{children}</ZoomContext.Provider>
 }

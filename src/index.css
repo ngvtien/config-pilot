@@ -114,7 +114,12 @@
   }
 
   /* Enhanced typography for headings */
-  h1, h2, h3, h4, h5, h6 {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     font-family: var(--font-sans);
     font-weight: 600;
     letter-spacing: -0.025em;
@@ -123,7 +128,9 @@
   }
 
   /* Professional monospace rendering */
-  code, pre, .font-mono {
+  code,
+  pre,
+  .font-mono {
     font-family: var(--font-mono);
     font-feature-settings: "liga" 1, "calt" 1, "ss01" 1, "ss02" 1;
     -webkit-font-smoothing: antialiased;
@@ -170,15 +177,22 @@
     * {
       -webkit-font-smoothing: subpixel-antialiased;
     }
-    
+
     /* Maintain crisp text on retina displays */
-    body, h1, h2, h3, h4, h5, h6 {
+    body,
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6 {
       -webkit-font-smoothing: antialiased;
     }
   }
 
   /* Windows-specific font rendering improvements */
-  @media screen and (-ms-high-contrast: active), (-ms-high-contrast: none) {
+  @media screen and (-ms-high-contrast: active),
+  (-ms-high-contrast: none) {
     * {
       font-smoothing: antialiased;
       -webkit-font-smoothing: antialiased;
@@ -253,13 +267,20 @@
   }
 }
 
-  /* Enhanced selection colors - exclude CodeMirror elements */
-  .dark :not(.cm-editor):not(.cm-content):not(.cm-line) ::selection {
-    background: hsl(var(--selection-bg) / 0.8);
-    color: hsl(var(--selection-fg));
-  }
+/* Enhanced selection colors - exclude CodeMirror elements */
+.dark :not(.cm-editor):not(.cm-content):not(.cm-line) ::selection {
+  background: hsl(var(--selection-bg) / 0.8);
+  color: hsl(var(--selection-fg));
+}
 
-  .dark :not(.cm-editor):not(.cm-content):not(.cm-line) ::-moz-selection {
-    background: hsl(var(--selection-bg) / 0.8);
-    color: hsl(var(--selection-fg));
+.dark :not(.cm-editor):not(.cm-content):not(.cm-line) ::-moz-selection {
+  background: hsl(var(--selection-bg) / 0.8);
+  color: hsl(var(--selection-fg));
+}
+
+@layer utilities {
+  /* VSCode-like zoom classes */
+  .zoom-content {
+    font-size: calc(1rem * var(--zoom-factor, 1));
   }
+}

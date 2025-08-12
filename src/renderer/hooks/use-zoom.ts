@@ -33,17 +33,91 @@ export function useZoomSetup() {
     return 100
   })
 
-  // Apply zoom to document body whenever zoomLevel changes
+  // Content-only zoom approach - preserves panel layout
   useEffect(() => {
-    document.body.style.zoom = `${zoomLevel}%`
+    const zoomFactor = zoomLevel / 100
+    
+    // Remove any existing zoom styles
+    const rootElement = document.querySelector('#root')
+    if (rootElement instanceof HTMLElement) {
+      rootElement.style.removeProperty('zoom')
+    }
+    
+    // Set CSS custom property for zoom factor
+    document.documentElement.style.setProperty('--zoom-factor', zoomFactor.toString())
+    
+    // Create or update zoom stylesheet
+    let zoomStylesheet = document.getElementById('zoom-content-styles') as HTMLStyleElement
+    if (!zoomStylesheet) {
+      zoomStylesheet = document.createElement('style')
+      zoomStylesheet.id = 'zoom-content-styles'
+      document.head.appendChild(zoomStylesheet)
+    }
+    
+    // Define content-only zoom rules that preserve panel structure
+    zoomStylesheet.textContent = `
+      /* Scale text content */
+      .zoom-content,
+      .cm-editor,
+      .cm-content,
+      .cm-line,
+      input[type="text"],
+      input[type="search"],
+      textarea,
+      .prose,
+      p, h1, h2, h3, h4, h5, h6,
+      span:not([data-panel-resize-handle-id]),
+      button span,
+      .text-sm, .text-base, .text-lg,
+      .card-content,
+      .scroll-area-content {
+        font-size: calc(1rem * var(--zoom-factor)) !important;
+        line-height: calc(1.5 * var(--zoom-factor)) !important;
+      }
+      
+      /* Scale icons and small elements */
+      svg:not([data-panel-resize-handle-id] svg),
+      .lucide,
+      .icon {
+        width: calc(1em * var(--zoom-factor)) !important;
+        height: calc(1em * var(--zoom-factor)) !important;
+      }
+      
+      /* Scale form elements */
+      input, textarea, select {
+        padding: calc(0.5rem * var(--zoom-factor)) !important;
+      }
+      
+      /* Scale buttons */
+      button:not([data-panel-resize-handle-id]) {
+        padding: calc(0.5rem * var(--zoom-factor)) calc(1rem * var(--zoom-factor)) !important;
+      }
+      
+      /* Preserve panel structure - DO NOT scale these */
+      [data-panel-group],
+      [data-panel],
+      [data-panel-resize-handle-id],
+      .react-resizable-handle,
+      .workspace-panel-header,
+      .panel-resize-handle {
+        font-size: inherit !important;
+        transform: none !important;
+        zoom: 1 !important;
+      }
+      
+      /* Preserve toolbar and navigation structure */
+      .toolbar,
+      .navigation,
+      .panel-header,
+      .workspace-panel > .flex.items-center:first-child {
+        font-size: 0.875rem !important;
+        line-height: 1.25rem !important;
+      }
+    `
+    
     // Save zoom level to localStorage
     localStorage.setItem("configpilot_zoom", zoomLevel.toString())
   }, [zoomLevel])
-
-  // Also apply zoom immediately on mount to handle any edge cases
-  useEffect(() => {
-    document.body.style.zoom = `${zoomLevel}%`
-  }, [])
 
   const increaseZoom = useCallback(() => {
     setZoomLevel((prev) => Math.min(200, prev + 10))
