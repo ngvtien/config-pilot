@@ -159,38 +159,30 @@ export const ProductComponentTiles: React.FC<ProductComponentTilesProps> = ({
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          className="h-6 w-6 p-0 bg-white border border-blue-200 shadow-lg hover:bg-blue-50 hover:border-blue-300"
+                        <Edit 
+                          className="h-4 w-4 text-blue-600 cursor-pointer hover:text-blue-800 transition-colors zoom-exclude" 
                           onClick={(e) => handleActionClick(e, () => {
                             console.log('Edit component clicked for:', component.name)
                             onEditComponent?.(component)
                           })}
-                        >
-                          <Edit className="h-3 w-3 text-blue-600" />
-                        </Button>
+                        />
                       </TooltipTrigger>
                       <TooltipContent>
                         <p>Edit {component.name}</p>
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
-
+                  
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          className="h-6 w-6 p-0 bg-white border border-red-200 shadow-lg hover:bg-red-50 hover:border-red-300"
+                        <Trash2 
+                          className="h-4 w-4 text-red-600 cursor-pointer hover:text-red-800 transition-colors zoom-exclude" 
                           onClick={(e) => handleActionClick(e, () => {
                             console.log('Delete component clicked for:', component.name)
                             onDeleteComponent?.(component)
                           })}
-                        >
-                          <Trash2 className="h-3 w-3 text-red-600" />
-                        </Button>
+                        />
                       </TooltipTrigger>
                       <TooltipContent>
                         <p>Delete {component.name}</p>

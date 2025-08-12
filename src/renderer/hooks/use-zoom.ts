@@ -75,21 +75,57 @@ export function useZoomSetup() {
         line-height: calc(1.5 * var(--zoom-factor)) !important;
       }
       
-      /* Scale icons and small elements */
-      svg:not([data-panel-resize-handle-id] svg),
-      .lucide,
-      .icon {
-        width: calc(1em * var(--zoom-factor)) !important;
-        height: calc(1em * var(--zoom-factor)) !important;
+      /* Scale icons with minimum size protection */
+      svg:not(.zoom-exclude):not([data-panel-resize-handle-id] svg),
+      .lucide:not(.zoom-exclude),
+      .icon:not(.zoom-exclude) {
+        width: calc(max(12px, 1em * var(--zoom-factor))) !important;
+        height: calc(max(12px, 1em * var(--zoom-factor))) !important;
       }
+      
+      /* ABSOLUTE protection for zoom-exclude elements */
+      .zoom-exclude,
+      .zoom-exclude svg,
+      .zoom-exclude .lucide,
+      .zoom-exclude .icon {
+        width: inherit !important;
+        height: inherit !important;
+        min-width: inherit !important;
+        min-height: inherit !important;
+        max-width: inherit !important;
+        max-height: inherit !important;
+        font-size: inherit !important;
+        transform: none !important;
+        zoom: 1 !important;
+      }
+      
+      /* Force specific sizes for Tailwind classes on zoom-exclude elements */
+      .zoom-exclude.h-3 { height: 0.75rem !important; }
+      .zoom-exclude.w-3 { width: 0.75rem !important; }
+      .zoom-exclude.h-4 { height: 1rem !important; }
+      .zoom-exclude.w-4 { width: 1rem !important; }
+      .zoom-exclude.h-5 { height: 1.25rem !important; }
+      .zoom-exclude.w-5 { width: 1.25rem !important; }
+      .zoom-exclude.h-6 { height: 1.5rem !important; }
+      .zoom-exclude.w-6 { width: 1.5rem !important; }
+      
+      /* Force specific sizes for nested SVGs in zoom-exclude buttons */
+      .zoom-exclude svg.h-3,
+      .zoom-exclude .lucide.h-3 { height: 0.75rem !important; }
+      .zoom-exclude svg.w-3,
+      .zoom-exclude .lucide.w-3 { width: 0.75rem !important; }
+      .zoom-exclude svg.h-4,
+      .zoom-exclude .lucide.h-4 { height: 1rem !important; }
+      .zoom-exclude svg.w-4,
+      .zoom-exclude .lucide.w-4 { width: 1rem !important; }
       
       /* Scale form elements */
       input, textarea, select {
         padding: calc(0.5rem * var(--zoom-factor)) !important;
       }
       
-      /* Scale buttons */
-      button:not([data-panel-resize-handle-id]) {
+      /* Scale buttons - but exclude zoom-exclude buttons */
+      button:not([data-panel-resize-handle-id]):not(.zoom-exclude) {
         padding: calc(0.5rem * var(--zoom-factor)) calc(1rem * var(--zoom-factor)) !important;
       }
       

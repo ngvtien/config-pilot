@@ -246,21 +246,22 @@ export const ProductComponentNavigator: React.FC<ProductComponentNavigatorProps>
       <div className="p-3 border-b bg-muted/10">
         <div className="flex items-center gap-2 mb-3">
           {onNavigateBack && (
-            <Button variant="ghost" size="sm" onClick={onNavigateBack} className="h-7 w-7 p-0">
-              <ArrowLeft className="h-3.5 w-3.5" />
+            <Button variant="ghost" size="sm" onClick={onNavigateBack} className="h-7 w-7 p-0 zoom-exclude">
+              <ArrowLeft className="h-3.5 w-3.5 zoom-exclude" />
             </Button>
           )}
           <h2 className={typography.tile.title}>Products & Components</h2>
         </div>
 
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground z-10" />
+          {/* <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground z-10 zoom-exclude" /> */}
           <Input
             placeholder="Search products and components..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className={cn("!pl-10 !pr-3 h-8", typography.utils.body)}
-          />
+          >            
+          </Input>
         </div>
       </div>
 
@@ -276,7 +277,7 @@ export const ProductComponentNavigator: React.FC<ProductComponentNavigatorProps>
               <Collapsible
                 key={product.id}
                 open={isExpanded}
-                //onOpenChange={() => toggleProductExpansion(product.name)}
+              //onOpenChange={() => toggleProductExpansion(product.name)}
               >
                 <Card
                   className={cn(
@@ -296,8 +297,8 @@ export const ProductComponentNavigator: React.FC<ProductComponentNavigatorProps>
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1 min-w-0 space-y-2">
                         <div className="flex items-center gap-2">
-                          <div className="p-1.5 rounded-md bg-primary/10">
-                            <Package className="h-4 w-4 text-primary" />
+                          <div className="p-1.5 rounded-md bg-primary/10 zoom-exclude">
+                            <Package className="h-4 w-4 text-primary zoom-exclude" />
                           </div>
                           <div className="min-w-0 flex-1">
                             <h4 className={cn(typography.tile.title, "truncate font-medium")}>
@@ -330,14 +331,12 @@ export const ProductComponentNavigator: React.FC<ProductComponentNavigatorProps>
                             {onEditProduct && (
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="h-6 w-6 p-0 bg-background/80 hover:bg-blue-500/10 border-border"
+                                  <div
+                                    className="cursor-pointer zoom-exclude"
                                     onClick={(e) => handleActionClick(e, () => onEditProduct(product))}
                                   >
-                                    <Edit className="h-3 w-3 text-blue-500" />
-                                  </Button>
+                                    <Edit className="h-4 w-4 text-blue-500 hover:text-blue-600 transition-colors zoom-exclude" />
+                                  </div>
                                 </TooltipTrigger>
                                 <TooltipContent>
                                   <p>Edit {product.name}</p>
@@ -348,14 +347,12 @@ export const ProductComponentNavigator: React.FC<ProductComponentNavigatorProps>
                             {onDeleteProduct && (
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="h-6 w-6 p-0 bg-background/80 hover:bg-red-500/10 border-border"
+                                  <div
+                                    className="cursor-pointer zoom-exclude"
                                     onClick={(e) => handleActionClick(e, () => onDeleteProduct(product))}
                                   >
-                                    <Trash2 className="h-3 w-3 text-red-500" />
-                                  </Button>
+                                    <Trash2 className="h-4 w-4 text-red-500 hover:text-red-600 transition-colors zoom-exclude" />
+                                  </div>
                                 </TooltipTrigger>
                                 <TooltipContent>
                                   <p>Delete {product.name}</p>
@@ -368,9 +365,9 @@ export const ProductComponentNavigator: React.FC<ProductComponentNavigatorProps>
                         {/* Expand/Collapse Indicator - now just visual */}
                         <div className="h-6 w-6 flex items-center justify-center">
                           {isExpanded ? (
-                            <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                            <ChevronDown className="h-3 w-3 text-muted-foreground zoom-exclude" />
                           ) : (
-                            <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                            <ChevronRight className="h-3 w-3 text-muted-foreground zoom-exclude" />
                           )}
                         </div>
                       </div>
@@ -382,14 +379,12 @@ export const ProductComponentNavigator: React.FC<ProductComponentNavigatorProps>
                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger asChild>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-6 w-6 p-0 bg-background/80 hover:bg-green-500/10 border-border"
+                              <div
+                                className="cursor-pointer zoom-exclude"
                                 onClick={(e) => handleActionClick(e, () => onAddComponent(product))}
                               >
-                                <Plus className="h-3 w-3 text-green-500" />
-                              </Button>
+                                <Plus className="h-4 w-4 text-green-500 hover:text-green-600 transition-colors zoom-exclude" />
+                              </div>
                             </TooltipTrigger>
                             <TooltipContent>
                               <p>Add Component</p>
