@@ -434,6 +434,7 @@ const renderFileExplorer = () => {
                     <span className="truncate text-sm">{file.name}</span>
                     <X
                       className="h-3 w-3 hover:bg-muted rounded opacity-60 hover:opacity-100"
+                      aria-label={`Close ${file.name}`}
                       onClick={(e) => {
                         e.stopPropagation()
                         closeFile(file.id)
@@ -487,7 +488,7 @@ const renderFileExplorer = () => {
           ) : (
             consoleOutput.map((line, index) => (
               <div key={index} className="mb-1">
-                <span className={typography.utils.muted}>[{new Date().toLocaleTimeString()}]</span> {line}
+                {line}
               </div>
             ))
           )}
