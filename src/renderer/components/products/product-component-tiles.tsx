@@ -5,7 +5,28 @@ import { Card, CardContent } from "@/renderer/components/ui/card"
 import { Badge } from "@/renderer/components/ui/badge"
 import { Button } from "@/renderer/components/ui/button"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/renderer/components/ui/tooltip"
-import { Component, Edit, Trash2, FileText, Settings, Database } from "lucide-react"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  DropdownMenuShortcut
+} from "@/renderer/components/ui/dropdown-menu"
+import { 
+  Component, 
+  Edit, 
+  Trash2, 
+  FileText, 
+  Settings, 
+  Database, 
+  MoreVertical,
+  GitBranch,
+  History,
+  GitPullRequest,
+  GitMerge,
+  Diff
+} from "lucide-react"
 import { typography } from "@/renderer/lib/typography"
 import { cn } from "@/lib/utils"
 
@@ -154,41 +175,104 @@ export const ProductComponentTiles: React.FC<ProductComponentTilesProps> = ({
                   </div>
                 </div>
 
-                {/* Action Buttons - Top Right with increased spacing */}
-                <div className="absolute top-2 right-2 flex gap-3 transition-all duration-200 opacity-0 group-hover:opacity-100 z-50">
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Edit 
-                          className="h-4 w-4 text-blue-600 cursor-pointer hover:text-blue-800 transition-colors zoom-exclude" 
-                          onClick={(e) => handleActionClick(e, () => {
+                {/* Action Buttons - Top Right with MoreVertical dropdown */}
+                <div className="absolute top-2 right-2 transition-all duration-200 opacity-0 group-hover:opacity-100 z-50">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <div className="cursor-pointer zoom-exclude">
+                        <MoreVertical className="h-4 w-4 text-muted-foreground hover:text-foreground transition-colors zoom-exclude" />
+                      </div>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-56 shadow-lg border-border/50">
+                      {onEditComponent && (
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation()
                             console.log('Edit component clicked for:', component.name)
-                            onEditComponent?.(component)
-                          })}
-                        />
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Edit {component.name}</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                  
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Trash2 
-                          className="h-4 w-4 text-red-600 cursor-pointer hover:text-red-800 transition-colors zoom-exclude" 
-                          onClick={(e) => handleActionClick(e, () => {
+                            onEditComponent(component)
+                          }}
+                          className="group flex items-center px-3 py-2.5 text-sm transition-colors hover:bg-accent focus:bg-accent"
+                        >
+                          <Edit className="h-4 w-4 mr-3 text-muted-foreground group-hover:text-foreground transition-colors" />
+                          <span className="font-medium">Edit {component.name}</span>
+                        </DropdownMenuItem>
+                      )}
+                      {onDeleteComponent && (
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation()
                             console.log('Delete component clicked for:', component.name)
-                            onDeleteComponent?.(component)
-                          })}
-                        />
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Delete {component.name}</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+                            onDeleteComponent(component)
+                          }}
+                          className="group flex items-center px-3 py-2.5 text-sm transition-colors hover:bg-destructive/10 focus:bg-destructive/10 text-destructive focus:text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4 mr-3 text-destructive/70 group-hover:text-destructive transition-colors" />
+                          <span className="font-medium">Delete {component.name}</span>
+                        </DropdownMenuItem>
+                      )}
+                      
+                      {/* Enhanced Git Operations Separator */}
+                      <DropdownMenuSeparator className="my-2 bg-border/60" />
+                      
+                      {/* Git Section Label */}
+                      <div className="px-3 py-1.5 text-xs font-semibold text-muted-foreground/80 uppercase tracking-wider">
+                        Git Operations
+                      </div>
+                      
+                      {/* Git-related menu items with enhanced styling */}
+                      <DropdownMenuItem
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          console.log('Git diff clicked for:', component.name)
+                          // TODO: Implement git diff functionality for Resource File Explorer
+                        }}
+                        className="group flex items-center px-3 py-2.5 text-sm transition-colors hover:bg-blue-500/10 focus:bg-blue-500/10 dark:hover:bg-blue-400/10 dark:focus:bg-blue-400/10"
+                      >
+                        <Diff className="h-4 w-4 mr-3 text-blue-600 dark:text-blue-400 group-hover:text-blue-700 dark:group-hover:text-blue-300 transition-colors zoom-exclude" />
+                        <span className="font-medium text-blue-700 dark:text-blue-300">Git Diff</span>
+                        <DropdownMenuShortcut className="text-xs text-muted-foreground/60">⌘D</DropdownMenuShortcut>
+                      </DropdownMenuItem>
+                      
+                      <DropdownMenuItem
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          console.log('Git history clicked for:', component.name)
+                          // TODO: Implement git history functionality for Resource File Explorer
+                        }}
+                        className="group flex items-center px-3 py-2.5 text-sm transition-colors hover:bg-green-500/10 focus:bg-green-500/10 dark:hover:bg-green-400/10 dark:focus:bg-green-400/10"
+                      >
+                        <History className="h-4 w-4 mr-3 text-green-600 dark:text-green-400 group-hover:text-green-700 dark:group-hover:text-green-300 transition-colors zoom-exclude" />
+                        <span className="font-medium text-green-700 dark:text-green-300">History</span>
+                        <DropdownMenuShortcut className="text-xs text-muted-foreground/60">⌘H</DropdownMenuShortcut>
+                      </DropdownMenuItem>
+                      
+                      <DropdownMenuItem
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          console.log('Create PR clicked for:', component.name)
+                          // TODO: Implement create PR functionality for Resource File Explorer
+                        }}
+                        className="group flex items-center px-3 py-2.5 text-sm transition-colors hover:bg-purple-500/10 focus:bg-purple-500/10 dark:hover:bg-purple-400/10 dark:focus:bg-purple-400/10"
+                      >
+                        <GitPullRequest className="h-4 w-4 mr-3 text-purple-600 dark:text-purple-400 group-hover:text-purple-700 dark:group-hover:text-purple-300 transition-colors zoom-exclude" />
+                        <span className="font-medium text-purple-700 dark:text-purple-300">Create PR</span>
+                        <DropdownMenuShortcut className="text-xs text-muted-foreground/60">⌘P</DropdownMenuShortcut>
+                      </DropdownMenuItem>
+                      
+                      <DropdownMenuItem
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          console.log('Git merge clicked for:', component.name)
+                          // TODO: Implement git merge functionality for Resource File Explorer
+                        }}
+                        className="group flex items-center px-3 py-2.5 text-sm transition-colors hover:bg-orange-500/10 focus:bg-orange-500/10 dark:hover:bg-orange-400/10 dark:focus:bg-orange-400/10"
+                      >
+                        <GitMerge className="h-4 w-4 mr-3 text-orange-600 dark:text-orange-400 group-hover:text-orange-700 dark:group-hover:text-orange-300 transition-colors zoom-exclude" />
+                        <span className="font-medium text-orange-700 dark:text-orange-300">Merge</span>
+                        <DropdownMenuShortcut className="text-xs text-muted-foreground/60">⌘M</DropdownMenuShortcut>
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>                  
                 </div>
               </CardContent>
             </Card>

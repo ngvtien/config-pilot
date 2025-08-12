@@ -7,12 +7,18 @@ import { Badge } from "@/renderer/components/ui/badge"
 import { ScrollArea } from "@/renderer/components/ui/scroll-area"
 import { Card, CardContent } from "@/renderer/components/ui/card"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/renderer/components/ui/collapsible"
-import { Search, ChevronDown, ChevronRight, Package, Component, ArrowLeft, Plus, Trash2, Edit } from "lucide-react"
+import { Search, ChevronDown, ChevronRight, Package, Component, ArrowLeft, Plus, Trash2, Edit, MoreVertical } from "lucide-react"
 import { typography } from "@/renderer/lib/typography"
 import { cn } from "@/lib/utils"
 import { Product } from "@/shared/types/product"
 import { ProductComponent } from "@/shared/types/product-component"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/renderer/components/ui/tooltip"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/renderer/components/ui/dropdown-menu"
 
 /**
  * Navigator panel for product and component selection
@@ -26,6 +32,7 @@ interface ProductComponentNavigatorProps {
   onEditProduct?: (product: Product) => void
   onDeleteProduct?: (product: Product) => void
   onAddComponent?: (product: Product) => void
+  onAddProduct?: () => void
 }
 
 export const ProductComponentNavigator: React.FC<ProductComponentNavigatorProps> = ({
@@ -36,7 +43,8 @@ export const ProductComponentNavigator: React.FC<ProductComponentNavigatorProps>
   onNavigateBack,
   onEditProduct,
   onDeleteProduct,
-  onAddComponent
+  onAddComponent,
+  onAddProduct
 }) => {
   const [searchQuery, setSearchQuery] = useState("")
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set())
@@ -251,8 +259,23 @@ export const ProductComponentNavigator: React.FC<ProductComponentNavigatorProps>
             </Button>
           )}
           <h2 className={typography.tile.title}>Products & Components</h2>
+          <div className="flex-1" />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0 zoom-exclude">
+                <MoreVertical className="h-4 w-4 text-muted-foreground zoom-exclude" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              {onAddProduct && (
+                <DropdownMenuItem onClick={onAddProduct}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Product
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
-
         <div className="relative">
           {/* <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground z-10 zoom-exclude" /> */}
           <Input
@@ -260,7 +283,7 @@ export const ProductComponentNavigator: React.FC<ProductComponentNavigatorProps>
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className={cn("!pl-10 !pr-3 h-8", typography.utils.body)}
-          >            
+          >
           </Input>
         </div>
       </div>
@@ -326,40 +349,54 @@ export const ProductComponentNavigator: React.FC<ProductComponentNavigatorProps>
                       {/* Action Buttons - compact */}
                       <div className="flex items-start gap-1">
                         {/* Edit and Delete Buttons */}
-                        <div className="flex gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <TooltipProvider>
-                            {onEditProduct && (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <div
-                                    className="cursor-pointer zoom-exclude"
-                                    onClick={(e) => handleActionClick(e, () => onEditProduct(product))}
-                                  >
-                                    <Edit className="h-4 w-4 text-blue-500 hover:text-blue-600 transition-colors zoom-exclude" />
-                                  </div>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p>Edit {product.name}</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            )}
+                        <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <div className="cursor-pointer zoom-exclude">
+                                <MoreVertical className="h-4 w-4 text-muted-foreground hover:text-foreground transition-colors zoom-exclude" />
+                              </div>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              {onEditProduct && (
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    onEditProduct(product)
+                                  }}
+                                >
+                                  <Edit className="h-4 w-4 mr-2" />
+                                  Edit {product.name}
+                                </DropdownMenuItem>
+                              )}
+                              {onDeleteProduct && (
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    onDeleteProduct(product)
+                                  }}
+                                  className="text-red-600 focus:text-red-600"
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Delete {product.name}
+                                </DropdownMenuItem>
+                              )}
+                              
+                              <DropdownMenuSeparator />
 
-                            {onDeleteProduct && (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <div
-                                    className="cursor-pointer zoom-exclude"
-                                    onClick={(e) => handleActionClick(e, () => onDeleteProduct(product))}
-                                  >
-                                    <Trash2 className="h-4 w-4 text-red-500 hover:text-red-600 transition-colors zoom-exclude" />
-                                  </div>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p>Delete {product.name}</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            )}
-                          </TooltipProvider>
+                              {onAddComponent && (
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    onAddComponent(product)
+                                  }}
+                                >
+                                  <Plus className="h-4 w-4 mr-2" />
+                                  Add Component
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+
                         </div>
 
                         {/* Expand/Collapse Indicator - now just visual */}
@@ -373,26 +410,6 @@ export const ProductComponentNavigator: React.FC<ProductComponentNavigatorProps>
                       </div>
                     </div>
 
-                    {/* Add Component Button - bottom right when expanded */}
-                    {onAddComponent && isExpanded && (
-                      <div className="absolute bottom-3 right-6 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <div
-                                className="cursor-pointer zoom-exclude"
-                                onClick={(e) => handleActionClick(e, () => onAddComponent(product))}
-                              >
-                                <Plus className="h-4 w-4 text-green-500 hover:text-green-600 transition-colors zoom-exclude" />
-                              </div>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Add Component</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      </div>
-                    )}
                   </CardContent>
                 </Card>
 

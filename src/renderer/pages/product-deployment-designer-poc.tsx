@@ -297,6 +297,10 @@ const renderNavigatorPanel = () => {
         console.log('Add component to:', product)
         // Add your add component logic here
       }}
+      onAddProduct={() => {
+        console.log('Add new product')
+        // Add your add product logic here
+      }}      
     />
   )
 }
@@ -366,7 +370,8 @@ const renderFileExplorer = () => {
           productName={selectedProduct.displayName || selectedProduct.name}
           components={tileComponents}
           selectedComponentId={selectedComponent.id}
-          onComponentSelect={(component) => {
+          onComponentSelect={(component: ProductComponent) => {
+
             // Handle component selection if needed
             addToConsole(`Component tile clicked: ${component.name}`)
           }}
