@@ -124,13 +124,11 @@ export function NavProjects() {
 
   return (
     <>
-      <SidebarGroup className="group-data-[collapsible=icon]:hidden">
-        <SidebarGroupLabel>
-          Projects
-        </SidebarGroupLabel>
-        <SidebarMenu>
+      <SidebarGroup className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:mb-4">
+        <SidebarGroupLabel>Projects</SidebarGroupLabel>
+        <SidebarMenu className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:w-full group-data-[collapsible=icon]:gap-3">
           {/* Single Projects Dropdown */}
-          <SidebarMenuItem>
+          <SidebarMenuItem className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:w-full">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <SidebarMenuButton>

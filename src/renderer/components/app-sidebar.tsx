@@ -211,7 +211,7 @@ export function AppSidebar({
   }
 
   return (
-    <Sidebar collapsible="icon" variant="sidebar" {...props}>
+    <Sidebar collapsible="icon" variant="sidebar-smooth" className="sidebar-smooth" {...props}>
       <SidebarHeader>
         <div className="group-data-[collapsible=icon]:p-2 group-data-[state=expanded]:p-2">
           <div 
