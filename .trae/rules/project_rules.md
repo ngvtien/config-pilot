@@ -14,3 +14,10 @@
 - **Typography Standardization**: Always use the typography constants from <mcfile name="typography.ts" path=".\src\renderer\lib\typography.ts"></mcfile> for consistent text styling across all UI components
 - **UI Component Guidelines**: New components must follow established typography patterns (tile.title, card.subtitle, etc.) and avoid hardcoded text classes
 - **Typography Review**: All UI changes must be reviewed for typography consistency before implementation
+- **Zoom Factor Compliance**: All standalone icons must include the `zoom-exclude` class to ensure consistent sizing and visibility across all zoom levels (50-200%). Icons paired with text typically don't require this class as they scale proportionally with the text content.
+  - **Examples of icons with zoom-exclude**: 
+    - Search icons in input fields (e.g., `<Search className="zoom-exclude" />`)
+    - Navigation icons like ArrowLeft, MoreVertical in toolbars
+    - Action icons in buttons when they are standalone (not paired with text)
+    - File tree icons and status indicators
+    - Close buttons (X) in tabs and modals
