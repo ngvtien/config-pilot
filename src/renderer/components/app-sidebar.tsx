@@ -213,13 +213,12 @@ export function AppSidebar({
   return (
     <Sidebar collapsible="icon" variant="sidebar" {...props}>
       <SidebarHeader>
-        <div className="p-2">
+        <div className="group-data-[collapsible=icon]:p-2 group-data-[state=expanded]:p-2">
           <div 
-            className="cursor-pointer transition-all duration-200 hover:bg-sidebar-accent rounded-md p-2"
+            className="cursor-pointer transition-all duration-200 hover:bg-sidebar-accent rounded-md group-data-[collapsible=icon]:p-0 group-data-[state=expanded]:p-2"
             onClick={toggleSidebar}
           >
             <div className="flex flex-col items-center justify-center">
-
               <div className="flex items-center justify-center rounded-lg bg-yellow-500 text-white font-bold size-8 group-data-[collapsible=icon]:size-8 group-data-[state=expanded]:size-12">
                 <span className="text-sm group-data-[state=expanded]:text-lg">
                   CP
@@ -234,10 +233,11 @@ export function AppSidebar({
           </div>
         </div>
       </SidebarHeader>
-
       <SidebarContent>
         {/* Project Navigation */}
-        <NavProjects />
+        <div className="group-data-[collapsible=icon]:px-2">
+          <NavProjects />
+        </div>
         {/* Kubernetes Context Selection */}
         <SidebarGroup className="group-data-[collapsible=icon]:hidden">
           <SidebarGroupLabel>KUBERNETES CONTEXT</SidebarGroupLabel>
@@ -254,16 +254,17 @@ export function AppSidebar({
         </SidebarGroup>
 
         {/* Role Selection */}
-        <SidebarGroup>
+        <SidebarGroup className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:px-0">
           <SidebarGroupLabel>ROLE</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
+          <SidebarGroupContent className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:w-full">
+            <SidebarMenu className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:w-full">
               {roleItems.map((item) => (
                 <SidebarMenuItem key={item.role}>
                   <SidebarMenuButton
                     tooltip={item.title}
                     isActive={userRole === item.role}
                     onClick={() => setUserRole(item.role)}
+                    className="group-data-[collapsible=icon]:!mx-auto group-data-[collapsible=icon]:!block group-data-[collapsible=icon]:[&>svg]:!size-5"
                   >
                     <item.icon />
                     <span>{item.title}</span>
@@ -275,16 +276,17 @@ export function AppSidebar({
         </SidebarGroup>
 
         {/* Tools based on role */}
-        <SidebarGroup>
+        <SidebarGroup className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:px-0">
           <SidebarGroupLabel>{getSectionTitle()}</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
+          <SidebarGroupContent className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:w-full">
+            <SidebarMenu className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:w-full">
               {getToolsForRole().map((item) => (
                 <SidebarMenuItem key={item.view}>
                   <SidebarMenuButton
                     tooltip={item.title}
                     isActive={view === item.view}
                     onClick={() => setView(item.view)}
+                    className="group-data-[collapsible=icon]:!mx-auto group-data-[collapsible=icon]:!block group-data-[collapsible=icon]:[&>svg]:!size-5"
                   >
                     <item.icon />
                     <span>{item.title}</span>
@@ -296,15 +298,16 @@ export function AppSidebar({
         </SidebarGroup>
 
         {/* File Explorer */}
-        <SidebarGroup>
+        <SidebarGroup className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:px-0">
           <SidebarGroupLabel>FILE EXPLORER</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
+          <SidebarGroupContent className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:w-full">
+            <SidebarMenu className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:w-full">
               <SidebarMenuItem>
                 <SidebarMenuButton
                   tooltip="File Explorer"
                   isActive={view === "file-explorer"}
                   onClick={() => setView("file-explorer")}
+                  className="group-data-[collapsible=icon]:!mx-auto group-data-[collapsible=icon]:!block group-data-[collapsible=icon]:[&>svg]:!size-5"
                 >
                   <FolderOpen />
                   <span>File Explorer</span>
@@ -315,15 +318,16 @@ export function AppSidebar({
         </SidebarGroup>
 
         {/* Settings */}
-        <SidebarGroup>
+        <SidebarGroup className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:px-0">
           <SidebarGroupLabel>SETTINGS</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
+          <SidebarGroupContent className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:w-full">
+            <SidebarMenu className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:w-full">
               <SidebarMenuItem>
                 <SidebarMenuButton
                   tooltip="Settings"
                   isActive={view === "settings"}
                   onClick={() => setView("settings")}
+                  className="group-data-[collapsible=icon]:!mx-auto group-data-[collapsible=icon]:!block group-data-[collapsible=icon]:[&>svg]:!size-5"
                 >
                   <Settings />
                   <span>Settings</span>
