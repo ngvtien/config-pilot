@@ -587,13 +587,12 @@ export function SmartFileTree({
                                     variant="ghost"
                                     size="sm"
                                     className={cn(
-                                        "h-7 w-7 p-0 transition-all duration-200",
+                                        "h-7 w-7 p-0 transition-all duration-200 zoom-exclude",
                                         "opacity-0 group-hover:opacity-100",
-                                        "hover:bg-red-100 hover:text-red-600"
                                     )}
                                     onClick={(e) => e.stopPropagation()}
                                 >
-                                    <MoreVertical className="h-3 w-3" />
+                                    <MoreVertical className="h-3 w-3 zoom-exclude" />
                                 </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-48">
