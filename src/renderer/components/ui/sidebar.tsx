@@ -21,6 +21,22 @@ const SIDEBAR_WIDTH_MOBILE = "18rem"
 const SIDEBAR_WIDTH_ICON = "3rem"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
 
+function getSidebarStateFromCookie(): boolean {
+  if (typeof document === 'undefined') return true // SSR fallback
+  
+  const cookies = document.cookie.split(';')
+  const sidebarCookie = cookies.find(cookie => 
+    cookie.trim().startsWith(`${SIDEBAR_COOKIE_NAME}=`)
+  )
+  
+  if (sidebarCookie) {
+    const value = sidebarCookie.split('=')[1]
+    return value === 'true'
+  }
+  
+  return true // Default to open if no cookie found
+}
+
 type SidebarContext = {
   state: "open" | "closed"
   open: boolean
@@ -49,13 +65,18 @@ const SidebarProvider = React.forwardRef<
     open?: boolean
     onOpenChange?: (open: boolean) => void
   }
->(({ defaultOpen = true, open: openProp, onOpenChange: setOpenProp, className, style, children, ...props }, ref) => {
+>(({ defaultOpen, open: openProp, onOpenChange: setOpenProp, className, style, children, ...props }, ref) => {
   const isMobile = useIsMobile()
   const [openMobile, setOpenMobile] = React.useState(false)
 
-  // This is the internal state of the sidebar.
-  // We use openProp and setOpenProp for control from outside the component.
-  const [_open, _setOpen] = React.useState(defaultOpen)
+  // Initialize with saved state from cookie, fallback to defaultOpen or true
+  const [_open, _setOpen] = React.useState(() => {
+    if (defaultOpen !== undefined) {
+      return defaultOpen
+    }
+    return getSidebarStateFromCookie()
+  })
+  
   const open = openProp ?? _open
   const setOpen = React.useCallback(
     (value: boolean | ((value: boolean) => boolean)) => {
