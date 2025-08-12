@@ -27,13 +27,13 @@ export function ProductDeploymentDesignerPoC({ onNavigateBack }: ProductDeployme
   // Product and component selection state
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const [selectedComponent, setSelectedComponent] = useState<ProductComponent | null>(null)
-  
+
   // Multi-file editor state
   const [selectedFile, setSelectedFile] = useState<FileTreeNode | null>(null)
   const [openFiles, setOpenFiles] = useState<FileTreeNode[]>([])
   const [activeFileId, setActiveFileId] = useState<string | null>(null)
   const [fileContents, setFileContents] = useState<Record<string, string>>({})
-  
+
   // Console output state
   const [consoleOutput, setConsoleOutput] = useState<string[]>([])
 
@@ -41,10 +41,10 @@ export function ProductDeploymentDesignerPoC({ onNavigateBack }: ProductDeployme
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [maxConsoleLines] = useState(100) // Limit console output
-  
-    /**
-   * Open a file in a new tab or switch to existing tab
-   */
+
+  /**
+ * Open a file in a new tab or switch to existing tab
+ */
   const openFile = async (file: FileTreeNode) => {
     // Check if file is already open
     setOpenFiles(prev => {
@@ -61,7 +61,7 @@ export function ProductDeploymentDesignerPoC({ onNavigateBack }: ProductDeployme
       try {
         setIsLoading(true)
         setError(null)
-        
+
         let content: string
         if (file.content && file.content.trim()) {
           // Use the existing content from the file (e.g., from newly created resources)
@@ -72,12 +72,12 @@ export function ProductDeploymentDesignerPoC({ onNavigateBack }: ProductDeployme
           content = await generateMockContentSafe(file)
           addToConsole(`Generated mock content for: ${file.path}`)
         }
-        
+
         setFileContents(prev => ({
           ...prev,
           [file.id]: content
         }))
-        
+
         addToConsole(`Opened file in tab: ${file.path}`)
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred'
@@ -104,13 +104,13 @@ export function ProductDeploymentDesignerPoC({ onNavigateBack }: ProductDeployme
       })
       return updated
     })
-    
+
     // Remove file content from memory
     setFileContents(prev => {
       const { [fileId]: removed, ...rest } = prev
       return rest
     })
-    
+
     const closedFile = openFiles.find(f => f.id === fileId)
     if (closedFile) {
       addToConsole(`Closed file: ${closedFile.path}`)
@@ -132,7 +132,7 @@ export function ProductDeploymentDesignerPoC({ onNavigateBack }: ProductDeployme
   const addToConsole = (message: string, type: 'info' | 'error' | 'warning' = 'info') => {
     const timestamp = new Date().toLocaleTimeString()
     const formattedMessage = `[${timestamp}] ${type.toUpperCase()}: ${message}`
-    
+
     setConsoleOutput(prev => {
       const newOutput = [...prev, formattedMessage]
       // Keep only the last maxConsoleLines entries
@@ -150,7 +150,7 @@ export function ProductDeploymentDesignerPoC({ onNavigateBack }: ProductDeployme
 
     // Validate component name for YAML generation
     const componentName = selectedComponent?.name?.replace(/[^a-zA-Z0-9-]/g, '-').toLowerCase() || 'example'
-    
+
     if (file.metadata?.fileType === 'yaml') {
       if (file.metadata?.resourceKind === 'Deployment') {
         return `apiVersion: apps/v1
@@ -184,7 +184,7 @@ version: 0.1.0
 appVersion: "1.0.0"`
       }
     }
-    
+
     return `# ${file.name}
 # Content for ${file.path}
 # Component: ${componentName}
@@ -214,7 +214,7 @@ appVersion: "1.0.0"`
       addToConsole('Invalid product selected', 'error')
       return
     }
-    
+
     setSelectedProduct(product)
     setSelectedComponent(null)
     setSelectedFile(null)
@@ -222,7 +222,7 @@ appVersion: "1.0.0"`
     setError(null)
     addToConsole(`Selected product: ${product.displayName || product.name}`)
   }
-  
+
   /**
    * Enhanced component selection with validation
    */
@@ -231,7 +231,7 @@ appVersion: "1.0.0"`
       addToConsole('Invalid component selected', 'error')
       return
     }
-    
+
     setSelectedComponent(component)
     setSelectedFile(null)
     setFileContents({})
@@ -244,7 +244,7 @@ appVersion: "1.0.0"`
    */
   const handleContentChange = (fileId: string, content: string) => {
     setFileContents(prev => ({ ...prev, [fileId]: content }))
-    
+
     const file = openFiles.find(f => f.id === fileId)
     if (file) {
       // Update the file object with new content
@@ -276,128 +276,128 @@ appVersion: "1.0.0"`
   //   )
   // }
 
-const renderNavigatorPanel = () => {
-  return (
-    <ProductComponentNavigator
-      selectedProduct={selectedProduct}
-      selectedComponent={selectedComponent}
-      onProductSelect={handleProductSelect}
-      onComponentSelect={handleComponentSelect}
-      onNavigateBack={onNavigateBack}
-      // Add the hover action handlers
-      onEditProduct={(product) => {
-        console.log('Edit product:', product)
-        // Add your edit logic here
-      }}
-      onDeleteProduct={(product) => {
-        console.log('Delete product:', product)
-        // Add your delete logic here
-      }}
-      onAddComponent={(product) => {
-        console.log('Add component to:', product)
-        // Add your add component logic here
-      }}
-      onAddProduct={() => {
-        console.log('Add new product')
-        // Add your add product logic here
-      }}      
-    />
-  )
-}
-  
-// // Add these new handlers
-// const handleComponentSelect = (component: any) => {
-//   setSelectedComponent(component)
-//   console.log('Component selected:', component)
-// }
-
-const handleEditComponent = (component: any) => {
-  console.log('Edit component:', component)
-  // Add your edit logic here
-}
-
-const handleDeleteComponent = (component: any) => {
-  console.log('Delete component:', component)
-  // Add your delete logic here
-}
-
-// /**
-//  * Render the file explorer panel with product-component integration
-//  */
-// const renderFileExplorer = () => {
-//   return (
-//     <SmartFileTree
-//       productId={selectedProduct?.id}
-//       componentId={selectedComponent?.id}
-//       onFileSelect={handleFileSelect}
-//       selectedFileId={selectedFile?.id}
-//       // New props for component integration
-//       selectedProductId={selectedProduct?.id}
-//       selectedProductName={selectedProduct?.name}
-//       selectedComponentId={selectedComponent?.id}
-//       onComponentSelect={handleComponentSelect}
-//       onEditComponent={handleEditComponent}
-//       onDeleteComponent={handleDeleteComponent}
-//     />
-//   )
-// }
-
-/**
- * Enhanced file explorer with selected product-component card
- */
-const renderFileExplorer = () => {
-  // Convert ProductComponent to the format expected by ProductComponentTiles
-  const convertToTileComponent = (component: ProductComponent) => {
-    return {
-      id: component.id,
-      name: component.displayName || component.name,
-      description: component.description || '',
-      type: (component.metadata?.category as any) || 'microservice',
-      status: 'healthy' as const,
-      resourceCount: 5, // Mock value - could be calculated from actual resources
-      lastModified: new Date(component.updatedAt).toLocaleDateString()
-    }
+  const renderNavigatorPanel = () => {
+    return (
+      <ProductComponentNavigator
+        selectedProduct={selectedProduct}
+        selectedComponent={selectedComponent}
+        onProductSelect={handleProductSelect}
+        onComponentSelect={handleComponentSelect}
+        onNavigateBack={onNavigateBack}
+        // Add the hover action handlers
+        onEditProduct={(product) => {
+          console.log('Edit product:', product)
+          // Add your edit logic here
+        }}
+        onDeleteProduct={(product) => {
+          console.log('Delete product:', product)
+          // Add your delete logic here
+        }}
+        onAddComponent={(product) => {
+          console.log('Add component to:', product)
+          // Add your add component logic here
+        }}
+        onAddProduct={() => {
+          console.log('Add new product')
+          // Add your add product logic here
+        }}
+      />
+    )
   }
 
-  const tileComponents = selectedProduct && selectedComponent ? [convertToTileComponent(selectedComponent)] : []
+  // // Add these new handlers
+  // const handleComponentSelect = (component: any) => {
+  //   setSelectedComponent(component)
+  //   console.log('Component selected:', component)
+  // }
 
-  return (
-    <div className="h-full flex flex-col">
-      {/* Selected Product-Component Card */}
-      {selectedProduct && selectedComponent && (
-        <ProductComponentTiles
-          productId={selectedProduct.id}
-          productName={selectedProduct.displayName || selectedProduct.name}
-          components={tileComponents}
-          selectedComponentId={selectedComponent.id}
-          onComponentSelect={(component: ProductComponent) => {
+  const handleEditComponent = (component: any) => {
+    console.log('Edit component:', component)
+    // Add your edit logic here
+  }
 
-            // Handle component selection if needed
-            addToConsole(`Component tile clicked: ${component.name}`)
-          }}
-          onEditComponent={handleEditComponent}
-          onDeleteComponent={handleDeleteComponent}
-        />
-      )}
-      
-      {/* File Tree */}
-      <div className="flex-1">
-        <SmartFileTree
-          productId={selectedProduct?.id}
-          componentId={selectedComponent?.id}
-          onFileSelect={handleFileSelect}
-          selectedFileId={selectedFile?.id}
-          selectedProductId={selectedProduct?.id}
-          selectedProductName={selectedProduct?.name}
-          selectedComponentId={selectedComponent?.id}
-          onComponentSelect={handleComponentSelect}
-          onEditComponent={handleEditComponent}
-          onDeleteComponent={handleDeleteComponent}
-        />
+  const handleDeleteComponent = (component: any) => {
+    console.log('Delete component:', component)
+    // Add your delete logic here
+  }
+
+  // /**
+  //  * Render the file explorer panel with product-component integration
+  //  */
+  // const renderFileExplorer = () => {
+  //   return (
+  //     <SmartFileTree
+  //       productId={selectedProduct?.id}
+  //       componentId={selectedComponent?.id}
+  //       onFileSelect={handleFileSelect}
+  //       selectedFileId={selectedFile?.id}
+  //       // New props for component integration
+  //       selectedProductId={selectedProduct?.id}
+  //       selectedProductName={selectedProduct?.name}
+  //       selectedComponentId={selectedComponent?.id}
+  //       onComponentSelect={handleComponentSelect}
+  //       onEditComponent={handleEditComponent}
+  //       onDeleteComponent={handleDeleteComponent}
+  //     />
+  //   )
+  // }
+
+  /**
+   * Enhanced file explorer with selected product-component card
+   */
+  const renderFileExplorer = () => {
+    // Convert ProductComponent to the format expected by ProductComponentTiles
+    const convertToTileComponent = (component: ProductComponent) => {
+      return {
+        id: component.id,
+        name: component.displayName || component.name,
+        description: component.description || '',
+        type: (component.metadata?.category as any) || 'microservice',
+        status: 'healthy' as const,
+        resourceCount: 5, // Mock value - could be calculated from actual resources
+        lastModified: new Date(component.updatedAt).toLocaleDateString()
+      }
+    }
+
+    const tileComponents = selectedProduct && selectedComponent ? [convertToTileComponent(selectedComponent)] : []
+
+    return (
+      <div className="h-full flex flex-col">
+        {/* Selected Product-Component Card */}
+        {selectedProduct && selectedComponent && (
+          <ProductComponentTiles
+            productId={selectedProduct.id}
+            productName={selectedProduct.displayName || selectedProduct.name}
+            components={tileComponents}
+            selectedComponentId={selectedComponent.id}
+            onComponentSelect={(component: ProductComponent) => {
+
+              // Handle component selection if needed
+              addToConsole(`Component tile clicked: ${component.name}`)
+            }}
+            onEditComponent={handleEditComponent}
+            onDeleteComponent={handleDeleteComponent}
+          />
+        )}
+
+        {/* File Tree */}
+        <div className="flex-1">
+          <SmartFileTree
+            productId={selectedProduct?.id}
+            componentId={selectedComponent?.id}
+            onFileSelect={handleFileSelect}
+            selectedFileId={selectedFile?.id}
+            selectedProductId={selectedProduct?.id}
+            selectedProductName={selectedProduct?.name}
+            selectedComponentId={selectedComponent?.id}
+            onComponentSelect={handleComponentSelect}
+            onEditComponent={handleEditComponent}
+            onDeleteComponent={handleDeleteComponent}
+          />
+        </div>
       </div>
-    </div>
-  )
-}
+    )
+  }
 
   /**
    * Enhanced multi-file editor with tabs
@@ -421,7 +421,7 @@ const renderFileExplorer = () => {
             Loading file content...
           </div>
         )}
-        
+
         {openFiles.length > 0 ? (
           <div className="flex-1 flex flex-col">
             {/* Multi-File Tab Bar */}
@@ -483,24 +483,29 @@ const renderFileExplorer = () => {
     return (
       <div className="h-full flex flex-col">
         <div className={cn(
-          "flex-1 overflow-auto p-4 bg-gray-900 text-green-400",
-          typography.editor.text
+          "flex-1 overflow-auto p-4 bg-gray-900 text-green-400"
         )}>
           {consoleOutput.length === 0 ? (
-            <div className={cn(typography.body.sm, "text-gray-500")}>
+            <div className={cn(typography.body.xs, "text-gray-500")}>
               Console output will appear here...
             </div>
           ) : (
             consoleOutput.map((line, index) => (
-              <div key={index} className="mb-1">
+              <div
+                key={index}
+                className={cn(
+                  "mb-1",
+                  "font-mono text-xs leading-relaxed tracking-normal" // Apply responsive font classes to each line
+                )}
+              >
                 {line}
               </div>
             ))
           )}
         </div>
         <div className="border-t p-2 bg-gray-800">
-          <button 
-            onClick={() => setConsoleOutput([])} 
+          <button
+            onClick={() => setConsoleOutput([])}
             className={cn(
               "px-3 py-1 bg-gray-700 text-white rounded hover:bg-gray-600",
               typography.button.primary

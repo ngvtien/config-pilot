@@ -8,7 +8,7 @@ export const typography = {
   },
   card: {
     title: 'text-base font-semibold antialiased tracking-tight',
-    subtitle: 'text-sm text-muted-foreground antialiased tracking-normal', 
+    subtitle: 'text-sm text-muted-foreground antialiased tracking-normal',
     badge: 'text-xs antialiased font-medium tracking-wide',
     metadata: 'text-xs text-muted-foreground antialiased tracking-normal',
     icon: 'text-xl antialiased',
@@ -111,14 +111,13 @@ export const typography = {
   },
   // VS Code-inspired text styles
   editor: {
-    text: 'font-mono text-[15px] antialiased leading-relaxed tracking-normal', // Updated from text-sm
+    text: 'font-mono text-xs antialiased leading-relaxed tracking-normal', // Changed from text-[15px] to text-xs
     lineNumbers: 'font-mono text-xs antialiased text-muted-foreground tracking-normal',
-    keywords: 'font-mono text-[15px] antialiased font-medium tracking-normal', // Updated from text-sm
-    comments: 'font-mono text-[15px] antialiased text-muted-foreground tracking-normal', // Updated from text-sm
-    strings: 'font-mono text-[15px] antialiased tracking-normal', // Updated from text-sm
-    variables: 'font-mono text-[15px] antialiased font-medium tracking-normal', // Updated from text-sm
-  },
-  // Resource and YAML specific typography
+    keywords: 'font-mono text-xs antialiased font-medium tracking-normal', // Changed from text-[15px] to text-xs
+    comments: 'font-mono text-xs antialiased text-muted-foreground tracking-normal', // Changed from text-[15px] to text-xs
+    strings: 'font-mono text-xs antialiased tracking-normal', // Changed from text-[15px] to text-xs
+    variables: 'font-mono text-xs antialiased font-medium tracking-normal', // Changed from text-[15px] to text-xs
+  },  // Resource and YAML specific typography
   resource: {
     kind: 'text-sm font-semibold antialiased tracking-tight',
     name: 'text-sm font-medium antialiased tracking-normal',
