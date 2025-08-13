@@ -134,8 +134,8 @@ export const ProductComponentTiles: React.FC<ProductComponentTilesProps> = ({
           {/* MoreVertical positioned on the far right */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-7 w-7 p-0 zoom-exclude">
-                <MoreVertical className="h-4 w-4 text-muted-foreground zoom-exclude" />
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                <MoreVertical className="h-4 w-4 text-muted-foreground" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
@@ -152,7 +152,7 @@ export const ProductComponentTiles: React.FC<ProductComponentTilesProps> = ({
                 }}
                 className="group flex items-center px-3 py-2.5 text-sm transition-colors hover:bg-blue-500/10 focus:bg-blue-500/10 dark:hover:bg-blue-400/10 dark:focus:bg-blue-400/10"
               >
-                <Diff className="h-4 w-4 mr-3 text-blue-600 dark:text-blue-400 group-hover:text-blue-700 dark:group-hover:text-blue-300 transition-colors zoom-exclude" />
+                <Diff className="h-4 w-4 mr-3 text-blue-600 dark:text-blue-400 group-hover:text-blue-700 dark:group-hover:text-blue-300 transition-colors" />
                 <span className="font-medium text-blue-700 dark:text-blue-300">Git Diff</span>
                 <DropdownMenuShortcut className="text-xs text-muted-foreground/60">⌘D</DropdownMenuShortcut>
               </DropdownMenuItem>
@@ -164,7 +164,7 @@ export const ProductComponentTiles: React.FC<ProductComponentTilesProps> = ({
                 }}
                 className="group flex items-center px-3 py-2.5 text-sm transition-colors hover:bg-green-500/10 focus:bg-green-500/10 dark:hover:bg-green-400/10 dark:focus:bg-green-400/10"
               >
-                <History className="h-4 w-4 mr-3 text-green-600 dark:text-green-400 group-hover:text-green-700 dark:group-hover:text-green-300 transition-colors zoom-exclude" />
+                <History className="h-4 w-4 mr-3 text-green-600 dark:text-green-400 group-hover:text-green-700 dark:group-hover:text-green-300 transition-colors" />
                 <span className="font-medium text-green-700 dark:text-green-300">History</span>
                 <DropdownMenuShortcut className="text-xs text-muted-foreground/60">⌘H</DropdownMenuShortcut>
               </DropdownMenuItem>
@@ -176,7 +176,7 @@ export const ProductComponentTiles: React.FC<ProductComponentTilesProps> = ({
                 }}
                 className="group flex items-center px-3 py-2.5 text-sm transition-colors hover:bg-purple-500/10 focus:bg-purple-500/10 dark:hover:bg-purple-400/10 dark:focus:bg-purple-400/10"
               >
-                <GitPullRequest className="h-4 w-4 mr-3 text-purple-600 dark:text-purple-400 group-hover:text-purple-700 dark:group-hover:text-purple-300 transition-colors zoom-exclude" />
+                <GitPullRequest className="h-4 w-4 mr-3 text-purple-600 dark:text-purple-400 group-hover:text-purple-700 dark:group-hover:text-purple-300 transition-colors" />
                 <span className="font-medium text-purple-700 dark:text-purple-300">Create PR</span>
                 <DropdownMenuShortcut className="text-xs text-muted-foreground/60">⌘P</DropdownMenuShortcut>
               </DropdownMenuItem>
@@ -188,7 +188,7 @@ export const ProductComponentTiles: React.FC<ProductComponentTilesProps> = ({
                 }}
                 className="group flex items-center px-3 py-2.5 text-sm transition-colors hover:bg-orange-500/10 focus:bg-orange-500/10 dark:hover:bg-orange-400/10 dark:focus:bg-orange-400/10"
               >
-                <GitMerge className="h-4 w-4 mr-3 text-orange-600 dark:text-orange-400 group-hover:text-orange-700 dark:group-hover:text-orange-300 transition-colors zoom-exclude" />
+                <GitMerge className="h-4 w-4 mr-3 text-orange-600 dark:text-orange-400 group-hover:text-orange-700 dark:group-hover:text-orange-300 transition-colors" />
                 <span className="font-medium text-orange-700 dark:text-orange-300">Merge</span>
                 <DropdownMenuShortcut className="text-xs text-muted-foreground/60">⌘M</DropdownMenuShortcut>
               </DropdownMenuItem>
@@ -244,8 +244,8 @@ export const ProductComponentTiles: React.FC<ProductComponentTilesProps> = ({
                 <div className="absolute top-2 right-2 transition-all duration-200 opacity-0 group-hover:opacity-100 z-50">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <div className="cursor-pointer zoom-exclude">
-                        <MoreVertical className="h-4 w-4 text-muted-foreground hover:text-foreground transition-colors zoom-exclude" />
+                      <div className="cursor-pointer">
+                        <MoreVertical className="h-4 w-4 text-muted-foreground hover:text-foreground transition-colors" />
                       </div>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-56 shadow-lg border-border/50">

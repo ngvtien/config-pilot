@@ -520,10 +520,10 @@ const renderConsoleOutput2 = () => {
         variant="ghost"
         size="sm"
         onClick={() => setConsoleOutput([])}
-        className="absolute top-2 right-2 z-10 h-6 w-6 p-0 bg-gray-800/80 hover:bg-gray-700 border border-gray-600 zoom-exclude"
+        className="absolute top-2 right-2 z-10 h-6 w-6 p-0 bg-gray-800/80 hover:bg-gray-700 border border-gray-600"
         title="Clear console"
       >
-        <X className="h-3 w-3 text-gray-400 zoom-exclude" />
+        <X className="h-3 w-3 text-gray-400" />
       </Button>
       
       {/* Console content */}

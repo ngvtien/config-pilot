@@ -254,16 +254,16 @@ export const ProductComponentNavigator: React.FC<ProductComponentNavigatorProps>
       <div className="p-3 border-b bg-muted/10">
         <div className="flex items-center gap-2 mb-3">
           {onNavigateBack && (
-            <Button variant="ghost" size="sm" onClick={onNavigateBack} className="h-7 w-7 p-0 zoom-exclude">
-              <ArrowLeft className="h-3.5 w-3.5 zoom-exclude" />
+            <Button variant="ghost" size="sm" onClick={onNavigateBack} className="h-7 w-7 p-0">
+              <ArrowLeft className="h-3.5 w-3.5" />
             </Button>
           )}
           <h2 className={typography.tile.title}>Products & Components</h2>
           <div className="flex-1" />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-7 w-7 p-0 zoom-exclude">
-                <MoreVertical className="h-4 w-4 text-muted-foreground zoom-exclude" />
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                <MoreVertical className="h-4 w-4 text-muted-foreground" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
@@ -277,7 +277,7 @@ export const ProductComponentNavigator: React.FC<ProductComponentNavigatorProps>
           </DropdownMenu>
         </div>
         <div className="relative">
-          {/* <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground z-10 zoom-exclude" /> */}
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground z-10" />
           <Input
             placeholder="Search products and components..."
             value={searchQuery}
@@ -320,8 +320,8 @@ export const ProductComponentNavigator: React.FC<ProductComponentNavigatorProps>
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1 min-w-0 space-y-2">
                         <div className="flex items-center gap-2">
-                          <div className="p-1.5 rounded-md bg-primary/10 zoom-exclude">
-                            <Package className="h-4 w-4 text-primary zoom-exclude" />
+                          <div className="p-1.5 rounded-md bg-primary/10">
+                            <Package className="h-4 w-4 text-primary" />
                           </div>
                           <div className="min-w-0 flex-1">
                             <h4 className={cn(typography.tile.title, "truncate font-medium")}>
@@ -352,8 +352,8 @@ export const ProductComponentNavigator: React.FC<ProductComponentNavigatorProps>
                         <div className="opacity-0 group-hover:opacity-100 transition-opacity">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <div className="cursor-pointer zoom-exclude">
-                                <MoreVertical className="h-4 w-4 text-muted-foreground hover:text-foreground transition-colors zoom-exclude" />
+                              <div className="cursor-pointer">
+                                <MoreVertical className="h-4 w-4 text-muted-foreground hover:text-foreground transition-colors" />
                               </div>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
@@ -402,9 +402,9 @@ export const ProductComponentNavigator: React.FC<ProductComponentNavigatorProps>
                         {/* Expand/Collapse Indicator - now just visual */}
                         <div className="h-6 w-6 flex items-center justify-center">
                           {isExpanded ? (
-                            <ChevronDown className="h-3 w-3 text-muted-foreground zoom-exclude" />
+                            <ChevronDown className="h-3 w-3 text-muted-foreground" />
                           ) : (
-                            <ChevronRight className="h-3 w-3 text-muted-foreground zoom-exclude" />
+                            <ChevronRight className="h-3 w-3 text-muted-foreground" />
                           )}
                         </div>
                       </div>

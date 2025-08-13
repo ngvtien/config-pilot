@@ -50,7 +50,7 @@ export function useZoomSetup() {
       document.head.appendChild(zoomStylesheet)
     }
     
-    // Build CSS content
+    // Build CSS content - ONLY zoom-exclude rules, NO global body zoom!
     const baseStyles = `
       /* ONLY apply to elements that explicitly have zoom-exclude class */
       .zoom-exclude {
@@ -101,43 +101,32 @@ export function useZoomSetup() {
         max-height: var(--icon-size-6) !important;
       }
       
-      /* Preserve panel structure - DO NOT scale these */
+      /* Apply zoom ONLY to specific content areas, NOT controls */
+      .zoomable-content {
+        zoom: ${zoomLevel / 100};
+      }
+      
+      /* Ensure these elements are NEVER zoomed */
+      .sidebar,
+      .toolbar,
+      .navigation,
+      .panel-header,
+      .workspace-panel-header,
+      .settings-panel,
+      .zoom-controls,
       [data-panel-group],
       [data-panel],
       [data-panel-resize-handle-id],
       .react-resizable-handle,
-      .workspace-panel-header,
       .panel-resize-handle {
-        font-size: inherit !important;
-        transform: none !important;
         zoom: 1 !important;
-      }
-      
-      /* Preserve toolbar and navigation structure */
-      .toolbar,
-      .navigation,
-      .panel-header,
-      .workspace-panel > .flex.items-center:first-child {
-        font-size: 0.875rem !important;
-        line-height: 1.25rem !important;
+        transform: none !important;
+        font-size: inherit !important;
       }
     `
     
-    // Add zoom scaling if needed
-    const zoomStyles = zoomLevel !== 100 ? `
-      /* Apply zoom scaling to content, but preserve zoom-exclude elements */
-      body {
-        zoom: ${zoomLevel / 100};
-      }
-      
-      /* Ensure zoom-exclude elements are not affected by body zoom */
-      .zoom-exclude {
-        zoom: ${100 / zoomLevel} !important;
-      }
-    ` : ''
-    
-    // Apply all styles
-    zoomStylesheet.textContent = baseStyles + zoomStyles
+    // Apply styles - NO MORE GLOBAL BODY ZOOM!
+    zoomStylesheet.textContent = baseStyles
     
     // Save zoom level to localStorage
     localStorage.setItem("configpilot_zoom", zoomLevel.toString())
