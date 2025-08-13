@@ -12,6 +12,7 @@ import { typography } from '@/renderer/lib/typography'
 import { cn } from "@/lib/utils"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs'
 import { X } from 'lucide-react'
+import { Button } from '@/renderer/components/ui/button'
 
 interface ProductDeploymentDesignerPoCProps {
   onNavigateBack?: () => void
@@ -479,9 +480,13 @@ appVersion: "1.0.0"`
   /**
    * Render the console output panel with proper typography
    */
+  /**
+   * Render the console output panel with clear button in header
+   */
   const renderConsoleOutput = () => {
     return (
       <div className="h-full flex flex-col">
+        {/* Console content - now takes full height */}
         <div className={cn(
           "flex-1 overflow-auto p-4 bg-gray-900 text-green-400"
         )}>
@@ -495,7 +500,7 @@ appVersion: "1.0.0"`
                 key={index}
                 className={cn(
                   "mb-1",
-                  "font-mono text-xs leading-relaxed tracking-normal" // Apply responsive font classes to each line
+                  "font-mono text-xs leading-relaxed tracking-normal"
                 )}
               >
                 {line}
@@ -503,20 +508,49 @@ appVersion: "1.0.0"`
             ))
           )}
         </div>
-        <div className="border-t p-2 bg-gray-800">
-          <button
-            onClick={() => setConsoleOutput([])}
-            className={cn(
-              "px-3 py-1 bg-gray-700 text-white rounded hover:bg-gray-600",
-              typography.button.primary
-            )}
-          >
-            Clear
-          </button>
-        </div>
       </div>
     )
   }
+
+const renderConsoleOutput2 = () => {
+  return (
+    <div className="h-full flex flex-col relative">
+      {/* Floating Clear Button */}
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => setConsoleOutput([])}
+        className="absolute top-2 right-2 z-10 h-6 w-6 p-0 bg-gray-800/80 hover:bg-gray-700 border border-gray-600 zoom-exclude"
+        title="Clear console"
+      >
+        <X className="h-3 w-3 text-gray-400 zoom-exclude" />
+      </Button>
+      
+      {/* Console content */}
+      <div className={cn(
+        "flex-1 overflow-auto p-4 bg-gray-900 text-green-400"
+      )}>
+          {consoleOutput.length === 0 ? (
+            <div className={cn(typography.body.xs, "text-gray-500")}>
+              Console output will appear here...
+            </div>
+          ) : (
+            consoleOutput.map((line, index) => (
+              <div
+                key={index}
+                className={cn(
+                  "mb-1",
+                  "font-mono text-xs leading-relaxed tracking-normal"
+                )}
+              >
+                {line}
+              </div>
+            ))
+          )}
+      </div>
+    </div>
+  )
+}
 
   return (
     <div className="h-full">
@@ -524,7 +558,7 @@ appVersion: "1.0.0"`
         navigator={renderNavigatorPanel()}
         fileExplorer={renderFileExplorer()}
         editor={renderEditor()}
-        consoleOutput={renderConsoleOutput()}
+        consoleOutput={renderConsoleOutput2()}
         persistenceKey="product-deployment-designer-poc"
       />
     </div>

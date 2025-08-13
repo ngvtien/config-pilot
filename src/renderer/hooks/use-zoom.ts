@@ -14,37 +14,33 @@ export const ZoomContext = createContext<ZoomContextType | undefined>(undefined)
 
 export function useZoom() {
   const context = useContext(ZoomContext)
-  if (context === undefined) {
-    throw new Error("useZoom must be used within a ZoomProvider")
+  if (!context) {
+    throw new Error('useZoom must be used within a ZoomProvider')
   }
   return context
 }
 
 export function useZoomSetup() {
-  // Initialize with saved zoom level or default to 100
-  const [zoomLevel, setZoomLevel] = useState(() => {
+  const [zoomLevel, setZoomLevel] = useState(100)
+
+  // Load zoom level from localStorage on mount
+  useEffect(() => {
     const savedZoom = localStorage.getItem("configpilot_zoom")
     if (savedZoom) {
-      const zoom = Number.parseInt(savedZoom)
-      if (zoom >= 50 && zoom <= 200) {
-        return zoom
+      const parsedZoom = parseInt(savedZoom, 10)
+      if (parsedZoom >= 50 && parsedZoom <= 200) {
+        setZoomLevel(parsedZoom)
       }
     }
-    return 100
-  })
+  }, [])
 
-  // Content-only zoom approach - preserves panel layout
+  // Apply zoom styles whenever zoom level changes
   useEffect(() => {
-    const zoomFactor = zoomLevel / 100
-    
-    // Remove any existing zoom styles
-    const rootElement = document.querySelector('#root')
-    if (rootElement instanceof HTMLElement) {
-      rootElement.style.removeProperty('zoom')
-    }
-    
-    // Set CSS custom property for zoom factor
-    document.documentElement.style.setProperty('--zoom-factor', zoomFactor.toString())
+    // Set CSS custom properties for consistent icon sizing
+    document.documentElement.style.setProperty('--icon-size-3', '0.75rem')
+    document.documentElement.style.setProperty('--icon-size-4', '1rem')
+    document.documentElement.style.setProperty('--icon-size-5', '1.25rem')
+    document.documentElement.style.setProperty('--icon-size-6', '1.5rem')
     
     // Create or update zoom stylesheet
     let zoomStylesheet = document.getElementById('zoom-content-styles') as HTMLStyleElement
@@ -54,131 +50,100 @@ export function useZoomSetup() {
       document.head.appendChild(zoomStylesheet)
     }
     
-    // Only apply zoom styles if zoom factor is not 1.0 (not 100%)
-    if (zoomFactor === 1.0) {
-      zoomStylesheet.textContent = `
-        /* At 100% zoom, ensure zoom-exclude elements maintain their intended sizes */
-        .zoom-exclude.h-3 { height: 0.75rem !important; }
-        .zoom-exclude.w-3 { width: 0.75rem !important; }
-        .zoom-exclude.h-4 { height: 1rem !important; }
-        .zoom-exclude.w-4 { width: 1rem !important; }
-        .zoom-exclude.h-5 { height: 1.25rem !important; }
-        .zoom-exclude.w-5 { width: 1.25rem !important; }
-        .zoom-exclude.h-6 { height: 1.5rem !important; }
-        .zoom-exclude.w-6 { width: 1.5rem !important; }
-        
-        .zoom-exclude svg.h-3,
-        .zoom-exclude .lucide.h-3 { height: 0.75rem !important; }
-        .zoom-exclude svg.w-3,
-        .zoom-exclude .lucide.w-3 { width: 0.75rem !important; }
-        .zoom-exclude svg.h-4,
-        .zoom-exclude .lucide.h-4 { height: 1rem !important; }
-        .zoom-exclude svg.w-4,
-        .zoom-exclude .lucide.w-4 { width: 1rem !important; }
-      `
-    } else {
-      // Apply zoom styles only when not at 100%
-      zoomStylesheet.textContent = `
-        /* Scale text content */
-        .zoom-content,
-        .cm-editor,
-        .cm-content,
-        .cm-line,
-        input[type="text"],
-        input[type="search"],
-        textarea,
-        .prose,
-        p, h1, h2, h3, h4, h5, h6,
-        span:not([data-panel-resize-handle-id]),
-        button span,
-        .text-sm, .text-base, .text-lg,
-        .card-content,
-        .scroll-area-content {
-          font-size: calc(1rem * var(--zoom-factor)) !important;
-          line-height: calc(1.5 * var(--zoom-factor)) !important;
-        }
-        
-        /* Scale icons with minimum size protection */
-        svg:not(.zoom-exclude):not([data-panel-resize-handle-id] svg),
-        .lucide:not(.zoom-exclude),
-        .icon:not(.zoom-exclude) {
-          width: calc(max(12px, 1em * var(--zoom-factor))) !important;
-          height: calc(max(12px, 1em * var(--zoom-factor))) !important;
-        }
-        
-        /* ABSOLUTE protection for zoom-exclude elements */
-        .zoom-exclude,
-        .zoom-exclude svg,
-        .zoom-exclude .lucide,
-        .zoom-exclude .icon {
-          width: inherit !important;
-          height: inherit !important;
-          min-width: inherit !important;
-          min-height: inherit !important;
-          max-width: inherit !important;
-          max-height: inherit !important;
-          font-size: inherit !important;
-          transform: none !important;
-          zoom: 1 !important;
-          padding: inherit !important;
-        }
-        
-        /* Force specific sizes for Tailwind classes on zoom-exclude elements */
-        .zoom-exclude.h-3 { height: 0.75rem !important; }
-        .zoom-exclude.w-3 { width: 0.75rem !important; }
-        .zoom-exclude.h-4 { height: 1rem !important; }
-        .zoom-exclude.w-4 { width: 1rem !important; }
-        .zoom-exclude.h-5 { height: 1.25rem !important; }
-        .zoom-exclude.w-5 { width: 1.25rem !important; }
-        .zoom-exclude.h-6 { height: 1.5rem !important; }
-        .zoom-exclude.w-6 { width: 1.5rem !important; }
-        
-        .zoom-exclude svg.h-3,
-        .zoom-exclude .lucide.h-3 { height: 0.75rem !important; }
-        .zoom-exclude svg.w-3,
-        .zoom-exclude .lucide.w-3 { width: 0.75rem !important; }
-        .zoom-exclude svg.h-4,
-        .zoom-exclude .lucide.h-4 { height: 1rem !important; }
-        .zoom-exclude svg.w-4,
-        .zoom-exclude .lucide.w-4 { width: 1rem !important; }
-        
-        /* Scale form elements */
-        input, textarea, select {
-          padding: calc(0.5rem * var(--zoom-factor)) !important;
-        }
-        
-        /* Scale buttons */
-        button:not([data-panel-resize-handle-id]):not(.zoom-exclude) {
-          padding: calc(0.5rem * var(--zoom-factor)) calc(1rem * var(--zoom-factor)) !important;
-        }
-        
-        /* Preserve panel structure - DO NOT scale these */
-        [data-panel-group],
-        [data-panel],
-        [data-panel-resize-handle-id],
-        .react-resizable-handle,
-        .workspace-panel-header,
-        .panel-resize-handle {
-          font-size: inherit !important;
-          transform: none !important;
-          zoom: 1 !important;
-        }
-        
-        /* Preserve toolbar and navigation structure */
-        .toolbar,
-        .navigation,
-        .panel-header,
-        .workspace-panel > .flex.items-center:first-child {
-          font-size: 0.875rem !important;
-          line-height: 1.25rem !important;
-        }
-      `
-    }
+    // Build CSS content
+    const baseStyles = `
+      /* ONLY apply to elements that explicitly have zoom-exclude class */
+      .zoom-exclude {
+        transform: none !important;
+        zoom: 1 !important;
+        font-size: inherit !important;
+        scale: 1 !important;
+      }
+      
+      /* Size-specific zoom-exclude rules - ONLY for elements with zoom-exclude class */
+      .zoom-exclude.h-3,
+      .zoom-exclude.w-3 {
+        width: var(--icon-size-3) !important;
+        height: var(--icon-size-3) !important;
+        min-width: var(--icon-size-3) !important;
+        min-height: var(--icon-size-3) !important;
+        max-width: var(--icon-size-3) !important;
+        max-height: var(--icon-size-3) !important;
+      }
+      
+      .zoom-exclude.h-4,
+      .zoom-exclude.w-4 {
+        width: var(--icon-size-4) !important;
+        height: var(--icon-size-4) !important;
+        min-width: var(--icon-size-4) !important;
+        min-height: var(--icon-size-4) !important;
+        max-width: var(--icon-size-4) !important;
+        max-height: var(--icon-size-4) !important;
+      }
+      
+      .zoom-exclude.h-5,
+      .zoom-exclude.w-5 {
+        width: var(--icon-size-5) !important;
+        height: var(--icon-size-5) !important;
+        min-width: var(--icon-size-5) !important;
+        min-height: var(--icon-size-5) !important;
+        max-width: var(--icon-size-5) !important;
+        max-height: var(--icon-size-5) !important;
+      }
+      
+      .zoom-exclude.h-6,
+      .zoom-exclude.w-6 {
+        width: var(--icon-size-6) !important;
+        height: var(--icon-size-6) !important;
+        min-width: var(--icon-size-6) !important;
+        min-height: var(--icon-size-6) !important;
+        max-width: var(--icon-size-6) !important;
+        max-height: var(--icon-size-6) !important;
+      }
+      
+      /* Preserve panel structure - DO NOT scale these */
+      [data-panel-group],
+      [data-panel],
+      [data-panel-resize-handle-id],
+      .react-resizable-handle,
+      .workspace-panel-header,
+      .panel-resize-handle {
+        font-size: inherit !important;
+        transform: none !important;
+        zoom: 1 !important;
+      }
+      
+      /* Preserve toolbar and navigation structure */
+      .toolbar,
+      .navigation,
+      .panel-header,
+      .workspace-panel > .flex.items-center:first-child {
+        font-size: 0.875rem !important;
+        line-height: 1.25rem !important;
+      }
+    `
+    
+    // Add zoom scaling if needed
+    const zoomStyles = zoomLevel !== 100 ? `
+      /* Apply zoom scaling to content, but preserve zoom-exclude elements */
+      body {
+        zoom: ${zoomLevel / 100};
+      }
+      
+      /* Ensure zoom-exclude elements are not affected by body zoom */
+      .zoom-exclude {
+        zoom: ${100 / zoomLevel} !important;
+      }
+    ` : ''
+    
+    // Apply all styles
+    zoomStylesheet.textContent = baseStyles + zoomStyles
     
     // Save zoom level to localStorage
     localStorage.setItem("configpilot_zoom", zoomLevel.toString())
   }, [zoomLevel])
 
+  // Define callbacks with useCallback to prevent unnecessary re-renders
   const increaseZoom = useCallback(() => {
     setZoomLevel((prev) => Math.min(200, prev + 10))
   }, [])

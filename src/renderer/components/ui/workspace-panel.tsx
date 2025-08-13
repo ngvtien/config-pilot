@@ -166,7 +166,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
                     size="sm"
                     className="h-6 w-6 p-0 hover:bg-accent"
                   >
-                    <Info className="h-3 w-3 text-muted-foreground" />
+                    <Info className="h-3 w-3 text-muted-foreground zoom-exclude" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="max-w-xs">
@@ -197,9 +197,10 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
               title={isExpanded ? "Collapse panel" : "Expand panel"}
             >
               {isExpanded ? (
-                <Minimize2 className="h-3 w-3" />
+                <Minimize2 className="h-3 w-3 zoom-exclude" />
               ) : (
-                <Maximize2 className="h-3 w-3" />
+                <Maximize2 className="h-3 w-3 zoom-exclude" />
+
               )}
             </Button>
           )}
