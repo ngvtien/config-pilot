@@ -259,7 +259,7 @@ export function ResourceAdditionWizard({
     }
 
     return (
-        <Card className={cn("w-full max-w-4xl mx-auto", className)}>
+        <Card className={cn("w-full max-w-4xl mx-auto zoomable-content", className)}>
             <CardHeader>
                 <CardTitle className={typography.tile.title}>Add New Kubernetes Resource</CardTitle>
 
