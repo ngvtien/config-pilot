@@ -3,6 +3,7 @@
 import type React from "react"
 import { useEffect } from "react"
 import { ZoomContext, useZoomSetup } from "../hooks/use-zoom"
+import { ZoomIndicator } from "./zoom-indicator"
 
 interface ZoomProviderProps {
   children: React.ReactNode
@@ -26,7 +27,12 @@ export function ZoomProvider({ children }: ZoomProviderProps) {
 
     document.addEventListener("wheel", handleWheel, { passive: false })
     return () => document.removeEventListener("wheel", handleWheel)
-  }, [zoom.decreaseZoom, zoom.increaseZoom]) // Fixed: Added proper dependencies
+  }, [zoom.decreaseZoom, zoom.increaseZoom])
 
-  return <ZoomContext.Provider value={zoom}>{children}</ZoomContext.Provider>
+  return (
+    <ZoomContext.Provider value={zoom}>
+      {children}
+      <ZoomIndicator />
+    </ZoomContext.Provider>
+  )
 }
