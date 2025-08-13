@@ -75,7 +75,8 @@ export function ContextAwareEditor({
   onAction,
   className
 }: ContextAwareEditorProps) {
-  const { codeMirrorTheme } = useEditorTheme()
+  const { codeMirrorTheme, yamlExtensions, jsonExtensions } = useEditorTheme()
+
   const [isModified, setIsModified] = useState(false)
 
   // Determine language and extensions based on file type
@@ -83,7 +84,7 @@ export function ContextAwareEditor({
     if (!selectedFile) {
       return {
         language: yaml(),
-        extensions: [yaml()],
+        extensions: [yaml(), ...yamlExtensions],
         mode: 'yaml'
       }
     }
@@ -99,13 +100,15 @@ export function ContextAwareEditor({
       case 'json':
         return {
           language: json(),
-          extensions: [json()],
+          extensions: [json(), ...jsonExtensions],
+
           mode: 'json'
         }
       case 'markdown':
         return {
           language: markdown(),
-          extensions: [markdown()],
+          extensions: [markdown(), ...jsonExtensions],
+
           mode: 'markdown'
         }
       case 'tpl':
@@ -120,7 +123,8 @@ export function ContextAwareEditor({
       default:
         return {
           language: yaml(),
-          extensions: [yaml()],
+          extensions: [yaml(), ...yamlExtensions],
+
           mode: 'yaml'
         }
     }
