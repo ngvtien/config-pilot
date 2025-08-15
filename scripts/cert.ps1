@@ -157,7 +157,23 @@ function Restore-CertificateStore {
     
     try {
         # Open the certificate store
-        $store = New-Object System.Security.Cryptography.X509Certificates.X509Store($StoreName, $Location)
+        $storeLocationEnum = if ($Location -eq "CurrentUser") { 
+            [System.Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser 
+        } else { 
+            [System.Security.Cryptography.X509Certificates.StoreLocation]::LocalMachine 
+        }
+        
+        $storeNameEnum = switch ($StoreName) {
+            "My" { [System.Security.Cryptography.X509Certificates.StoreName]::My }
+            "Root" { [System.Security.Cryptography.X509Certificates.StoreName]::Root }
+            "CA" { [System.Security.Cryptography.X509Certificates.StoreName]::CertificateAuthority }
+            "TrustedPeople" { [System.Security.Cryptography.X509Certificates.StoreName]::TrustedPeople }
+            "TrustedPublisher" { [System.Security.Cryptography.X509Certificates.StoreName]::TrustedPublisher }
+            "AuthRoot" { [System.Security.Cryptography.X509Certificates.StoreName]::AuthRoot }
+            default { $StoreName }
+        }
+        
+        $store = New-Object System.Security.Cryptography.X509Certificates.X509Store($storeNameEnum, $storeLocationEnum)
         $store.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
         
         $certFiles = Get-ChildItem -Path $storeBackupPath -Filter "*.cer"
@@ -189,7 +205,12 @@ function Restore-CertificateStore {
                 $metadataPath = Join-Path $storeBackupPath "$thumbprint.json"
                 $metadata = $null
                 if (Test-Path $metadataPath) {
-                    $metadata = Get-Content $metadataPath | ConvertFrom-Json
+                    try {
+                        $metadata = Get-Content $metadataPath -Raw | ConvertFrom-Json
+                    }
+                    catch {
+                        Write-Log "  Could not read metadata for $thumbprint" "Warning"
+                    }
                 }
                 
                 # Import PFX
@@ -243,7 +264,12 @@ function Restore-CertificateStore {
                 $metadataPath = Join-Path $storeBackupPath "$thumbprint.json"
                 $metadata = $null
                 if (Test-Path $metadataPath) {
-                    $metadata = Get-Content $metadataPath | ConvertFrom-Json
+                    try {
+                        $metadata = Get-Content $metadataPath -Raw | ConvertFrom-Json
+                    }
+                    catch {
+                        Write-Log "  Could not read metadata for $thumbprint" "Warning"
+                    }
                 }
                 
                 # Import certificate
@@ -314,14 +340,14 @@ if ($Action -eq "Backup") {
     
     # Create backup info file
     $backupInfo = @{
-        Timestamp = Get-Date
+        Timestamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
         SourceComputer = $env:COMPUTERNAME
         SourceUser = $env:USERNAME
-        WindowsVersion = (Get-WmiObject -Class Win32_OperatingSystem).Caption
+        WindowsVersion = (Get-CimInstance -ClassName Win32_OperatingSystem).Caption
         StoreLocations = $storeLocations
         StoreNames = $StoreNames
         IncludePrivateKeys = $IncludePrivateKeys.IsPresent
-    } | ConvertTo-Json
+    } | ConvertTo-Json -Depth 3
     
     $backupInfoPath = Join-Path $BackupPath "backup-info.json"
     $backupInfo | Out-File -FilePath $backupInfoPath -Encoding UTF8
@@ -348,9 +374,14 @@ elseif ($Action -eq "Restore") {
     # Read backup info if available
     $backupInfoPath = Join-Path $BackupPath "backup-info.json"
     if (Test-Path $backupInfoPath) {
-        $backupInfo = Get-Content $backupInfoPath | ConvertFrom-Json
-        Write-Log "Backup created: $($backupInfo.Timestamp) on $($backupInfo.SourceComputer)" "Info"
-        Write-Log "Source Windows version: $($backupInfo.WindowsVersion)" "Info"
+        try {
+            $backupInfo = Get-Content $backupInfoPath -Raw | ConvertFrom-Json
+            Write-Log "Backup created: $($backupInfo.Timestamp) on $($backupInfo.SourceComputer)" "Info"
+            Write-Log "Source Windows version: $($backupInfo.WindowsVersion)" "Info"
+        }
+        catch {
+            Write-Log "Could not read backup info file" "Warning"
+        }
     }
     
     foreach ($location in $storeLocations) {
