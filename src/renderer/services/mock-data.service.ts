@@ -2,12 +2,14 @@
  * Mock data service for testing the 3-panel product workspace layout
  * Provides comprehensive sample data for products, components, and K8s resources
  */
-import type { Product, ProductComponentType } from '@/shared/types/product'
+import type { Product } from '@/shared/types/product'
+import type { ProductComponent } from '@/shared/types/product-component'
 import type { KubernetesResource } from '@/shared/types/kubernetes'
+import { getProductRepoPath, getComponentFolderPath } from '@/renderer/config/product-paths.config'
 
 export interface MockDataService {
   getProducts(): Product[]
-  getProductComponents(productId: string): ProductComponentType[]
+  getProductComponents(productId: string): ProductComponent[]
   getComponentResources(componentId: string): KubernetesResource[]
   getResourceYaml(resourceId: string): string
   getComponentHelmChart(componentId: string): { valuesYaml: string; valuesSchema: string } | null
@@ -26,6 +28,7 @@ const mockProducts: Product[] = [
     isActive: true,
     createdAt: "2024-01-15T10:30:00.000Z",
     updatedAt: "2024-12-20T14:22:00.000Z",
+    repoFolderPath: getProductRepoPath("cai"), // Hard-coded path
     metadata: {
       category: "platform",
       tags: ["api", "microservice", "platform", "backend"]
@@ -78,7 +81,7 @@ const mockProducts: Product[] = [
 /**
  * Mock product components organized by product
  */
-const mockProductComponents: Record<string, ProductComponentType[]> = {
+const mockProductComponents: Record<string, ProductComponent[]> = {
   "product-cai": [
     {
       id: "comp-cai-api",
@@ -89,6 +92,7 @@ const mockProductComponents: Record<string, ProductComponentType[]> = {
       isActive: true,
       createdAt: "2024-01-15T10:35:00.000Z",
       updatedAt: "2024-12-20T14:25:00.000Z",
+      componentFolderPath: getComponentFolderPath("cai", "cai-api"), // Hard-coded path
       metadata: {
         type: "service",
         runtime: "nodejs",
@@ -104,6 +108,7 @@ const mockProductComponents: Record<string, ProductComponentType[]> = {
       isActive: true,
       createdAt: "2024-01-16T09:20:00.000Z",
       updatedAt: "2024-12-19T11:40:00.000Z",
+      componentFolderPath: getComponentFolderPath("cai", "cai-auth"), // Hard-coded path
       metadata: {
         type: "service",
         runtime: "java",
@@ -119,6 +124,7 @@ const mockProductComponents: Record<string, ProductComponentType[]> = {
       isActive: true,
       createdAt: "2024-01-15T10:40:00.000Z",
       updatedAt: "2024-12-15T16:20:00.000Z",
+      componentFolderPath: getComponentFolderPath("cai", "cai-database"), // Hard-coded path
       metadata: {
         type: "database",
         runtime: "postgresql",
@@ -136,6 +142,7 @@ const mockProductComponents: Record<string, ProductComponentType[]> = {
       isActive: true,
       createdAt: "2024-02-01T09:20:00.000Z",
       updatedAt: "2024-12-18T15:30:00.000Z",
+      componentFolderPath: getComponentFolderPath("esb", "esb-message-broker"), // Hard-coded path
       metadata: {
         type: "messaging",
         runtime: "kafka",
@@ -151,6 +158,7 @@ const mockProductComponents: Record<string, ProductComponentType[]> = {
       isActive: true,
       createdAt: "2024-02-02T10:15:00.000Z",
       updatedAt: "2024-12-17T14:45:00.000Z",
+      componentFolderPath: getComponentFolderPath("esb", "esb-transformer"), // Hard-coded path
       metadata: {
         type: "service",
         runtime: "spring-boot",
@@ -168,6 +176,7 @@ const mockProductComponents: Record<string, ProductComponentType[]> = {
       isActive: true,
       createdAt: "2024-03-10T11:25:00.000Z",
       updatedAt: "2024-12-19T12:15:00.000Z",
+      componentFolderPath: getComponentFolderPath("portal", "portal-webapp"), // Hard-coded path
       metadata: {
         type: "frontend",
         runtime: "react",
@@ -183,6 +192,7 @@ const mockProductComponents: Record<string, ProductComponentType[]> = {
       isActive: true,
       createdAt: "2024-03-11T08:30:00.000Z",
       updatedAt: "2024-12-18T17:20:00.000Z",
+      componentFolderPath: getComponentFolderPath("portal", "portal-backend"), // Hard-coded path
       metadata: {
         type: "service",
         runtime: "python",
@@ -200,6 +210,7 @@ const mockProductComponents: Record<string, ProductComponentType[]> = {
       isActive: false,
       createdAt: "2024-04-05T14:15:00.000Z",
       updatedAt: "2024-11-30T10:20:00.000Z",
+      componentFolderPath: getComponentFolderPath("analytics", "analytics-spark"), // Hard-coded path
       metadata: {
         type: "processing",
         runtime: "spark",

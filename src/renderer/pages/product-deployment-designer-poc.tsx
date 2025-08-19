@@ -11,8 +11,12 @@ import { ProductComponentTiles } from '@/renderer/components/products/product-co
 import { typography } from '@/renderer/lib/typography'
 import { cn } from "@/lib/utils"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs'
-import { X } from 'lucide-react'
+import { FolderOpen, Settings, X } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
+import { Input } from '@/renderer/components/ui/input'
+import { Label } from '@/renderer/components/ui/label'
+import { Card, CardContent, CardHeader, CardTitle } from '@/renderer/components/ui/card'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/renderer/components/ui/dialog'
 
 interface ProductDeploymentDesignerPoCProps {
   onNavigateBack?: () => void
@@ -42,6 +46,12 @@ export function ProductDeploymentDesignerPoC({ onNavigateBack }: ProductDeployme
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [maxConsoleLines] = useState(100) // Limit console output
+
+  // Folder management state
+  const [showProductFolderDialog, setShowProductFolderDialog] = useState(false)
+  const [showComponentFolderDialog, setShowComponentFolderDialog] = useState(false)
+  const [tempProductFolderPath, setTempProductFolderPath] = useState('')
+  const [tempComponentFolderPath, setTempComponentFolderPath] = useState('')
 
   /**
  * Open a file in a new tab or switch to existing tab
@@ -139,6 +149,103 @@ export function ProductDeploymentDesignerPoC({ onNavigateBack }: ProductDeployme
       // Keep only the last maxConsoleLines entries
       return newOutput.slice(-maxConsoleLines)
     })
+  }
+
+  /**
+   * Handle folder selection for product git repo
+   */
+  const handleProductFolderSelect = async () => {
+    try {
+      //const result = await window.electronAPI.selectFolder()
+      const result = await window.electronAPI.selectDirectory({
+        title: 'Select Repository Folder',
+        buttonLabel: 'Select Folder'
+      })
+
+      if (result && !result.canceled && result.filePaths.length > 0) {
+        setTempProductFolderPath(result.filePaths[0])
+      }
+    } catch (error) {
+      addToConsole('Failed to select folder', 'error')
+    }
+  }
+
+  /**
+   * Handle component folder selection with error handling
+   */
+  const handleComponentFolderSelect = async () => {
+    try {
+      addToConsole('Opening folder selection dialog...', 'info')
+      const result = await window.electronAPI.selectDirectory()
+      addToConsole(`Folder selection result: ${JSON.stringify(result)}`, 'info')
+
+      // Handle both string and object formats
+      let selectedPath: string | null = null
+
+      if (typeof result === 'string' && result.trim() !== '') {
+        // Direct string path
+        selectedPath = result
+      } else if (result && !result.canceled && result.filePaths && result.filePaths.length > 0) {
+        // Object with filePaths array
+        selectedPath = result.filePaths[0]
+      }
+
+      if (selectedPath) {
+        addToConsole(`Selected folder path: ${selectedPath}`, 'info')
+        setTempComponentFolderPath(selectedPath)
+      } else {
+        addToConsole('Folder selection was canceled or failed', 'warning')
+      }
+    } catch (error) {
+      addToConsole(`Error selecting folder: ${error}`, 'error')
+      console.error('Folder selection error:', error)
+    }
+  }
+
+  /**
+   * Save product folder path
+   */
+  const saveProductFolderPath = () => {
+    if (selectedProduct && tempProductFolderPath) {
+      const updatedProduct = {
+        ...selectedProduct,
+        repoFolderPath: tempProductFolderPath
+      }
+      setSelectedProduct(updatedProduct)
+      addToConsole(`Product repo folder set: ${tempProductFolderPath}`, 'info')
+      setShowProductFolderDialog(false)
+      setTempProductFolderPath('')
+    }
+  }
+
+  /**
+   * Save component folder path
+   */
+  const saveComponentFolderPath = () => {
+    if (selectedComponent && tempComponentFolderPath) {
+      const updatedComponent = {
+        ...selectedComponent,
+        componentFolderPath: tempComponentFolderPath
+      }
+      setSelectedComponent(updatedComponent)
+      addToConsole(`Component folder set: ${tempComponentFolderPath}`, 'info')
+      setShowComponentFolderDialog(false)
+      setTempComponentFolderPath('')
+    }
+  }
+
+  /**
+   * Create resources folder for component if it doesn't exist
+   */
+  const ensureResourcesFolder = async (componentPath: string) => {
+    try {
+      // ✅ FIXED: Use proper path joining
+      const resourcesPath = await window.electronAPI.joinPath(componentPath, 'resources')
+      await window.electronAPI.createDirectory(resourcesPath)
+      addToConsole(`Resources folder created: ${resourcesPath}`, 'info')
+    } catch (error) {
+      addToConsole('Failed to create resources folder', 'error')
+    }
   }
 
   /**
@@ -356,7 +463,8 @@ appVersion: "1.0.0"`
         type: (component.metadata?.category as any) || 'microservice',
         status: 'healthy' as const,
         resourceCount: 5, // Mock value - could be calculated from actual resources
-        lastModified: new Date(component.updatedAt).toLocaleDateString()
+        lastModified: new Date(component.updatedAt).toLocaleDateString(),
+        folderPath: component.componentFolderPath
       }
     }
 
@@ -379,7 +487,7 @@ appVersion: "1.0.0"`
             onEditComponent={handleEditComponent}
             onDeleteComponent={handleDeleteComponent}
           />
-        )}
+        )}        
 
         {/* File Tree */}
         <div className="flex-1">
@@ -394,6 +502,7 @@ appVersion: "1.0.0"`
             onComponentSelect={handleComponentSelect}
             onEditComponent={handleEditComponent}
             onDeleteComponent={handleDeleteComponent}
+            rootPath={selectedComponent?.componentFolderPath}
           />
         </div>
       </div>
@@ -512,24 +621,24 @@ appVersion: "1.0.0"`
     )
   }
 
-const renderConsoleOutput2 = () => {
-  return (
-    <div className="h-full flex flex-col relative">
-      {/* Floating Clear Button */}
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => setConsoleOutput([])}
-        className="absolute top-2 right-2 z-10 h-6 w-6 p-0 bg-gray-800/80 hover:bg-gray-700 border border-gray-600"
-        title="Clear console"
-      >
-        <X className="h-3 w-3 text-gray-400" />
-      </Button>
-      
-      {/* Console content */}
-      <div className={cn(
-        "flex-1 overflow-auto p-4 bg-gray-900 text-green-400"
-      )}>
+  const renderConsoleOutput2 = () => {
+    return (
+      <div className="h-full flex flex-col relative">
+        {/* Floating Clear Button */}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setConsoleOutput([])}
+          className="absolute top-2 right-2 z-10 h-6 w-6 p-0 bg-gray-800/80 hover:bg-gray-700 border border-gray-600"
+          title="Clear console"
+        >
+          <X className="h-3 w-3 text-gray-400" />
+        </Button>
+
+        {/* Console content */}
+        <div className={cn(
+          "flex-1 overflow-auto p-4 bg-gray-900 text-green-400"
+        )}>
           {consoleOutput.length === 0 ? (
             <div className={cn(typography.body.xs, "text-gray-500")}>
               Console output will appear here...
@@ -547,10 +656,10 @@ const renderConsoleOutput2 = () => {
               </div>
             ))
           )}
+        </div>
       </div>
-    </div>
-  )
-}
+    )
+  }
 
   return (
     <div className="h-full">

@@ -1,4 +1,5 @@
 - Be pragmatic
+- Apply KISS and DRY Principles 110%
 - Do not overengineer the solution
 - Do not hard code any values
 - Always check current codebase to avoid reinventing the wheel or bloatin up the codebase

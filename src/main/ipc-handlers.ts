@@ -962,6 +962,25 @@ export function setupIpcHandlers(): void {
   })
 
   /**
+   * List all files in a directory
+   */
+  ipcMain.handle('fs:listFiles', async (_event, dirPath: string) => {
+    try {
+      const items = await fs.readdir(dirPath, { withFileTypes: true })
+      return items.filter(item => item.isFile()).map(item => item.name)
+    } catch (error: any) {
+      console.error('Failed to list files:', error)
+      return []
+    }
+  })
+
+  // Add this handler with the other file system handlers
+  ipcMain.handle('path:join', async (event, ...paths: string[]) => {
+    const path = require('path');
+    return path.join(...paths);
+  });
+
+  /**
    * File reading
    */
   ipcMain.handle("file:read", async (_event, filePath: string) => {
@@ -1036,7 +1055,7 @@ export function setupIpcHandlers(): void {
       throw new Error(`Failed to delete file: ${error.message}`)
     }
   })
-  
+
   /**
    * Check if file exists
    */

@@ -22,68 +22,160 @@ To establish a GitOps structure focused on **product metadata management** - spe
 ### 3.1. **Product Repository Structure**
 
 ```plaintext
-gitops/
-├── products/
-│   └── {product-name}/              # e.g., cai
-│       ├── charts/
-│       │   ├── {component-name}/    # e.g., cai-infra
-│       │   │   ├── templates/
-│       │   │   │   ├── _helpers.tpl
-│       │   │   │   ├── namespace.yaml
-│       │   │   │   ├── deployment.yaml
-│       │   │   │   └── ingress.yaml
-│       │   │   ├── Chart.yaml
-│       │   │   ├── values.yaml
-│       │   │   ├── values.schema.json
-│       │   │   └── index.yaml
-│       │   └── {component-name}/    # e.g., cai-api
-│       │       ├── templates/
-│       │       │   ├── _helpers.tpl
-│       │       │   ├── service.yaml
-│       │       │   ├── deployment.yaml
-│       │       │   └── ingress.yaml
-│       │       ├── Chart.yaml
-│       │       ├── values.yaml
-│       │       ├── values.schema.json
-│       │       └── index.yaml
-│       └── README.md
+product-name.gitops-repo/
+├── metadata.json                    # Product metadata and component registry
+├── components/
+│   ├── {component-name}/           # e.g., cai-api
+│   │   ├── metadata.json           # Component-specific metadata
+│   │   ├── README.md               # Component documentation
+│   │   └── helm-chart/
+│   │       ├── Chart.yaml          # Helm chart metadata
+│   │       ├── values.yaml         # Default values
+│   │       ├── values.schema.json  # JSON schema for values validation
+│   │       └── templates/
+│   └── {component-name}/           # e.g., cai-database
+│       ├── metadata.json           # Component-specific metadata
+│       ├── README.md
+│       └── helm-chart/
+└── README.md                       # Product documentation
 ```
 
-### 3.2. **Example: CAI Product Structure**
+### 3.2. **Product Metadata Schema**
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "product": {
+    "name": "cai",
+    "displayName": "Customer Analytics Intelligence",
+    "description": "Customer analytics and intelligence platform",
+    "version": "1.0.0",
+    "owner": "Product Team",
+    "repository": {
+      "url": "https://git.company.com/products/cai.git",
+      "branch": "main"
+    }
+  },
+  "components": [
+    {
+      "name": "cai-api",
+      "displayName": "CAI API Service",
+      "description": "REST API for customer analytics",
+      "type": "service",
+      "chartPath": "components/cai-api/helm-chart",
+      "version": "1.0.0"
+    },
+    {
+      "name": "cai-database",
+      "displayName": "CAI Database",
+      "description": "PostgreSQL database for analytics data",
+      "type": "database",
+      "chartPath": "components/cai-database/helm-chart",
+      "version": "1.0.0"
+    }
+  ],
+  "metadata": {
+    "createdAt": "2024-01-15T10:00:00Z",
+    "updatedAt": "2024-01-15T10:00:00Z",
+    "tags": ["analytics", "customer-intelligence"],
+    "category": "data-platform"
+  }
+}
+```
+
+### 3.3. **Example: CAI Product Structure**
 
 ```plaintext
-gitops/
-├── products/
-│   └── cai/
-│       ├── charts/
-│       │   ├── cai-infra/
-│       │   │   ├── templates/
-│       │   │   │   ├── _helpers.tpl
-│       │   │   │   ├── namespace.yaml
-│       │   │   │   ├── deployment.yaml
-│       │   │   │   └── ingress.yaml
-│       │   │   ├── Chart.yaml
-│       │   │   ├── values.yaml
-│       │   │   ├── values.schema.json
-│       │   │   └── index.yaml
-│       │   ├── cai-api/
-│       │   │   ├── templates/
-│       │   │   │   ├── _helpers.tpl
-│       │   │   │   ├── service.yaml
-│       │   │   │   ├── deployment.yaml
-│       │   │   │   └── ingress.yaml
-│       │   │   ├── Chart.yaml
-│       │   │   ├── values.yaml
-│       │   │   ├── values.schema.json
-│       │   │   └── index.yaml
-│       │   ├── cai-database/
-│       │   ├── cai-frontend/
-│       │   ├── cai-backend/
-│       │   ├── cai-extract-01-job/
-│       │   ├── cai-webapi/
-│       │   └── cai-soap-svc/
-│       └── README.md
+cai.gitops-repo/
+├── metadata.json
+├── components/
+│   ├── cai-api/
+│   │   └── helm-chart/
+│   │       ├── Chart.yaml
+│   │       ├── values.yaml
+│   │       ├── values.schema.json
+│   │       └── templates/
+│   │           ├── _helpers.tpl
+│   │           ├── deployment.yaml
+│   │           ├── service.yaml
+│   │           └── ingress.yaml
+│   ├── cai-database/
+│   │   └── helm-chart/
+│   │       ├── Chart.yaml
+│   │       ├── values.yaml
+│   │       └── templates/
+│   ├── cai-frontend/
+│   │   └── helm-chart/
+│   ├── cai-backend/
+│   │   └── helm-chart/
+│   └── cai-extract-job/
+│       └── helm-chart/
+└── README.md
 ```
+
+### 3.4. **Product-Component Metadata Schema**
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "component": {
+    "name": "cai-api",
+    "displayName": "CAI API Service",
+    "description": "REST API for customer analytics",
+    "version": "1.2.3",
+    "owner": "Backend Team",
+    "type": "microservice",
+    "runtime": "nodejs",
+    "category": "api"
+  },
+  "dependencies": {
+    "internal": ["cai-database", "cai-cache"],
+    "external": ["redis", "postgresql"]
+  },
+  "deployment": {
+    "helmChartPath": "helm-chart",
+    "defaultNamespace": "cai-api",
+    "resourceRequirements": {
+      "cpu": "500m",
+      "memory": "512Mi"
+    }
+  },
+  "gitOps": {
+    "environments": ["dev", "sit", "uat", "prod"],
+    "defaultBranch": "main",
+    "environmentBranches": {
+      "dev": "develop",
+      "sit": "release",
+      "uat": "release",
+      "prod": "main"
+    }
+  },
+  "monitoring": {
+    "healthEndpoint": "/health",
+    "metricsEndpoint": "/metrics",
+    "logLevel": "info"
+  },
+  "security": {
+    "requiresAuthentication": true,
+    "exposedPorts": [8080],
+    "networkPolicies": ["allow-ingress", "allow-database"]
+  },
+  "metadata": {
+    "createdAt": "2024-01-15T10:00:00Z",
+    "updatedAt": "2024-12-20T15:30:00Z",
+    "tags": ["api", "microservice", "nodejs"],
+    "documentation": "README.md",
+    "maintainers": [
+      {
+        "name": "John Doe",
+        "email": "john.doe@company.com",
+        "role": "lead"
+      }
+    ]
+  }
+}
+```
+
 
 ---
 

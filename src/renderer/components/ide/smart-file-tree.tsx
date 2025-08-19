@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useMemo } from "react"
+import React, { useState, useMemo, useEffect } from "react"
 import { ChevronRight, ChevronDown, File, Folder, FolderOpen, Package, FileText, Settings, Code, Plus, Trash2, MoreVertical } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ScrollArea } from "@/renderer/components/ui/scroll-area"
@@ -61,6 +61,7 @@ interface SmartFileTreeProps {
     onComponentSelect?: (component: any) => void
     onEditComponent?: (component: any) => void
     onDeleteComponent?: (component: any) => void
+    rootPath?: string
 }
 
 /**
@@ -78,7 +79,8 @@ export function SmartFileTree({
     selectedComponentId,
     onComponentSelect,
     onEditComponent,
-    onDeleteComponent
+    onDeleteComponent,
+    rootPath
 }: SmartFileTreeProps) {
     const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set(['charts', 'resources']))
     const [showResourceWizard, setShowResourceWizard] = useState(false)
@@ -86,16 +88,125 @@ export function SmartFileTree({
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
     const [resourceToDelete, setResourceToDelete] = useState<FileTreeNode | null>(null)
 
+    const [fileSystemTree, setFileSystemTree] = useState<FileTreeNode[]>([])
 
+    // Load file system tree when rootPath changes
+    useEffect(() => {
+        console.log('🔍 SmartFileTree: rootPath changed to:', rootPath)
+        if (rootPath) {
+            console.log('🔍 SmartFileTree: rootPath changed to:', rootPath)
+            loadFileSystemTree(rootPath)
+        } else {
+            console.log('❌ No rootPath provided, clearing file system tree')
+            setFileSystemTree([])
+        }
+    }, [rootPath])
+
+    /**
+     * Load actual file system tree from the selected component folder
+     */
+    const loadFileSystemTree = async (path: string) => {
+        try {
+            console.log('🚀 Starting to build file system tree from:', path)
+            const tree = await buildFileSystemTree(path, '')
+            console.log('✅ File system tree loaded successfully:', tree)
+            console.log('📊 Tree has', tree.length, 'root items')
+            setFileSystemTree(tree)
+        } catch (error) {
+            console.error('❌ Failed to load file system tree:', error)
+            setFileSystemTree([])
+        }
+    }
+
+    /**
+     * Recursively build file system tree from actual directory
+     */
+    const buildFileSystemTree = async (dirPath: string, relativePath: string): Promise<FileTreeNode[]> => {
+        try {
+            const items = await window.electronAPI.invoke('fs:listDirectories', dirPath)
+            const files = await window.electronAPI.invoke('fs:listFiles', dirPath)
+
+            const nodes: FileTreeNode[] = []
+
+            // Add directories
+            for (const item of items) {
+                const fullPath = await window.electronAPI.joinPath(dirPath, item)
+                const itemRelativePath = relativePath ? `${relativePath}/${item}` : item
+
+                const children = await buildFileSystemTree(fullPath, itemRelativePath)
+
+                nodes.push({
+                    id: `fs-${itemRelativePath}`,
+                    name: item,
+                    type: 'folder',
+                    path: fullPath,
+                    category: getCategoryFromPath(itemRelativePath),
+                    children,
+                    isExpanded: item === 'resources' || item === 'charts'
+                })
+            }
+
+            // Add files
+            for (const file of files) {
+                const fullPath = await window.electronAPI.joinPath(dirPath, file)
+                const fileRelativePath = relativePath ? `${relativePath}/${file}` : file
+
+                nodes.push({
+                    id: `fs-${fileRelativePath}`,
+                    name: file,
+                    type: 'file',
+                    path: fullPath,
+                    category: getCategoryFromPath(fileRelativePath),
+                    metadata: getFileMetadata(file)
+                })
+            }
+
+            return nodes
+        } catch (error) {
+            console.error(`Failed to read directory ${dirPath}:`, error)
+            return []
+        }
+    }
+    /**
+     * Determine category based on file path
+     */
+    const getCategoryFromPath = (path: string): 'charts' | 'resources' | 'config' => {
+        if (path.includes('charts') || path.includes('templates')) return 'charts'
+        if (path.includes('resources')) return 'resources'
+        return 'config'
+    }
+
+    /**
+     * Get file metadata based on extension
+     */
+    const getFileMetadata = (fileName: string) => {
+        const ext = fileName.split('.').pop()?.toLowerCase()
+
+        if (ext === 'yaml' || ext === 'yml') {
+            return { fileType: 'yaml' as const }
+        }
+        if (ext === 'json') {
+            return { fileType: 'json' as const }
+        }
+        return { fileType: 'yaml' as const }
+    }
+
+    /**
+     * Handle resource creation with proper component folder path
+     */
     const handleResourceCreate = async (resourceData: any) => {
         try {
             // Handle in-memory only mode
             if (resourceData.inMemoryOnly) {
+                const resourcePath = rootPath
+                    ? await window.electronAPI.joinPath(rootPath, 'resources', resourceData.fileName || 'new-resource.yaml')
+                    : `./resources/${resourceData.fileName || 'new-resource.yaml'}`
+
                 const newResource: FileTreeNode = {
                     id: `resource-${Date.now()}`,
                     name: resourceData.fileName || 'new-resource.yaml',
                     type: 'file',
-                    path: `./resources/${resourceData.fileName || 'new-resource.yaml'}`,
+                    path: resourcePath,
                     category: 'resources',
                     content: resourceData.template || resourceData.content || ''
                 }
@@ -110,7 +221,12 @@ export function SmartFileTree({
                 return
             }
 
-            const resourcePath = `./resources/${resourceData.fileName || 'new-resource.yaml'}`
+            // Use rootPath to create proper component resources folder path
+            const resourcesDir = rootPath
+                ? await window.electronAPI.joinPath(rootPath, 'resources')
+                : './resources'
+
+            const resourcePath = await window.electronAPI.joinPath(resourcesDir, resourceData.fileName || 'new-resource.yaml')
 
             // Ensure we have content to write
             const contentToWrite = resourceData.template || resourceData.content || ''
@@ -121,7 +237,7 @@ export function SmartFileTree({
 
             try {
                 // Ensure directory exists with proper error handling
-                await window.electronAPI.createDirectory('./resources')
+                await window.electronAPI.createDirectory(resourcesDir)
             } catch (dirError) {
                 console.warn('Directory creation failed or already exists:', dirError)
                 // Continue with file creation even if directory creation fails
@@ -154,6 +270,11 @@ export function SmartFileTree({
                 // Close the modal after successful creation
                 setShowResourceWizard(false)
 
+                // Refresh the file system tree to show the new file
+                if (rootPath) {
+                    loadFileSystemTree(rootPath)
+                }
+
             } catch (fileError) {
                 console.error('Failed to create resource file:', fileError)
                 console.warn('Adding resource to UI state only (file creation failed)')
@@ -185,6 +306,7 @@ export function SmartFileTree({
             // You might want to show an error toast/notification here
         }
     }
+
 
     /**
  * Handle resource deletion
@@ -219,6 +341,20 @@ export function SmartFileTree({
 
     // Generate file tree structure based on PRD
     const fileTree = useMemo(() => {
+        console.log('🎯 useMemo triggered:')
+        console.log('   - rootPath:', rootPath)
+        console.log('   - fileSystemTree.length:', fileSystemTree.length)
+        console.log('   - productId:', productId)
+        console.log('   - componentId:', componentId)
+
+        // If we have a rootPath and file system tree, use that
+        if (rootPath && fileSystemTree.length > 0) {
+            console.log('✅ Using file system tree with', fileSystemTree.length, 'items')
+            return fileSystemTree
+        }
+
+        console.log('⚠️ Falling back to mock tree')
+
         if (!productId) return []
 
         // If no component is selected, show product-level structure
@@ -375,7 +511,8 @@ export function SmartFileTree({
         ]
 
         return tree
-    }, [productId, componentId, dynamicResources])
+        //}, [productId, componentId, dynamicResources])
+    }, [productId, componentId, dynamicResources, rootPath, fileSystemTree])
 
     /**
      * Toggle node expansion
@@ -438,24 +575,21 @@ export function SmartFileTree({
         // Update the handleClick function in renderNode
         const handleClick = async () => {
             if (node.type === 'file' && onFileSelect) {
-                // For dynamic resources, ensure we have the latest content
-                if (dynamicResources.some(r => r.id === node.id)) {
-                    try {
-                        const actualContent = await window.electronAPI.readFile(node.path)
-                        const updatedNode = { ...node, content: actualContent }
-                        onFileSelect(updatedNode)
-                    } catch (error) {
-                        console.warn('Could not read file content, using cached content:', error)
-                        onFileSelect(node)
-                    }
-                } else {
+                // Always try to read actual file content for all files
+                try {
+                    const actualContent = await window.electronAPI.readFile(node.path)
+                    const updatedNode = { ...node, content: actualContent }
+                    onFileSelect(updatedNode)
+                } catch (error) {
+                    console.warn('Could not read file content:', error)
+                    // If file reading fails, pass the node without content
+                    // The IDE editor will handle generating mock content as fallback
                     onFileSelect(node)
                 }
             } else if (hasChildren) {
                 toggleExpanded()
             }
         }
-
         const getIcon = () => {
             if (node.type === 'folder') {
                 return isExpanded ? <FolderOpen className="h-4 w-4" /> : <Folder className="h-4 w-4" />

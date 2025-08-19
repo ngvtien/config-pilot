@@ -50,6 +50,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
       'directory:exists',
       'directory:info',
       'fs:listDirectories',
+      'path:join',
+      'fs:listFiles',
       'fs:ensureDirectory',
       'k8s:setConfigPath',
       // Vault channels
@@ -257,6 +259,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getDirectoryInfo: (path: string) => ipcRenderer.invoke("directory:info", { path }),
   ensureDirectory: (dirPath: string) => ipcRenderer.invoke('fs:ensureDirectory', dirPath),
   listDirectories: (dirPath: string) => ipcRenderer.invoke('fs:listDirectories', dirPath),
+  listFiles: (dirPath: string) => ipcRenderer.invoke('fs:listFiles', dirPath),
+  joinPath: (...paths: string[]) => ipcRenderer.invoke('path:join', ...paths),
 
   // k8s related operations
   setKubeConfigPath: (path: string) => ipcRenderer.invoke('k8s:setConfigPath', path),

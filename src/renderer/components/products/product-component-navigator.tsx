@@ -12,6 +12,7 @@ import { typography } from "@/renderer/lib/typography"
 import { cn } from "@/lib/utils"
 import { Product } from "@/shared/types/product"
 import { ProductComponent } from "@/shared/types/product-component"
+import { useMockData } from "@/renderer/services/mock-data.service"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -49,6 +50,10 @@ export const ProductComponentNavigator: React.FC<ProductComponentNavigatorProps>
   const [searchQuery, setSearchQuery] = useState("")
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set())
 
+  // Use the centralized mock data service instead of local mock data
+  const mockData = useMockData()
+  const mockProducts = mockData.products
+
   /**
    * Handle action button clicks without triggering product selection
    */
@@ -58,153 +63,62 @@ export const ProductComponentNavigator: React.FC<ProductComponentNavigatorProps>
   }
 
   // Mock data with proper Product and ProductComponent interfaces
-  const mockProducts: Product[] = [
-    {
-      id: "product-1",
-      name: "cai",
-      displayName: "Customer AI Platform",
-      description: "AI-powered customer service platform",
-      owner: "platform-team",
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      metadata: {
-        version: "1.0.0",
-        category: "platform",
-        tags: ["ai", "customer-service"]
-      }
-    },
-    {
-      id: "product-2",
-      name: "payment-gateway",
-      displayName: "Payment Gateway",
-      description: "Secure payment processing service",
-      owner: "payments-team",
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      metadata: {
-        version: "2.1.0",
-        category: "financial",
-        tags: ["payments", "security"]
-      }
-    },
-    {
-      id: "product-3",
-      name: "notification-engine",
-      displayName: "Notification Engine",
-      description: "Multi-channel notification service",
-      owner: "platform-team",
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      metadata: {
-        version: "1.5.0",
-        category: "communication",
-        tags: ["notifications", "messaging"]
-      }
-    }
-  ]
+  // const mockProducts: Product[] = [
+  //   {
+  //     id: "product-1",
+  //     name: "cai",
+  //     displayName: "Customer AI Platform",
+  //     description: "AI-powered customer service platform",
+  //     owner: "platform-team",
+  //     isActive: true,
+  //     createdAt: new Date().toISOString(),
+  //     updatedAt: new Date().toISOString(),
+  //     metadata: {
+  //       version: "1.0.0",
+  //       category: "platform",
+  //       tags: ["ai", "customer-service"]
+  //     }
+  //   },
+  //   {
+  //     id: "product-2",
+  //     name: "payment-gateway",
+  //     displayName: "Payment Gateway",
+  //     description: "Secure payment processing service",
+  //     owner: "payments-team",
+  //     isActive: true,
+  //     createdAt: new Date().toISOString(),
+  //     updatedAt: new Date().toISOString(),
+  //     metadata: {
+  //       version: "2.1.0",
+  //       category: "financial",
+  //       tags: ["payments", "security"]
+  //     }
+  //   },
+  //   {
+  //     id: "product-3",
+  //     name: "notification-engine",
+  //     displayName: "Notification Engine",
+  //     description: "Multi-channel notification service",
+  //     owner: "platform-team",
+  //     isActive: true,
+  //     createdAt: new Date().toISOString(),
+  //     updatedAt: new Date().toISOString(),
+  //     metadata: {
+  //       version: "1.5.0",
+  //       category: "communication",
+  //       tags: ["notifications", "messaging"]
+  //     }
+  //   }
+  // ]
 
-  // Mock components for each product
-  const mockComponents: Record<string, ProductComponent[]> = {
-    "cai": [
-      {
-        id: "comp-1",
-        name: "cai-frontend",
-        displayName: "CAI Frontend",
-        description: "React-based frontend application",
-        parentProduct: "cai",
-        isActive: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        metadata: {
-          version: "1.0.0",
-          category: "frontend",
-          tags: ["react", "ui"]
-        }
-      },
-      {
-        id: "comp-2",
-        name: "cai-backend",
-        displayName: "CAI Backend",
-        description: "Node.js backend API service",
-        parentProduct: "cai",
-        isActive: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        metadata: {
-          version: "1.0.0",
-          category: "backend",
-          tags: ["nodejs", "api"]
-        }
-      },
-      {
-        id: "comp-3",
-        name: "cai-database",
-        displayName: "CAI Database",
-        description: "PostgreSQL database service",
-        parentProduct: "cai",
-        isActive: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        metadata: {
-          version: "1.0.0",
-          category: "database",
-          tags: ["postgresql", "data"]
-        }
-      }
-    ],
-    "payment-gateway": [
-      {
-        id: "comp-4",
-        name: "payment-api",
-        displayName: "Payment API",
-        description: "Core payment processing API",
-        parentProduct: "payment-gateway",
-        isActive: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        metadata: {
-          version: "2.1.0",
-          category: "api",
-          tags: ["payments", "api"]
-        }
-      },
-      {
-        id: "comp-5",
-        name: "payment-webhook",
-        displayName: "Payment Webhook",
-        description: "Webhook handler for payment events",
-        parentProduct: "payment-gateway",
-        isActive: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        metadata: {
-          version: "2.1.0",
-          category: "webhook",
-          tags: ["webhooks", "events"]
-        }
-      }
-    ],
-    "notification-engine": [
-      {
-        id: "comp-6",
-        name: "notification-api",
-        displayName: "Notification API",
-        description: "Core notification service API",
-        parentProduct: "notification-engine",
-        isActive: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        metadata: {
-          version: "1.5.0",
-          category: "api",
-          tags: ["notifications", "api"]
-        }
-      }
-    ]
-  }
+  // Get components for each product from the mock data service
+  const mockComponents: Record<string, ProductComponent[]> = useMemo(() => {
+    const components: Record<string, ProductComponent[]> = {}
+    mockProducts.forEach(product => {
+      components[product.name] = mockData.getComponents(product.id)
+    })
+    return components
+  }, [mockProducts, mockData])
 
   /**
    * Filter products based on search query

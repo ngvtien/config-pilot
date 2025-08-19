@@ -28,19 +28,7 @@ import {
 } from "lucide-react"
 import { typography } from "@/renderer/lib/typography"
 import { cn } from "@/lib/utils"
-
-/**
- * Interface for product component data
- */
-interface ProductComponent {
-  id: string
-  name: string
-  description: string
-  type: 'microservice' | 'database' | 'cache' | 'queue' | 'gateway'
-  status: 'healthy' | 'warning' | 'error'
-  resourceCount: number
-  lastModified: string
-}
+import { ProductComponent } from '@/shared/types/product-component'
 
 /**
  * Props for ProductComponentTiles component
