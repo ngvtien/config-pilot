@@ -215,6 +215,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       'git:updateServer',
       'git:testServerConnection',
       'git:updateProductMetadata',
+      'git:batchFetchGitOpsMetadata',
       'git:validateRepositoryAccess',
 
       'logger:updateConfig',
@@ -519,6 +520,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
       commitMessage: string
       branch: string
     }) => ipcRenderer.invoke('git:updateProductMetadata', params),
+    
+    batchFetchGitOpsMetadata: (params: {
+      repositories: Array<{
+        productName: string
+        repositoryUrl: string
+        localPath: string
+      }>
+    }) => ipcRenderer.invoke('git:batchFetchGitOpsMetadata', params),
   },
 
   // Logger API

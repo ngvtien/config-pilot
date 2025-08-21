@@ -93,6 +93,17 @@ export function EnhancedProductManagementPage({ onNavigateBack, context, setting
   const [repositoryValidationStatus, setRepositoryValidationStatus] = useState<Record<string, 'validating' | 'valid' | 'invalid' | 'unknown'>>({})
   const [isValidatingRepositories, setIsValidatingRepositories] = useState(false)
 
+  // State for GitOps metadata viewer
+  const [gitOpsMetadata, setGitOpsMetadata] = useState<Array<{
+    productName: string
+    success: boolean
+    metadata?: any
+    components?: Array<{ name: string, metadata: any }>
+    error?: string
+  }>>([])
+  const [isLoadingGitOpsMetadata, setIsLoadingGitOpsMetadata] = useState(false)
+  const [showGitOpsViewer, setShowGitOpsViewer] = useState(false)
+
   useEffect(() => {
     // Auto-validate repositories when components are loaded
     if (Object.keys(components).length > 0 && !isLoading) {
@@ -650,6 +661,70 @@ export function EnhancedProductManagementPage({ onNavigateBack, context, setting
     return 'unknown'
   }
 
+  /**
+   * Fetch GitOps metadata from all product repositories
+   */
+  const fetchGitOpsMetadata = async () => {
+    if (!context?.baseHostUrl || !settings?.hostingOrg || !settings?.baseDirectory) {
+      showAlert({
+        title: 'Configuration Missing',
+        message: 'Please configure base host URL, hosting organization, and base directory in settings.',
+        variant: 'warning'
+      })
+      return
+    }
+
+    setIsLoadingGitOpsMetadata(true)
+    
+    try {
+      // Build repository list from products
+      const repositories = products
+        .filter(product => product.metadata?.gitOps?.repositoryUrl) // Only products with GitOps configured
+        .map(product => ({
+          productName: product.name,
+          repositoryUrl: product.metadata!.gitOps!.repositoryUrl!,
+          localPath: product.metadata?.gitOps?.localPath || generateLocalRepositoryPath(settings.baseDirectory, product.name)
+        }))
+
+      if (repositories.length === 0) {
+        showAlert({
+          title: 'No GitOps Repositories',
+          message: 'No products have GitOps repositories configured.',
+          variant: 'info'
+        })
+        return
+      }
+
+      console.log(`Fetching GitOps metadata for ${repositories.length} repositories...`)
+
+      const result = await window.electronAPI?.git?.batchFetchGitOpsMetadata?.({ repositories })
+
+      if (result?.success) {
+        setGitOpsMetadata(result.results)
+        setShowGitOpsViewer(true)
+        
+        const successCount = result.results.filter((r: any) => r.success).length
+        showAlert({
+          title: 'GitOps Metadata Fetched',
+          message: `Successfully fetched metadata from ${successCount}/${repositories.length} repositories.`,
+          variant: 'success'
+        })
+      } else {
+        throw new Error(result?.error || 'Failed to fetch GitOps metadata')
+      }
+
+    } catch (error: any) {
+      console.error('Failed to fetch GitOps metadata:', error)
+      showAlert({
+        title: 'Error',
+        message: `Failed to fetch GitOps metadata: ${error.message}`,
+        variant: 'destructive'
+      })
+    } finally {
+      setIsLoadingGitOpsMetadata(false)
+    }
+  }
+
   // Fix the validateAllRepositories function (around line 449)
   const validateAllRepositories = async () => {
     setIsValidatingRepositories(true)
@@ -774,6 +849,26 @@ export function EnhancedProductManagementPage({ onNavigateBack, context, setting
               </TooltipTrigger>
               <TooltipContent>
                 <p>Export all products to a JSON file</p>
+              </TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  variant="outline" 
+                  onClick={fetchGitOpsMetadata}
+                  disabled={isLoadingGitOpsMetadata}
+                >
+                  {isLoadingGitOpsMetadata ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <GitBranch className="h-4 w-4 mr-2" />
+                  )}
+                  GitOps View
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Fetch and view GitOps metadata from all product repositories</p>
               </TooltipContent>
             </Tooltip>
 
@@ -1792,6 +1887,113 @@ export function EnhancedProductManagementPage({ onNavigateBack, context, setting
               </Button>
               <Button onClick={handleSaveComponent}>
                 {dialogAction === 'edit' ? 'Update' : 'Create'} Component
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* GitOps Metadata Viewer Dialog */}
+        <Dialog open={showGitOpsViewer} onOpenChange={setShowGitOpsViewer}>
+          <DialogContent className="max-w-6xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>GitOps Metadata Viewer</DialogTitle>
+              <DialogDescription>
+                View metadata from all GitOps repositories
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="space-y-4">
+              {gitOpsMetadata.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  No GitOps metadata available
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {gitOpsMetadata.map((repo, index) => (
+                    <Card key={index} className={`${repo.success ? 'border-green-200' : 'border-red-200'}`}>
+                      <CardHeader className="pb-3">
+                        <div className="flex items-center justify-between">
+                          <CardTitle className="text-lg flex items-center gap-2">
+                            {repo.success ? (
+                              <CheckCircle className="h-5 w-5 text-green-500" />
+                            ) : (
+                              <XCircle className="h-5 w-5 text-red-500" />
+                            )}
+                            {repo.productName}
+                          </CardTitle>
+                          {repo.components && (
+                            <Badge variant="secondary">
+                              {repo.components.length} components
+                            </Badge>
+                          )}
+                        </div>
+                      </CardHeader>
+                      
+                      <CardContent>
+                        {repo.success ? (
+                          <div className="space-y-4">
+                            {/* Product Metadata */}
+                            {repo.metadata && (
+                              <div>
+                                <h4 className="font-medium text-sm mb-2">Product Metadata</h4>
+                                <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded text-xs">
+                                  <pre className="whitespace-pre-wrap">
+                                    {JSON.stringify(repo.metadata, null, 2)}
+                                  </pre>
+                                </div>
+                              </div>
+                            )}
+                            
+                            {/* Components */}
+                            {repo.components && repo.components.length > 0 && (
+                              <div>
+                                <h4 className="font-medium text-sm mb-2">Components</h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                  {repo.components.map((component, compIndex) => (
+                                    <Card key={compIndex} className="border-gray-200">
+                                      <CardHeader className="pb-2">
+                                        <CardTitle className="text-sm flex items-center gap-2">
+                                          <FolderOpen className="h-4 w-4 text-blue-500" />
+                                          {component.name}
+                                        </CardTitle>
+                                      </CardHeader>
+                                      <CardContent className="pt-0">
+                                        <div className="bg-gray-50 dark:bg-gray-800 p-2 rounded text-xs">
+                                          <pre className="whitespace-pre-wrap">
+                                            {JSON.stringify(component.metadata, null, 2)}
+                                          </pre>
+                                        </div>
+                                      </CardContent>
+                                    </Card>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="text-red-600 dark:text-red-400">
+                            <p className="font-medium">Error:</p>
+                            <p className="text-sm">{repo.error}</p>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+            
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowGitOpsViewer(false)}>
+                Close
+              </Button>
+              <Button onClick={fetchGitOpsMetadata} disabled={isLoadingGitOpsMetadata}>
+                {isLoadingGitOpsMetadata ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                )}
+                Refresh
               </Button>
             </DialogFooter>
           </DialogContent>

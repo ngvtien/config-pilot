@@ -675,6 +675,153 @@ This component is part of the ${productName} product and is managed by ConfigPil
       return { success: false, error: error.message }
     }
   })
+
+  // Batch fetch GitOps metadata from multiple repositories
+  ipcMain.handle('git:batchFetchGitOpsMetadata', async (_, params: {
+    repositories: Array<{
+      productName: string
+      repositoryUrl: string
+      localPath: string
+    }>
+  }) => {
+    try {
+      console.log(`[GitOps] Starting batch fetch for ${params.repositories.length} repositories`)
+      
+      const results: Array<{
+        productName: string
+        success: boolean
+        metadata?: any
+        components?: Array<{
+          name: string
+          metadata: any
+        }>
+        error?: string
+      }> = []
+
+      // Get git adapter
+      const gitAdapter = GitAdapterFactory.getAdapter('isomorphic-git')
+
+      for (const repo of params.repositories) {
+        try {
+          console.log(`[GitOps] Fetching metadata for ${repo.productName}`)
+          
+          // Ensure local directory exists
+          await fs.mkdir(repo.localPath, { recursive: true })
+          
+          // Get credentials for this repository
+          let credentials: any = undefined
+          try {
+            const servers = gitService.getServers()
+            const matchingServer = servers.find(server => {
+              const serverHost = new URL(server.baseUrl).hostname
+              const repoHost = new URL(repo.repositoryUrl).hostname
+              return serverHost === repoHost
+            })
+            
+            if (matchingServer) {
+              const serverCredentials = (gitService as any).getServerAndCredentials(repo.repositoryUrl)
+              if (serverCredentials && serverCredentials.credentials) {
+                credentials = {
+                  method: 'credentials',
+                  username: serverCredentials.credentials.username,
+                  password: serverCredentials.credentials.token || serverCredentials.credentials.password || ''
+                }
+              }
+            }
+          } catch (credError) {
+            console.log(`[GitOps] Could not get credentials for ${repo.productName}:`, credError)
+          }
+
+          // Check if repository exists locally
+          let isExistingRepo = false
+          try {
+            await fs.access(path.join(repo.localPath, '.git'))
+            isExistingRepo = true
+          } catch {
+            // Not a git repository yet
+          }
+
+          if (!isExistingRepo) {
+            // Clone the repository
+            const cloneResult = await gitAdapter.clone(repo.repositoryUrl, repo.localPath, credentials)
+            if (!cloneResult.success) {
+              throw new Error(`Failed to clone repository: ${cloneResult.error}`)
+            }
+          } else {
+            // Pull latest changes
+            const pullResult = await gitAdapter.pull(repo.localPath, credentials)
+            if (!pullResult.success) {
+              console.warn(`[GitOps] Failed to pull latest changes for ${repo.productName}: ${pullResult.error}`)
+              // Continue anyway - use existing local data
+            }
+          }
+
+          // Read product metadata
+          let productMetadata = null
+          try {
+            const metadataPath = path.join(repo.localPath, 'metadata.json')
+            const metadataContent = await fs.readFile(metadataPath, 'utf-8')
+            productMetadata = JSON.parse(metadataContent)
+          } catch (error) {
+            console.warn(`[GitOps] Could not read product metadata for ${repo.productName}:`, error)
+          }
+
+          // Read component metadata from folders
+          const components: Array<{ name: string, metadata: any }> = []
+          try {
+            const entries = await fs.readdir(repo.localPath, { withFileTypes: true })
+            
+            for (const entry of entries) {
+              if (entry.isDirectory() && !entry.name.startsWith('.')) {
+                try {
+                  const componentMetadataPath = path.join(repo.localPath, entry.name, 'metadata.json')
+                  const componentMetadataContent = await fs.readFile(componentMetadataPath, 'utf-8')
+                  const componentMetadata = JSON.parse(componentMetadataContent)
+                  
+                  components.push({
+                    name: entry.name,
+                    metadata: componentMetadata
+                  })
+                } catch (componentError) {
+                  console.warn(`[GitOps] Could not read component metadata for ${entry.name}:`, componentError)
+                }
+              }
+            }
+          } catch (error) {
+            console.warn(`[GitOps] Could not read component folders for ${repo.productName}:`, error)
+          }
+
+          results.push({
+            productName: repo.productName,
+            success: true,
+            metadata: productMetadata,
+            components: components
+          })
+
+          console.log(`[GitOps] Successfully fetched metadata for ${repo.productName} (${components.length} components)`)
+
+        } catch (error: any) {
+          console.error(`[GitOps] Failed to fetch metadata for ${repo.productName}:`, error)
+          results.push({
+            productName: repo.productName,
+            success: false,
+            error: error.message
+          })
+        }
+      }
+
+      console.log(`[GitOps] Batch fetch completed: ${results.filter(r => r.success).length}/${results.length} successful`)
+      
+      return {
+        success: true,
+        results: results
+      }
+
+    } catch (error: any) {
+      console.error(`[GitOps] Batch fetch operation failed:`, error)
+      return { success: false, error: error.message }
+    }
+  })
 }
 
 export function registerProductComponentHandlers() {
