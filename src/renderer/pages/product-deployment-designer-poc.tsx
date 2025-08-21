@@ -6,10 +6,16 @@ import { ContextAwareEditor } from '@/renderer/components/ide/context-aware-edit
 import { Product } from '@/shared/types/product'
 import { ProductComponent } from '@/shared/types/product-component'
 import { ProductComponentTiles } from '@/renderer/components/products/product-component-tiles'
+import { ProductComponentNavigator } from '@/renderer/components/products/product-component-navigator'
 import { typography } from '@/renderer/lib/typography'
 import { cn } from "@/lib/utils"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs'
-import { FolderOpen, X, Package, GitBranch, ChevronDown, ChevronRight, Folder, Search, MoreVertical, Plus, Edit, Trash2 } from 'lucide-react'
+import { Input } from '@/renderer/components/ui/input'
+import { Card, CardContent } from '@/renderer/components/ui/card'
+import { Badge } from '@/renderer/components/ui/badge'
+import { ScrollArea } from '@/renderer/components/ui/scroll-area'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/renderer/components/ui/collapsible'
+import { FolderOpen, X, Package, GitBranch, ChevronDown, ChevronRight, Folder, Search, MoreVertical, Plus, Edit, Trash2, ArrowLeft, Component } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 
 interface ProductDeploymentDesignerPoCProps {
@@ -385,7 +391,25 @@ appVersion: "1.0.0"`
       return
     }
 
-    setSelectedComponent(component)
+    // Construct the component folder path based on GitOps structure
+    let componentFolderPath = ''
+    if (selectedProduct) {
+      const productGitOps = gitOpsData.find(p => p.productName === selectedProduct.name)
+      if (productGitOps && productGitOps.success) {
+        // Construct path: <product-repo-local-path>/<component-name>
+        const productLocalPath = productGitOps.metadata?.localPath || `C:\\tmp\\repositories\\gitops-products-${selectedProduct.name}`
+        componentFolderPath = `${productLocalPath}\\${component.name}`
+        addToConsole(`Component folder path: ${componentFolderPath}`, 'info')
+      }
+    }
+
+    // Update component with folder path
+    const updatedComponent = {
+      ...component,
+      componentFolderPath
+    }
+
+    setSelectedComponent(updatedComponent)
     setSelectedFile(null)
     setFileContents({})
     setError(null)
@@ -398,7 +422,7 @@ appVersion: "1.0.0"`
         const componentGitOps = productGitOps.components.find(c => c.name === component.name)
         if (componentGitOps) {
           addToConsole(`Found GitOps data for component: ${component.name}`, 'info')
-          // TODO: Load existing K8s resources from the component folder
+          addToConsole(`Expected structure: resources/, charts/, charts/templates/`, 'info')
         }
       }
     }
@@ -582,218 +606,466 @@ appVersion: "1.0.0"`
   }
 
   /**
-   * Render enhanced GitOps navigator panel with search and CRUD functionality
+   * Convert GitOps data to Product format for the navigator
+   */
+  const getProductsFromGitOps = (): Product[] => {
+    return gitOpsData
+      .filter(productData => productData.success && productData.metadata)
+      .map(productData => ({
+        id: productData.productName,
+        name: productData.productName,
+        displayName: productData.metadata?.product?.displayName || productData.productName,
+        description: productData.metadata?.product?.description || '',
+        owner: productData.metadata?.product?.owner || '',
+        isActive: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        metadata: {
+          version: productData.metadata?.product?.version || '1.0.0',
+          category: productData.metadata?.product?.category || 'platform',
+          tags: productData.metadata?.product?.tags || [],
+          gitOps: productData.metadata
+        }
+      } as Product))
+  }
+
+  /**
+   * Get components for a specific product from GitOps data
+   */
+  const getComponentsForProduct = (productName: string): ProductComponent[] => {
+    const productData = gitOpsData.find(p => p.productName === productName)
+    if (!productData || !productData.components) return []
+
+    return productData.components.map(comp => ({
+      id: `${productName}-${comp.name}`,
+      name: comp.name,
+      displayName: comp.metadata?.displayName || comp.name,
+      description: comp.metadata?.description || '',
+      parentProduct: productName,
+      isActive: comp.metadata?.isActive ?? true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      metadata: {
+        ...comp.metadata,
+        type: comp.metadata?.category || 'service'
+      }
+    } as ProductComponent))
+  }
+
+  /**
+   * Render the navigator panel using the existing ProductComponentNavigator
+   */
+  // const renderNavigatorPanel = () => {
+  //   // Create a custom navigator that uses GitOps data
+  //   const gitOpsProducts = getProductsFromGitOps()
+    
+  //   return (
+  //     <div className="h-full flex flex-col bg-slate-900">
+  //       {/* Enhanced Header */}
+  //       <div className="p-4 bg-slate-800 border-b border-slate-700">
+  //         <div className="flex items-center gap-2 mb-3">
+  //           {onNavigateBack && (
+  //             <Button variant="ghost" size="sm" onClick={onNavigateBack} className="h-7 w-7 p-0">
+  //               <ArrowLeft className="h-3.5 w-3.5" />
+  //             </Button>
+  //           )}
+  //           <h2 className="text-lg font-bold text-white">GitOps Designer</h2>
+  //           <div className="flex-1" />
+  //           <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+  //             <MoreVertical className="h-4 w-4 text-muted-foreground" />
+  //           </Button>
+  //         </div>
+  //         <div className="relative">
+  //           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground z-10" />
+  //           <Input
+  //             placeholder="Search products and components..."
+  //             value={searchQuery}
+  //             onChange={(e) => setSearchQuery(e.target.value)}
+  //             className={cn("!pl-10 !pr-3 h-8", typography.utils.body)}
+  //           />
+  //         </div>
+  //       </div>
+
+  //       {/* Loading State */}
+  //       {isLoadingGitOps && (
+  //         <div className="flex items-center justify-center py-12">
+  //           <div className="text-center">
+  //             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
+  //             <div className="text-sm text-gray-500">Syncing GitOps repositories...</div>
+  //           </div>
+  //         </div>
+  //       )}
+
+  //       {/* Enhanced Products Tree */}
+  //       {!isLoadingGitOps && (
+  //         <div className="flex-1 overflow-auto p-4 space-y-3">
+  //           {getFilteredGitOpsData().length === 0 ? (
+  //             <div className="text-center py-12 text-gray-500">
+  //               <Package className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+  //               <p className="font-medium mb-2">No GitOps repositories found</p>
+  //               <p className="text-sm mb-4">Configure products with GitOps repositories to get started</p>
+  //               <Button
+  //                 variant="outline"
+  //                 onClick={fetchGitOpsData}
+  //                 className="gap-2"
+  //               >
+  //                 <GitBranch className="h-4 w-4" />
+  //                 Load GitOps Data
+  //               </Button>
+  //             </div>
+  //           ) : (
+  //             getFilteredGitOpsData().map((productData, index) => (
+  //               <div key={index} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+  //                 {/* Enhanced Product Header */}
+  //                 <div
+  //                   className={`p-4 cursor-pointer transition-all duration-200 ${
+  //                     selectedProduct?.name === productData.productName
+  //                       ? 'bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-l-4 border-blue-500'
+  //                       : 'hover:bg-gray-50 dark:hover:bg-gray-700'
+  //                   }`}
+  //                   onClick={() => {
+  //                     if (productData.success && productData.metadata) {
+  //                       const product: Product = {
+  //                         id: productData.productName,
+  //                         name: productData.productName,
+  //                         displayName: productData.metadata?.product?.displayName || productData.productName,
+  //                         description: productData.metadata?.product?.description || '',
+  //                         metadata: productData.metadata,
+  //                         createdAt: new Date().toISOString(),
+  //                         updatedAt: new Date().toISOString()
+  //                       } as Product
+  //                       handleProductSelect(product)
+  //                     }
+  //                   }}
+  //                 >
+  //                   <div className="flex items-start justify-between">
+  //                     <div className="flex items-center gap-3 flex-1">
+  //                       <div className="flex items-center gap-2">
+  //                         {selectedProduct?.name === productData.productName ? (
+  //                           <ChevronDown className="h-4 w-4 text-blue-500" />
+  //                         ) : (
+  //                           <ChevronRight className="h-4 w-4 text-gray-400" />
+  //                         )}
+  //                         <Package className="h-5 w-5 text-blue-500" />
+  //                       </div>
+  //                       <div className="flex-1">
+  //                         <div className="flex items-center gap-2">
+  //                           <span className="font-semibold text-gray-800 dark:text-gray-200">
+  //                             {productData.metadata?.product?.displayName || productData.productName}
+  //                           </span>
+  //                           <span className="text-xs text-gray-500 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded-full">
+  //                             v{productData.metadata?.product?.version || '1.0.0'}
+  //                           </span>
+  //                         </div>
+  //                         {productData.metadata?.product?.description && (
+  //                           <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+  //                             {productData.metadata.product.description}
+  //                           </p>
+  //                         )}
+  //                       </div>
+  //                     </div>
+  //                     <div className="flex items-center gap-2 ml-2">
+  //                       {productData.success ? (
+  //                         <div className="flex items-center gap-1 text-xs text-green-700 bg-green-100 dark:bg-green-900/30 dark:text-green-400 px-2 py-1 rounded-full">
+  //                           <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+  //                           Synced
+  //                         </div>
+  //                       ) : (
+  //                         <div className="flex items-center gap-1 text-xs text-red-700 bg-red-100 dark:bg-red-900/30 dark:text-red-400 px-2 py-1 rounded-full">
+  //                           <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+  //                           Error
+  //                         </div>
+  //                       )}
+  //                       {productData.components && (
+  //                         <span className="text-xs text-gray-500 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded-full">
+  //                           {productData.components.length} components
+  //                         </span>
+  //                       )}
+  //                     </div>
+  //                   </div>
+  //                 </div>
+
+  //                   {/* Enhanced Component Nodes */}
+  //                   {selectedProduct?.name === productData.productName && productData.components && (
+  //                     <div className="ml-6 mt-1 space-y-1">
+  //                       {productData.components.map((comp, compIndex) => (
+  //                         <div
+  //                           key={compIndex}
+  //                           className={`group flex items-center gap-2 px-3 py-1.5 mx-2 rounded-md cursor-pointer transition-colors ${selectedComponent?.name === comp.name
+  //                               ? 'bg-gray-600 text-white'
+  //                               : 'hover:bg-gray-800 text-gray-400'
+  //                             }`}
+  //                           onClick={() => {
+  //                             const component: ProductComponent = {
+  //                               id: `${productData.productName}-${comp.name}`,
+  //                               name: comp.name,
+  //                               displayName: comp.metadata?.displayName || comp.name,
+  //                               description: comp.metadata?.description || '',
+  //                               parentProduct: productData.productName,
+  //                               metadata: comp.metadata,
+  //                               isActive: comp.metadata?.isActive ?? true,
+  //                               createdAt: new Date().toISOString(),
+  //                               updatedAt: new Date().toISOString()
+  //                             } as ProductComponent
+  //                             handleComponentSelect(component)
+  //                           }}
+  //                         >
+  //                           <div className="w-3 h-3 flex items-center justify-center flex-shrink-0">
+  //                             <div className="w-1.5 h-1.5 bg-green-500 rounded-full" />
+  //                           </div>
+  //                           <Folder className="h-3 w-3 text-blue-500 flex-shrink-0" />
+  //                           <div className="flex-1 min-w-0">
+  //                             <span className="text-sm font-medium truncate">
+  //                               {comp.metadata?.displayName || comp.name}
+  //                             </span>
+  //                           </div>
+  //                           <div className="flex items-center gap-2 flex-shrink-0">
+  //                             <span className="text-xs text-gray-400 bg-gray-200 dark:bg-gray-600 px-1.5 py-0.5 rounded">
+  //                               {comp.metadata?.category || 'service'}
+  //                             </span>
+  //                             <Button
+  //                               variant="ghost"
+  //                               size="sm"
+  //                               className="h-5 w-5 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+  //                               onClick={(e) => {
+  //                                 e.stopPropagation()
+  //                                 handleComponentAction('menu', productData, comp)
+  //                               }}
+  //                               title="Component options"
+  //                             >
+  //                               <MoreVertical className="h-2.5 w-2.5" />
+  //                             </Button>
+  //                           </div>
+  //                         </div>
+  //                       ))}
+  //                     </div>
+  //                   )}
+  //                 </div>
+  //               ))
+  //           )}
+  //         </div>
+  //       )}
+
+  //       {/* Enhanced Back Button */}
+  //       {onNavigateBack && (
+  //         <div className="p-3 border-t bg-white dark:bg-gray-800">
+  //           <Button
+  //             variant="ghost"
+  //             onClick={onNavigateBack}
+  //             className="w-full justify-start text-sm text-gray-600 hover:text-gray-800"
+  //           >
+  //             ← Back to Product Management
+  //           </Button>
+  //         </div>
+  //       )}
+  //     </div>
+  //   )
+  // }
+
+  /**
+   * Render the navigator panel using the existing ProductComponentNavigator
    */
   const renderNavigatorPanel = () => {
-    const filteredData = getFilteredGitOpsData()
-
+    // Create a custom navigator that uses GitOps data
+    const gitOpsProducts = getProductsFromGitOps()
+    
     return (
-      <div className="h-full flex flex-col bg-gray-50 dark:bg-gray-900">
+      <div className="h-full flex flex-col bg-background">
         {/* Enhanced Header */}
-        <div className="p-3 bg-white dark:bg-gray-800 border-b">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Package className="h-4 w-4 text-blue-500" />
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Product Navigator</span>
-              <span className="text-xs text-gray-500">• Browse & Select</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <span className="text-xs text-gray-500">{gitOpsData.length} Products</span>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 w-6 p-0"
-                title="More options"
-              >
-                <MoreVertical className="h-3 w-3" />
+        <div className="p-4 bg-muted/10 border-b">
+          <div className="flex items-center gap-2 mb-3">
+            {onNavigateBack && (
+              <Button variant="ghost" size="sm" onClick={onNavigateBack} className="h-7 w-7 p-0">
+                <ArrowLeft className="h-3.5 w-3.5" />
               </Button>
-            </div>
+            )}
+            <h2 className={cn("text-lg font-bold", typography.tile.title)}>GitOps Designer</h2>
+            <div className="flex-1" />
+            <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+              <MoreVertical className="h-4 w-4" />
+            </Button>
           </div>
-
-          {/* Search Bar */}
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-3 w-3 text-gray-400" />
-            <input
-              type="text"
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground z-10" />
+            <Input
               placeholder="Search products and components..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-8 pr-3 py-2 text-sm bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className={cn("!pl-10 !pr-3 h-8", typography.utils.body)}
             />
           </div>
         </div>
 
         {/* Loading State */}
         {isLoadingGitOps && (
-          <div className="flex items-center justify-center py-8">
-            <div className="text-sm text-gray-500">Loading...</div>
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
+              <div className={cn("text-sm text-muted-foreground", typography.utils.caption)}>Syncing GitOps repositories...</div>
+            </div>
           </div>
         )}
 
         {/* Enhanced Products Tree */}
         {!isLoadingGitOps && (
-          <div className="flex-1 overflow-auto">
-            {filteredData.length === 0 ? (
-              <div className="p-4 text-center text-gray-500">
-                {searchQuery ? (
-                  <>
-                    <p className="text-sm">No results found for "{searchQuery}"</p>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setSearchQuery('')}
-                      className="mt-2 text-xs"
-                    >
-                      Clear search
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-sm">No GitOps data available</p>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={fetchGitOpsData}
-                      className="mt-2 text-xs"
-                    >
-                      Load GitOps Data
-                    </Button>
-                  </>
-                )}
+          <div className="flex-1 overflow-auto p-4 space-y-3">
+            {getFilteredGitOpsData().length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <Package className="h-12 w-12 mx-auto mb-4" />
+                <p className={cn("font-medium mb-2", typography.tile.title)}>No GitOps repositories found</p>
+                <p className={cn("text-sm mb-4", typography.utils.body)}>Configure products with GitOps repositories to get started</p>
+                <Button
+                  variant="outline"
+                  onClick={fetchGitOpsData}
+                  className="gap-2"
+                >
+                  <GitBranch className="h-4 w-4" />
+                  Load GitOps Data
+                </Button>
               </div>
             ) : (
-              <div className="py-2">
-                {filteredData.map((productData, index) => (
-                  <div key={index} className="mb-2">
-                    {/* Enhanced Product Node */}
-                    <div
-                      className={`group flex items-center gap-2 px-3 py-2 mx-2 rounded-md cursor-pointer transition-colors ${selectedProduct?.name === productData.productName
-                          ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-                          : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'
-                        }`}
-                      onClick={() => {
-                        if (productData.success && productData.metadata) {
-                          const product: Product = {
-                            id: productData.productName,
-                            name: productData.productName,
-                            displayName: productData.metadata?.product?.displayName || productData.productName,
-                            description: productData.metadata?.product?.description || '',
-                            metadata: productData.metadata,
-                            createdAt: new Date().toISOString(),
-                            updatedAt: new Date().toISOString()
-                          } as Product
-                          handleProductSelect(product)
-                        }
-                      }}
-                    >
-                      {selectedProduct?.name === productData.productName ? (
-                        <ChevronDown className="h-3 w-3 flex-shrink-0" />
-                      ) : (
-                        <ChevronRight className="h-3 w-3 flex-shrink-0" />
-                      )}
-                      <Package className="h-4 w-4 text-orange-500 flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-sm truncate">
-                          {productData.metadata?.product?.displayName || productData.productName}
+              getFilteredGitOpsData().map((productData, index) => (
+                <div key={index} className="bg-card rounded-lg border shadow-sm overflow-hidden">
+                  {/* Enhanced Product Header */}
+                  <div
+                    className={cn(
+                      "p-4 cursor-pointer transition-all duration-200",
+                      selectedProduct?.name === productData.productName
+                        ? "bg-primary/5 border-l-4 border-primary"
+                        : "hover:bg-muted/30"
+                    )}
+                    onClick={() => {
+                      if (productData.success && productData.metadata) {
+                        const product: Product = {
+                          id: productData.productName,
+                          name: productData.productName,
+                          displayName: productData.metadata?.product?.displayName || productData.productName,
+                          description: productData.metadata?.product?.description || '',
+                          metadata: productData.metadata,
+                          createdAt: new Date().toISOString(),
+                          updatedAt: new Date().toISOString()
+                        } as Product
+                        handleProductSelect(product)
+                      }
+                    }}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-3 flex-1">
+                        <div className="flex items-center gap-2">
+                          {selectedProduct?.name === productData.productName ? (
+                            <ChevronDown className="h-4 w-4 text-primary" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                          )}
+                          <Package className="h-5 w-5 text-primary" />
                         </div>
-                        <div className="text-xs text-gray-500 truncate">
-                          {productData.metadata?.product?.description || 'No description'}
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className={cn("font-semibold", typography.tile.title)}>
+                              {productData.metadata?.product?.displayName || productData.productName}
+                            </span>
+                            <span className={cn("text-xs bg-muted px-2 py-1 rounded-full", typography.tile.badge)}>
+                              v{productData.metadata?.product?.version || '1.0.0'}
+                            </span>
+                          </div>
+                          {productData.metadata?.product?.description && (
+                            <p className={cn("text-sm text-muted-foreground mt-1", typography.tile.subtitle)}>
+                              {productData.metadata.product.description}
+                            </p>
+                          )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        {productData.components && (
-                          <div className="flex items-center gap-1 text-xs text-gray-500">
-                            <div className="w-1 h-1 bg-gray-400 rounded-full" />
-                            <span>{productData.components.length} components</span>
+                      <div className="flex items-center gap-2 ml-2">
+                        {productData.success ? (
+                          <div className={cn("text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-1 rounded-full", typography.tile.badge)}>
+                            <div className="w-2 h-2 bg-green-500 rounded-full inline-block mr-1 animate-pulse"></div>
+                            Synced
+                          </div>
+                        ) : (
+                          <div className={cn("text-xs bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 px-2 py-1 rounded-full", typography.tile.badge)}>
+                            <div className="w-2 h-2 bg-red-500 rounded-full inline-block mr-1"></div>
+                            Error
                           </div>
                         )}
-                        <span className="text-xs text-gray-400 bg-gray-200 dark:bg-gray-600 px-1.5 py-0.5 rounded">
-                          {productData.metadata?.product?.category || 'platform'}
-                        </span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleProductAction('menu', productData)
-                          }}
-                          title="Product options"
-                        >
-                          <MoreVertical className="h-3 w-3" />
-                        </Button>
+                        {productData.components && (
+                          <span className={cn("text-xs bg-muted px-2 py-1 rounded-full", typography.tile.badge)}>
+                            {productData.components.length} components
+                          </span>
+                        )}
                       </div>
                     </div>
-
-                    {/* Enhanced Component Nodes */}
-                    {selectedProduct?.name === productData.productName && productData.components && (
-                      <div className="ml-6 mt-1 space-y-1">
-                        {productData.components.map((comp, compIndex) => (
-                          <div
-                            key={compIndex}
-                            className={`group flex items-center gap-2 px-3 py-1.5 mx-2 rounded-md cursor-pointer transition-colors ${selectedComponent?.name === comp.name
-                                ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300'
-                                : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400'
-                              }`}
-                            onClick={() => {
-                              const component: ProductComponent = {
-                                id: `${productData.productName}-${comp.name}`,
-                                name: comp.name,
-                                displayName: comp.metadata?.displayName || comp.name,
-                                description: comp.metadata?.description || '',
-                                parentProduct: productData.productName,
-                                metadata: comp.metadata,
-                                isActive: comp.metadata?.isActive ?? true,
-                                createdAt: new Date().toISOString(),
-                                updatedAt: new Date().toISOString()
-                              } as ProductComponent
-                              handleComponentSelect(component)
-                            }}
-                          >
-                            <div className="w-3 h-3 flex items-center justify-center flex-shrink-0">
-                              <div className="w-1.5 h-1.5 bg-green-500 rounded-full" />
-                            </div>
-                            <Folder className="h-3 w-3 text-blue-500 flex-shrink-0" />
-                            <div className="flex-1 min-w-0">
-                              <span className="text-sm font-medium truncate">
-                                {comp.metadata?.displayName || comp.name}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2 flex-shrink-0">
-                              <span className="text-xs text-gray-400 bg-gray-200 dark:bg-gray-600 px-1.5 py-0.5 rounded">
-                                {comp.metadata?.category || 'service'}
-                              </span>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-5 w-5 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  handleComponentAction('menu', productData, comp)
-                                }}
-                                title="Component options"
-                              >
-                                <MoreVertical className="h-2.5 w-2.5" />
-                              </Button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
                   </div>
-                ))}
-              </div>
+
+                  {/* Enhanced Component Nodes */}
+                  {selectedProduct?.name === productData.productName && productData.components && (
+                    <div className="ml-6 mt-1 space-y-1 pb-2">
+                      {productData.components.map((comp, compIndex) => (
+                        <div
+                          key={compIndex}
+                          className={cn(
+                            "group flex items-center gap-2 px-3 py-1.5 mx-2 rounded-md cursor-pointer transition-colors",
+                            selectedComponent?.name === comp.name
+                              ? "bg-primary/10 text-primary"
+                              : "hover:bg-muted/50 text-muted-foreground"
+                          )}
+                          onClick={() => {
+                            const component: ProductComponent = {
+                              id: `${productData.productName}-${comp.name}`,
+                              name: comp.name,
+                              displayName: comp.metadata?.displayName || comp.name,
+                              description: comp.metadata?.description || '',
+                              parentProduct: productData.productName,
+                              metadata: comp.metadata,
+                              isActive: comp.metadata?.isActive ?? true,
+                              createdAt: new Date().toISOString(),
+                              updatedAt: new Date().toISOString()
+                            } as ProductComponent
+                            handleComponentSelect(component)
+                          }}
+                        >
+                          <div className="w-3 h-3 flex items-center justify-center flex-shrink-0">
+                            <div className="w-1.5 h-1.5 bg-green-500 rounded-full" />
+                          </div>
+                          <Folder className="h-3 w-3 text-primary flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <span className={cn("text-sm font-medium truncate", typography.utils.body)}>
+                              {comp.metadata?.displayName || comp.name}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <span className={cn("text-xs bg-muted px-1.5 py-0.5 rounded", typography.tile.badge)}>
+                              {comp.metadata?.category || 'service'}
+                            </span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-5 w-5 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleComponentAction('menu', productData, comp)
+                              }}
+                              title="Component options"
+                            >
+                              <MoreVertical className="h-2.5 w-2.5" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))
             )}
           </div>
         )}
 
         {/* Enhanced Back Button */}
         {onNavigateBack && (
-          <div className="p-3 border-t bg-white dark:bg-gray-800">
+          <div className="p-3 border-t bg-muted/10">
             <Button
               variant="ghost"
               onClick={onNavigateBack}
-              className="w-full justify-start text-sm text-gray-600 hover:text-gray-800"
+              className={cn("w-full justify-start text-sm", typography.utils.caption)}
             >
               ← Back to Product Management
             </Button>
