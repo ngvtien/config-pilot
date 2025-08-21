@@ -402,6 +402,8 @@ export default function AppLayoutPage({
         return (
           <EnhancedProductManagementPage
             onNavigateBack={() => setView("schema")}
+            context={context}
+            settings={settings}
           />
         )
 

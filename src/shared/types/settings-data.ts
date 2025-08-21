@@ -70,10 +70,13 @@ export interface SettingsData {
       azureSubscription?: string
     }
   }
-  
+
   // Platform configuration
   platformType: 'kubernetes' | 'openshift' | 'auto-detect'
   platformSettings?: PlatformSettings
+
+  // Organization settings
+  hostingOrg: string
 
 }
 
@@ -82,26 +85,26 @@ export interface LoggingSettings {
   mainProcessLogLevel: 'error' | 'warn' | 'info' | 'debug'
   rendererProcessLogLevel: 'error' | 'warn' | 'info' | 'debug'
   ipcLogLevel: 'error' | 'warn' | 'info' | 'debug'
-  
+
   // File logging configuration
   enableFileLogging: boolean
   logFileLocation: string
   maxLogFileSize: number // in MB
   maxLogFiles: number // number of rotated files to keep
-  
+
   // Console logging
   enableConsoleLogging: boolean
   enableColoredOutput: boolean
-  
+
   // Advanced options
   enableTimestamps: boolean
   enableProcessLabels: boolean
   logFormat: 'simple' | 'detailed' | 'json'
-  
+
   // Performance logging
   enablePerformanceLogging: boolean
   performanceLogThreshold: number // in milliseconds
-  
+
   // Development options
   enableDebugMode: boolean
   enableVerboseLogging: boolean
@@ -111,14 +114,14 @@ export interface LoggingSettings {
 export interface PlatformSettings {
   // Platform detection settings
   autoDetectPlatform: boolean
-  
+
   // Platform-specific configurations
   kubernetes?: {
     preferredIngressController: 'nginx' | 'traefik' | 'istio' | 'other'
     defaultStorageClass: string
     enablePodSecurityPolicies: boolean
   }
-  
+
   openshift?: {
     defaultRouteHost: string
     enableSecurityContextConstraints: boolean
@@ -126,7 +129,7 @@ export interface PlatformSettings {
     enableBuildConfigs: boolean
     enableImageStreams: boolean
   }
-  
+
   // Feature flags based on platform
   features: {
     hasRoutes: boolean
@@ -141,19 +144,19 @@ export interface PlatformSettings {
 export interface SchemaSettings {
   // Local schema storage directory
   schemaStorageDir: string
-  
+
   // Default Kubernetes version for new schemas
   defaultK8sVersion: string
-  
+
   // Available Kubernetes versions
   availableVersions: string[]
-  
+
   // Auto-download schemas on startup
   autoDownloadSchemas: boolean
-  
+
   // Cache duration in hours
   schemaCacheDuration: number
-  
+
   // Schema source configuration
   schemaSource: {
     baseUrl: string
@@ -406,7 +409,7 @@ export const createDefaultSettings = (): SettingsData => ({
     },
   },
   kubernetesVersion: "",
-  
+
   loggingSettings: {
     mainProcessLogLevel: 'info',
     rendererProcessLogLevel: 'info',
@@ -450,5 +453,8 @@ export const createDefaultSettings = (): SettingsData => ({
       hasSecurityContextConstraints: false,
       hasIngressControllers: true
     }
-  },  
+  },
+
+  // Organization defaults
+  hostingOrg: 'da',
 })

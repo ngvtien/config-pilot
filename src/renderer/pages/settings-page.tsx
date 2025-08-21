@@ -662,6 +662,24 @@ export function SettingsPage({ context, onContextChange, settings, onSettingsCha
                     New
                   </Button>
                 </div>
+                {localSettings.baseDirectory && (
+                  <div className="mt-2 p-2 bg-gray-50 dark:bg-gray-800 rounded text-xs">
+                    <div><strong>GitOps repositories will be stored at:</strong></div>
+                    <div className="font-mono text-gray-600 dark:text-gray-400">{localSettings.baseDirectory}/repositories/gitops-products-{'{product-name}'}</div>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <h4 className="font-medium mb-2">Git Hosting Organization</h4>
+                <p className="text-sm text-muted-foreground mb-3">Organization name used in GitOps repository URLs (e.g., da for http://localhost:9080/da/gitops-products-{'{product}'}.git)</p>
+                <Input
+                  id="hostingOrg"
+                  value={localSettings.hostingOrg}
+                  onChange={(e) => handleSettingChange("hostingOrg", e.target.value)}
+                  placeholder="e.g., da"
+                  className="max-w-xs"
+                />
               </div>
 
               <div className="flex items-center justify-between">

@@ -1350,9 +1350,9 @@ export const ArgoCDDiffViewer = ({ appName }) => {
 
 ## **3. Git Integration for Helm Chart Management**
 
-### **Git Service (`src/main/git.ts`)**
+### **Git Service (`src/main/services/git-service.ts`)**
 ```typescript
-import simpleGit from 'simple-git';
+import { GitAdapterFactory } from './adapters/git-adapter-factory';
 import fs from 'fs';
 import path from 'path';
 

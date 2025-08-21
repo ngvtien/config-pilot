@@ -214,6 +214,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
       'git:getDuplicateServers',
       'git:updateServer',
       'git:testServerConnection',
+      'git:updateProductMetadata',
+      'git:validateRepositoryAccess',
 
       'logger:updateConfig',
       'logger:setLogLevel',
@@ -507,6 +509,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
     getDuplicateServers: () => ipcRenderer.invoke('git:getDuplicateServers'),
     updateServer: (serverId: string, updates: any) => ipcRenderer.invoke('git:updateServer', serverId, updates),
     testServerConnection: (serverId: string) => ipcRenderer.invoke('git:testServerConnection', serverId),
+    
+    // GitOps operations
+    updateProductMetadata: (params: {
+      repositoryUrl: string
+      localPath: string
+      productName: string
+      metadata: string
+      commitMessage: string
+      branch: string
+    }) => ipcRenderer.invoke('git:updateProductMetadata', params),
   },
 
   // Logger API

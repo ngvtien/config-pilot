@@ -18,16 +18,20 @@ import {
   ChevronDown, ChevronRight, Component, Settings, Eye, EyeOff,
   Info, HelpCircle, RefreshCw, Search, Filter,
   AlertTriangle, CheckCircle, XCircle,
-  Loader2
+  Loader2, FolderOpen
 } from 'lucide-react'
 import type { Product } from '@/shared/types/product'
 import type { ProductComponent } from '@/shared/types/product-component'
+import type { ContextData } from '@/shared/types/context-data'
+import type { SettingsData } from '@/shared/types/settings-data'
 import {
   createNewProduct,
   validateProduct,
   generateKubernetesNamespace,
   generateGitOpsFolderPath,
-  generateApplicationSetName
+  generateApplicationSetName,
+  generateGitOpsRepositoryUrl,
+  generateLocalRepositoryPath
 } from '@/shared/types/product'
 
 import {
@@ -44,6 +48,8 @@ import { SimpleRepositoryInput } from '../components/git/simple-repository-input
 
 interface EnhancedProductManagementPageProps {
   onNavigateBack?: () => void
+  context?: ContextData
+  settings?: SettingsData
 }
 
 type DialogMode = 'product' | 'component' | null
@@ -58,7 +64,7 @@ type DialogAction = 'create' | 'edit'
  * - Improved form validation feedback
  * - Better action grouping and organization
  */
-export function EnhancedProductManagementPage({ onNavigateBack }: EnhancedProductManagementPageProps) {
+export function EnhancedProductManagementPage({ onNavigateBack, context, settings }: EnhancedProductManagementPageProps) {
   // State for products and components
   const [products, setProducts] = useState<Product[]>([])
   const [components, setComponents] = useState<Record<string, ProductComponent[]>>({})
@@ -78,6 +84,7 @@ export function EnhancedProductManagementPage({ onNavigateBack }: EnhancedProduc
   const [productFormData, setProductFormData] = useState<Partial<Product>>({})
   const [componentFormData, setComponentFormData] = useState<Partial<ProductComponent>>({})
   const [errors, setErrors] = useState<string[]>([])
+  const [isSaving, setIsSaving] = useState(false)
 
   // Repository integration
   const { repositories, loading, error } = useRepositorySelector('developer')
@@ -102,6 +109,39 @@ export function EnhancedProductManagementPage({ onNavigateBack }: EnhancedProduc
   useEffect(() => {
     loadData()
   }, [])
+
+  // Auto-generate GitOps repository URL and local path when product name or context changes
+  useEffect(() => {
+    if (productFormData.name && context?.baseHostUrl && settings?.hostingOrg && settings?.baseDirectory) {
+      const gitOpsUrl = generateGitOpsRepositoryUrl(
+        context.baseHostUrl,
+        settings.hostingOrg,
+        productFormData.name
+      )
+
+      const localPath = generateLocalRepositoryPath(
+        settings.baseDirectory,
+        productFormData.name
+      )
+
+      // Only update if the URL or path is different to avoid infinite loops
+      if (productFormData.metadata?.gitOps?.repositoryUrl !== gitOpsUrl ||
+        productFormData.metadata?.gitOps?.localPath !== localPath) {
+        setProductFormData(prev => ({
+          ...prev,
+          metadata: {
+            ...prev.metadata,
+            gitOps: {
+              ...prev.metadata?.gitOps,
+              repositoryUrl: gitOpsUrl,
+              localPath: localPath,
+              branch: prev.metadata?.gitOps?.branch || 'main'
+            }
+          }
+        }))
+      }
+    }
+  }, [productFormData.name, context?.baseHostUrl, settings?.hostingOrg, settings?.baseDirectory])
 
   // Add useEffect to validate repositories when components change
   useEffect(() => {
@@ -232,6 +272,110 @@ export function EnhancedProductManagementPage({ onNavigateBack }: EnhancedProduc
   }
 
   /**
+   * Generate metadata.json content for the product
+   */
+  const generateProductMetadata = (product: Partial<Product>) => {
+    return {
+      product: {
+        id: product.id,
+        name: product.name,
+        displayName: product.displayName,
+        description: product.description,
+        owner: product.owner,
+        isActive: product.isActive,
+        createdAt: product.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        metadata: {
+          version: product.metadata?.version,
+          category: product.metadata?.category,
+          tags: product.metadata?.tags || [],
+          repository: product.metadata?.repository,
+          documentation: product.metadata?.documentation,
+          gitOps: {
+            repositoryUrl: product.metadata?.gitOps?.repositoryUrl,
+            localPath: product.metadata?.gitOps?.localPath,
+            branch: product.metadata?.gitOps?.branch || 'main',
+            path: product.metadata?.gitOps?.path || '/'
+          },
+          rbac: product.metadata?.rbac
+        }
+      },
+      generated: {
+        timestamp: new Date().toISOString(),
+        version: '1.0.0',
+        generator: 'ConfigPilot Product Management'
+      }
+    }
+  }
+
+  /**
+   * Handle GitOps repository operations
+   */
+  const handleGitOpsOperations = async (product: Partial<Product>) => {
+    if (!product.metadata?.gitOps?.repositoryUrl || !context?.baseHostUrl || !settings?.hostingOrg) {
+      console.log('Skipping GitOps operations - missing configuration')
+      return { success: true } // Skip if no GitOps repo configured
+    }
+
+    try {
+      const repositoryUrl = product.metadata.gitOps.repositoryUrl
+      const metadata = generateProductMetadata(product)
+      const localPath = product.metadata?.gitOps?.localPath || generateLocalRepositoryPath(settings.baseDirectory, product.name!)
+
+      console.log('Starting GitOps operation:', {
+        repositoryUrl,
+        localPath,
+        productName: product.name
+      })
+
+      // Check if the API exists
+      if (!window.electronAPI?.git?.updateProductMetadata) {
+        console.error('GitOps API not available - updateProductMetadata handler missing')
+        console.log('Available git methods:', Object.keys(window.electronAPI?.git || {}))
+        throw new Error('GitOps API not available - updateProductMetadata handler missing')
+      }
+
+      console.log('GitOps API is available, calling updateProductMetadata...')
+
+      // Get components for this product
+      const productComponents = components[product.name!] || []
+      const componentData = productComponents.map(comp => ({
+        name: comp.name,
+        metadata: {
+          displayName: comp.displayName,
+          description: comp.description,
+          owner: comp.owner,
+          category: comp.metadata?.category,
+          version: comp.metadata?.version,
+          isActive: comp.isActive
+        }
+      }))
+
+      const gitOpsResult = await window.electronAPI.git.updateProductMetadata({
+        repositoryUrl,
+        localPath,
+        productName: product.name!,
+        metadata: JSON.stringify(metadata, null, 2),
+        commitMessage: `${editingProduct ? 'Update' : 'Add'} product metadata for ${product.name}`,
+        branch: 'main',
+        components: componentData
+      })
+
+      console.log('GitOps result:', gitOpsResult)
+
+      if (!gitOpsResult?.success) {
+        throw new Error(`Failed to update GitOps repository: ${gitOpsResult?.error || 'Unknown error'}`)
+      }
+
+      return { success: true, message: 'GitOps repository updated successfully' }
+
+    } catch (error: any) {
+      console.error('GitOps operation failed:', error)
+      return { success: false, error: error.message }
+    }
+  }
+
+  /**
    * Handle saving product
    */
   const handleSaveProduct = async () => {
@@ -241,16 +385,51 @@ export function EnhancedProductManagementPage({ onNavigateBack }: EnhancedProduc
       return
     }
 
+    setIsSaving(true)
+    const isCreating = !editingProduct
+
     try {
+      // Save product to database first
+      let savedProduct: Product
       if (editingProduct) {
-        await window.electronAPI?.product?.updateProduct(editingProduct.id, productFormData)
+        savedProduct = await window.electronAPI?.product?.updateProduct(editingProduct.id, productFormData)
       } else {
-        await window.electronAPI?.product?.createProduct(productFormData)
+        savedProduct = await window.electronAPI?.product?.createProduct(productFormData)
       }
+
+      // Handle GitOps repository operations if GitOps repo is configured
+      if (productFormData.metadata?.gitOps?.repositoryUrl) {
+        const gitOpsResult = await handleGitOpsOperations(savedProduct || productFormData)
+
+        if (!gitOpsResult.success) {
+          // Show warning but don't fail the entire operation
+          showAlert({
+            title: 'GitOps Warning',
+            message: `Product ${isCreating ? 'created' : 'updated'} successfully, but GitOps repository operation failed: ${gitOpsResult.error}`,
+            variant: 'warning'
+          })
+        } else if (gitOpsResult.message) {
+          showAlert({
+            title: 'Success',
+            message: `Product ${isCreating ? 'created' : 'updated'} successfully! ${gitOpsResult.message}`,
+            variant: 'success'
+          })
+        }
+      } else {
+        // No GitOps repo configured, just show success
+        showAlert({
+          title: 'Success',
+          message: `Product ${isCreating ? 'created' : 'updated'} successfully!`,
+          variant: 'success'
+        })
+      }
+
       await loadData()
       setDialogMode(null)
     } catch (error: any) {
-      setErrors([error.message || 'Failed to save product'])
+      setErrors([error.message || `Failed to ${isCreating ? 'create' : 'update'} product`])
+    } finally {
+      setIsSaving(false)
     }
   }
 
@@ -464,24 +643,11 @@ export function EnhancedProductManagementPage({ onNavigateBack }: EnhancedProduc
 
 
   /**
-   * Validates a component's repository URL by checking actual repository existence
-   * @param component - The product component to validate
-   * @returns Promise resolving to validation status
+   * Validates a component's repository URL (disabled for now)
    */
   const validateComponentRepository = async (component: ProductComponent): Promise<'valid' | 'invalid' | 'unknown'> => {
-    // Fix: Access the correct repository URL path
-    if (!component.metadata?.gitOps?.repositoryUrl) return 'unknown'
-
-    try {
-      console.log(`Validating repository: ${component.metadata.gitOps.repositoryUrl}`)
-      // Use validateRepositoryAccess instead of checkGitAuth for proper repository validation
-      const result = await window.electronAPI?.git?.validateRepositoryAccess(component.metadata.gitOps.repositoryUrl)
-      console.log(`Validation result for ${component.metadata.gitOps.repositoryUrl}:`, result)
-      return result?.isValid ? 'valid' : 'invalid'
-    } catch (error) {
-      console.error(`Error validating repository ${component.metadata.gitOps.repositoryUrl}:`, error)
-      return 'invalid'
-    }
+    // Skip validation for now - just return unknown
+    return 'unknown'
   }
 
   // Fix the validateAllRepositories function (around line 449)
@@ -1296,6 +1462,98 @@ export function EnhancedProductManagementPage({ onNavigateBack }: EnhancedProduc
                 </div>
               </div>
 
+              {/* GitOps Repository Configuration */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-1">
+                  <Label>GitOps Repository</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="h-3 w-3 text-gray-400 cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>GitOps repository for this product's configuration and deployment manifests</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+                <SimpleRepositoryInput
+                  value={productFormData.metadata?.gitOps?.repositoryUrl || ''}
+                  onChange={(repositoryUrl) => {
+                    setProductFormData({
+                      ...productFormData,
+                      metadata: {
+                        ...productFormData.metadata,
+                        gitOps: {
+                          ...productFormData.metadata?.gitOps,
+                          repositoryUrl
+                        }
+                      }
+                    })
+                  }}
+                  onCreateEnvironmentBranches={async (repositoryUrl) => {
+                    // Create environment branches: dev, sit, uat, prod
+                    const environments = ['dev', 'sit', 'uat', 'prod'];
+
+                    for (const env of environments) {
+                      try {
+                        console.log(`Creating branch: ${env} in ${repositoryUrl}`);
+                      } catch (error) {
+                        console.error(`Failed to create ${env} branch:`, error);
+                      }
+                    }
+                  }}
+                  className="min-h-24"
+                />
+              </div>
+
+              {/* GitOps Repository URL Preview */}
+              {/* {productFormData.name && context?.baseHostUrl && settings?.hostingOrg && settings?.baseDirectory && (
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <h4 className="font-medium text-sm">GitOps Repository Preview</h4>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-4 w-4 text-blue-600 cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Auto-generated GitOps repository configuration preview</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <div className="space-y-2 text-xs text-gray-600 dark:text-gray-400">
+                    <div><strong>Remote Repository URL:</strong> {generateGitOpsRepositoryUrl(context.baseHostUrl, settings.hostingOrg, productFormData.name)}</div>
+                    <div><strong>Local Repository Path:</strong> {generateLocalRepositoryPath(settings.baseDirectory, productFormData.name)}</div>
+                    <div><strong>URL Pattern:</strong> {context.baseHostUrl}/{settings.hostingOrg}/gitops-products-{'{product-name}'}.git</div>
+                    <div><strong>Path Pattern:</strong> {settings.baseDirectory}/repositories/gitops-products-{'{product-name}'}</div>
+                    <div><strong>Default Branch:</strong> main</div>
+                    <div><strong>Files to be created:</strong></div>
+                    <ul className="ml-4 space-y-1">
+                      <li>• <code>metadata.json</code> - Product configuration and metadata</li>
+                      <li>• <code>README.md</code> - Repository documentation</li>
+                    </ul>
+                  </div>
+                </div>
+              )} */}
+
+              {/* Metadata Preview */}
+              {/* {productFormData.name && (
+                <div className="bg-gray-50 dark:bg-gray-900/20 border border-gray-200 dark:border-gray-800 rounded-md p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <h4 className="font-medium text-sm">Metadata Preview</h4>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-4 w-4 text-gray-600 cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Preview of metadata.json content that will be created in the GitOps repository</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <pre className="text-xs bg-white dark:bg-gray-800 p-2 rounded border overflow-x-auto">
+                    {JSON.stringify(generateProductMetadata(productFormData), null, 2)}
+                  </pre>
+                </div>
+              )} */}
+
               <div className="flex items-center space-x-2">
                 <Switch
                   id="isActive"
@@ -1317,11 +1575,20 @@ export function EnhancedProductManagementPage({ onNavigateBack }: EnhancedProduc
             </div>
 
             <DialogFooter>
-              <Button variant="outline" onClick={() => setDialogMode(null)}>
+              <Button variant="outline" onClick={() => setDialogMode(null)} disabled={isSaving}>
                 Cancel
               </Button>
-              <Button onClick={handleSaveProduct}>
-                {dialogAction === 'edit' ? 'Update' : 'Create'} Product
+              <Button onClick={handleSaveProduct} disabled={isSaving}>
+                {isSaving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    {dialogAction === 'edit' ? 'Updating...' : 'Creating...'}
+                  </>
+                ) : (
+                  <>
+                    {dialogAction === 'edit' ? 'Update' : 'Create'} Product
+                  </>
+                )}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -1453,45 +1720,28 @@ export function EnhancedProductManagementPage({ onNavigateBack }: EnhancedProduc
               </div>
 
               <div className="space-y-2">
-                <div className="flex items-center gap-1">
-                  <Label>Git Repository</Label>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <HelpCircle className="h-3 w-3 text-gray-400 cursor-help" />
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Git repository URL for this component's source code and GitOps configuration</p>
-                    </TooltipContent>
-                  </Tooltip>
+                <div className="space-y-2">
+                  {/* <div className="flex items-center gap-1">
+                    <Label className="text-sm font-medium">GitOps Configuration</Label>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <HelpCircle className="h-3 w-3 text-gray-400 cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>This component will be stored as a folder within the product's GitOps repository</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-md border">
+                    <div className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
+                      <div><strong>Component Folder:</strong> <code className="bg-gray-200 dark:bg-gray-700 px-1 rounded">{componentFormData.name || '[component-name]'}/</code></div>
+                      <div><strong>Product Repository:</strong> <code className="bg-gray-200 dark:bg-gray-700 px-1 rounded text-xs">{selectedProductForComponent ? generateGitOpsRepositoryUrl(context?.baseHostUrl || '', settings?.hostingOrg || '', selectedProductForComponent) : '[product-repository]'}</code></div>
+                      <div className="mt-2 text-xs text-blue-600 dark:text-blue-400">
+                        💡 Components are organized as folders within the product's GitOps repository instead of having separate repositories.
+                      </div>
+                    </div>
+                  </div> */}
                 </div>
-                <SimpleRepositoryInput
-                  value={componentFormData.metadata?.gitOps?.repositoryUrl || ''}
-                  onChange={(repositoryUrl) => {
-                    setComponentFormData({
-                      ...componentFormData,
-                      metadata: {
-                        ...componentFormData.metadata,
-                        gitOps: {
-                          ...componentFormData.metadata?.gitOps,
-                          repositoryUrl
-                        }
-                      }
-                    })
-                  }}
-                  onCreateEnvironmentBranches={async (repositoryUrl) => {
-                    // Create environment branches: dev, sit, uat, prod
-                    const environments = ['dev', 'sit', 'uat', 'prod'];
-
-                    for (const env of environments) {
-                      try {
-                        console.log(`Creating branch: ${env} in ${repositoryUrl}`);
-                      } catch (error) {
-                        console.error(`Failed to create ${env} branch:`, error);
-                      }
-                    }
-                  }}
-                  className="min-h-24"
-                />
               </div>
 
               <div className="flex items-center space-x-2">
@@ -1514,7 +1764,7 @@ export function EnhancedProductManagementPage({ onNavigateBack }: EnhancedProduc
               </div>
 
               {/* Enhanced GitOps Preview */}
-              {componentFormData.name && componentFormData.parentProduct && (
+              {/* {componentFormData.name && componentFormData.parentProduct && (
                 <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md p-3">
                   <div className="flex items-center gap-2 mb-2">
                     <h4 className="font-medium text-sm">GitOps Configuration Preview</h4>
@@ -1533,7 +1783,7 @@ export function EnhancedProductManagementPage({ onNavigateBack }: EnhancedProduc
                     <div><strong>ApplicationSet:</strong> {componentFormData.parentProduct}-{componentFormData.name}-{'{environment}'}</div>
                   </div>
                 </div>
-              )}
+              )} */}
             </div>
 
             <DialogFooter>

@@ -1,7 +1,7 @@
 import { app, BrowserWindow, nativeTheme, screen, session, ipcMain, shell } from 'electron';
 import Store from 'electron-store';
 import path from 'path';
-import { initializeSchemaHandlers, setupIpcHandlers, registerProductComponentHandlers, registerUnifiedGitHandlers, registerLoggerHandlers } from './ipc-handlers';
+import { initializeSchemaHandlers, setupIpcHandlers, registerProductComponentHandlers, registerGitHandlers, registerLoggerHandlers } from './ipc-handlers';
 import waitOn from 'wait-on';
 import { initK8sService } from './k8s-service-client';
 import { templateManager } from './template-manager';
@@ -425,7 +425,7 @@ app.whenReady().then(async () => {
   setupIpcHandlers();
   registerLoggerHandlers();
   initializeSchemaHandlers();
-  registerUnifiedGitHandlers();
+  registerGitHandlers();
   registerProductComponentHandlers();
   setupWindowHandlers();
   perfLog.timeEnd('ipc-setup');

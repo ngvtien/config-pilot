@@ -134,7 +134,7 @@ const ResizablePanelGroup = React.forwardRef<HTMLDivElement, ResizablePanelGroup
       }
       
       if (containerSize === 0) {
-        console.warn('[Resizable] Container size is 0, skipping save')
+        // Container not yet rendered, skip saving sizes
         return
       }
       
