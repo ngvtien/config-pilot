@@ -431,11 +431,8 @@ export default function AppLayoutPage({
         setUserRole={setUserRole}
         view={view}
         setView={setView}
-        environment={context.environment}
-        setEnvironment={(env: any) => handleContextChange({ ...context, environment: env })}
         kubernetesContext={kubernetesContext}
         setKubernetesContext={handleKubernetesContextChange}
-        onSaveContext={() => saveContextToLocalStorage(context)}
       />
       <SidebarInset>
         <header className="sticky top-0 z-50 flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12 bg-background border-b">

@@ -18,8 +18,13 @@ import {
   Activity,
   Library,
   FolderPlus,
-  Package
+  Package,
+  Sun, Moon
 } from "lucide-react"
+
+// New imports for theme toggle
+import { useTheme } from "@/renderer/components/theme-provider"
+import { Switch } from "@/renderer/components/ui/switch"
 
 import {
   Sidebar,
@@ -35,21 +40,20 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/renderer/components/ui/sidebar"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/renderer/components/ui/select"
 import KubernetesContextSelector from "@/renderer/components/kubernetes-context-selector"
 import { NavProjects } from "@/renderer/components/nav-projects"
 import { UserRole, ViewType } from "./types/app-types"
+import { Button } from "./ui/button"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/renderer/components/ui/tooltip"
+import { typography } from "@/renderer/lib/typography"
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   userRole: UserRole
   setUserRole: (role: UserRole) => void
   view: ViewType
   setView: (view: ViewType) => void
-  environment: string
-  setEnvironment: (env: string) => void
   kubernetesContext: string
   setKubernetesContext: (context: string) => void
-  onSaveContext: () => void
 }
 
 const roleItems = [
@@ -105,7 +109,7 @@ const developerTools = [
     title: "Project Composer",
     icon: FolderPlus,
     view: "project-composer" as ViewType,
-  },  
+  },
   {
     title: "Product Workspace",
     icon: Package,
@@ -150,7 +154,7 @@ const devopsTools = [
     icon: FolderGit2,
     view: "git-repos" as ViewType,
   },
-    {
+  {
     title: "Workspace Demo",
     icon: Boxes,
     view: "workspace-demo" as ViewType,
@@ -175,14 +179,26 @@ export function AppSidebar({
   setUserRole,
   view,
   setView,
-  environment,
-  setEnvironment,
   kubernetesContext,
   setKubernetesContext,
-  onSaveContext,
   ...props
 }: AppSidebarProps) {
   const { toggleSidebar } = useSidebar()
+
+  const { theme, setTheme } = useTheme()
+
+  // Reflect system preference when theme is 'system'
+  const isDark =
+    theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches)
+
+  const handleThemeToggle = (checked: boolean) => {
+    setTheme(checked ? "dark" : "light")
+  }
+
+  /** Toggle theme using an icon button (collapsed sidebar) */
+  const handleCollapsedThemeClick = () => {
+    setTheme(isDark ? "light" : "dark")
+  }
 
   const getToolsForRole = () => {
     switch (userRole) {
@@ -214,7 +230,7 @@ export function AppSidebar({
     <Sidebar collapsible="icon" variant="sidebar-smooth" className="sidebar-smooth" {...props}>
       <SidebarHeader>
         <div className="group-data-[collapsible=icon]:p-2 group-data-[state=expanded]:p-2">
-          <div 
+          <div
             className="cursor-pointer transition-all duration-200 hover:bg-sidebar-accent rounded-md group-data-[collapsible=icon]:p-0 group-data-[state=expanded]:p-2"
             onClick={toggleSidebar}
           >
@@ -224,7 +240,7 @@ export function AppSidebar({
                   CP
                 </span>
               </div>
-              
+
               <div className="flex flex-col items-center text-center mt-2 group-data-[collapsible=icon]:hidden">
                 <span className="font-semibold text-base">ConfigPilot</span>
                 <span className="text-xs text-muted-foreground">Configuration Management</span>
@@ -339,31 +355,52 @@ export function AppSidebar({
       </SidebarContent>
 
       <SidebarFooter>
+        {/* Expanded-only appearance control */}
         <SidebarGroup className="group-data-[collapsible=icon]:hidden">
-          <SidebarGroupLabel>ENVIRONMENT</SidebarGroupLabel>
+          <SidebarGroupLabel>APPEARANCE</SidebarGroupLabel>
           <SidebarGroupContent>
             <div className="px-2">
-              <Select
-                value={environment}
-                onValueChange={(value: string) => {
-                  setEnvironment(value)
-                  onSaveContext()
-                  console.log("Environment changed to:", value)
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select environment" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="dev">Development</SelectItem>
-                  <SelectItem value="sit">System Integration</SelectItem>
-                  <SelectItem value="uat">User Acceptance</SelectItem>
-                  <SelectItem value="prod">Production</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="flex items-center justify-between">
+                <Sun className="h-4 w-4 text-muted-foreground" />
+                <Switch
+                  checked={isDark}
+                  onCheckedChange={handleThemeToggle}
+                  aria-label="Toggle dark mode"
+                />
+                <Moon className="h-4 w-4 text-muted-foreground" />
+              </div>
             </div>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {/* Collapsed-only compact toggle with tooltip */}
+        <SidebarGroup className="hidden group-data-[collapsible=icon]:flex group-data-[state=expanded]:hidden items-center justify-center">
+          <SidebarGroupContent className="flex items-center justify-center">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Toggle theme"
+                  onClick={handleCollapsedThemeClick}
+                  className="h-8 w-8 text-sidebar-foreground"
+                >
+                  {isDark ? (
+                    <Sun className="size-5" />
+                  ) : (
+                    <Moon className="size-5" />
+                  )}
+                </Button>
+
+              </TooltipTrigger>
+              <TooltipContent side="right" align="center" className={typography.tooltip.text}>
+                Toggle theme
+              </TooltipContent>
+            </Tooltip>
+
+          </SidebarGroupContent>
+        </SidebarGroup>
+
       </SidebarFooter>
 
       <SidebarRail />
