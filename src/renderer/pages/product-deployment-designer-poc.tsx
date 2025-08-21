@@ -1,21 +1,19 @@
 "use client"
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { ProductWorkspace4Panel } from '@/renderer/components/products/product-workspace-4panel'
 import { SmartFileTree, FileTreeNode } from '@/renderer/components/ide/smart-file-tree'
 import { ContextAwareEditor } from '@/renderer/components/ide/context-aware-editor'
 import { Product } from '@/shared/types/product'
 import { ProductComponent } from '@/shared/types/product-component'
 import { ProductComponentTiles } from '@/renderer/components/products/product-component-tiles'
-import { ProductComponentNavigator } from '@/renderer/components/products/product-component-navigator'
+//import { ProductComponentNavigator } from '@/renderer/components/products/product-component-navigator'
+import { RealDataProductComponentNavigator } from '@/renderer/components/products/real-data-product-component-navigator'
+
 import { typography } from '@/renderer/lib/typography'
 import { cn } from "@/lib/utils"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs'
 import { Input } from '@/renderer/components/ui/input'
-import { Card, CardContent } from '@/renderer/components/ui/card'
-import { Badge } from '@/renderer/components/ui/badge'
-import { ScrollArea } from '@/renderer/components/ui/scroll-area'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/renderer/components/ui/collapsible'
-import { FolderOpen, X, Package, GitBranch, ChevronDown, ChevronRight, Folder, Search, MoreVertical, Plus, Edit, Trash2, ArrowLeft, Component } from 'lucide-react'
+import { X, Package, GitBranch, ChevronDown, ChevronRight, Folder, Search, MoreVertical, ArrowLeft } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
 
 interface ProductDeploymentDesignerPoCProps {
@@ -274,9 +272,7 @@ appVersion: "1.0.0"`
         addToConsole('Using fallback repositories for GitOps data', 'info')
 
         // Fetch GitOps metadata for fallback repositories
-        const result = await window.electronAPI?.git?.batchFetchGitOpsMetadata?.({
-          repositories: fallbackRepositories
-        })
+        const result = await window.electronAPI?.git?.batchFetchGitOpsMetadata?.()
 
         if (result?.success) {
           setGitOpsData(result.results)
@@ -533,20 +529,61 @@ appVersion: "1.0.0"`
     fetchGitOpsData()
   }, [])
 
+  const realProducts: Product[] = gitOpsData
+    .filter(productData => productData.success && productData.metadata)
+    .map(productData => ({
+      id: productData.productName,
+      name: productData.productName,
+      displayName: productData.metadata?.product?.displayName || productData.productName,
+      description: productData.metadata?.product?.description || '',
+      owner: productData.metadata?.product?.owner || '',
+      isActive: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      metadata: {
+        version: productData.metadata?.product?.version || '1.0.0',
+        category: productData.metadata?.product?.category || 'platform',
+        tags: productData.metadata?.product?.tags || [],
+        gitOps: productData.metadata
+      }
+    }))
+
+  const realComponents: Record<string, ProductComponent[]> = {}
+  realProducts.forEach(product => {
+    const productData = gitOpsData.find(p => p.productName === product.name)
+    if (productData && productData.components) {
+      realComponents[product.name] = productData.components.map(comp => ({
+        id: `${product.name}-${comp.name}`,
+        name: comp.name,
+        displayName: comp.metadata?.displayName || comp.name,
+        description: comp.metadata?.description || '',
+        parentProduct: product.name,
+        isActive: comp.metadata?.isActive ?? true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        metadata: {
+          ...comp.metadata,
+          type: comp.metadata?.category || 'service'
+        }
+      }))
+    }
+  })
+
   /**
    * Render the product navigator panel
    */
-  // const renderNavigatorPanel = () => {
-  //   return (
-  //     <ProductComponentNavigator
-  //       selectedProduct={selectedProduct}
-  //       selectedComponent={selectedComponent}
-  //       onProductSelect={handleProductSelect}
-  //       onComponentSelect={handleComponentSelect}
-  //       onNavigateBack={onNavigateBack}
-  //     />
-  //   )
-  // }
+  const renderProductNavigatorPanel = () => {
+    return (
+      <RealDataProductComponentNavigator
+        products={realProducts}
+        components={realComponents}
+        onProductSelect={handleProductSelect}
+        onComponentSelect={handleComponentSelect}
+        selectedProduct={selectedProduct}
+        selectedComponent={selectedComponent}
+      />
+    )
+  }
 
   /**
    * Filter products and components based on search query
@@ -655,220 +692,10 @@ appVersion: "1.0.0"`
   /**
    * Render the navigator panel using the existing ProductComponentNavigator
    */
-  // const renderNavigatorPanel = () => {
-  //   // Create a custom navigator that uses GitOps data
-  //   const gitOpsProducts = getProductsFromGitOps()
-    
-  //   return (
-  //     <div className="h-full flex flex-col bg-slate-900">
-  //       {/* Enhanced Header */}
-  //       <div className="p-4 bg-slate-800 border-b border-slate-700">
-  //         <div className="flex items-center gap-2 mb-3">
-  //           {onNavigateBack && (
-  //             <Button variant="ghost" size="sm" onClick={onNavigateBack} className="h-7 w-7 p-0">
-  //               <ArrowLeft className="h-3.5 w-3.5" />
-  //             </Button>
-  //           )}
-  //           <h2 className="text-lg font-bold text-white">GitOps Designer</h2>
-  //           <div className="flex-1" />
-  //           <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
-  //             <MoreVertical className="h-4 w-4 text-muted-foreground" />
-  //           </Button>
-  //         </div>
-  //         <div className="relative">
-  //           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground z-10" />
-  //           <Input
-  //             placeholder="Search products and components..."
-  //             value={searchQuery}
-  //             onChange={(e) => setSearchQuery(e.target.value)}
-  //             className={cn("!pl-10 !pr-3 h-8", typography.utils.body)}
-  //           />
-  //         </div>
-  //       </div>
-
-  //       {/* Loading State */}
-  //       {isLoadingGitOps && (
-  //         <div className="flex items-center justify-center py-12">
-  //           <div className="text-center">
-  //             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
-  //             <div className="text-sm text-gray-500">Syncing GitOps repositories...</div>
-  //           </div>
-  //         </div>
-  //       )}
-
-  //       {/* Enhanced Products Tree */}
-  //       {!isLoadingGitOps && (
-  //         <div className="flex-1 overflow-auto p-4 space-y-3">
-  //           {getFilteredGitOpsData().length === 0 ? (
-  //             <div className="text-center py-12 text-gray-500">
-  //               <Package className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-  //               <p className="font-medium mb-2">No GitOps repositories found</p>
-  //               <p className="text-sm mb-4">Configure products with GitOps repositories to get started</p>
-  //               <Button
-  //                 variant="outline"
-  //                 onClick={fetchGitOpsData}
-  //                 className="gap-2"
-  //               >
-  //                 <GitBranch className="h-4 w-4" />
-  //                 Load GitOps Data
-  //               </Button>
-  //             </div>
-  //           ) : (
-  //             getFilteredGitOpsData().map((productData, index) => (
-  //               <div key={index} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-  //                 {/* Enhanced Product Header */}
-  //                 <div
-  //                   className={`p-4 cursor-pointer transition-all duration-200 ${
-  //                     selectedProduct?.name === productData.productName
-  //                       ? 'bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-l-4 border-blue-500'
-  //                       : 'hover:bg-gray-50 dark:hover:bg-gray-700'
-  //                   }`}
-  //                   onClick={() => {
-  //                     if (productData.success && productData.metadata) {
-  //                       const product: Product = {
-  //                         id: productData.productName,
-  //                         name: productData.productName,
-  //                         displayName: productData.metadata?.product?.displayName || productData.productName,
-  //                         description: productData.metadata?.product?.description || '',
-  //                         metadata: productData.metadata,
-  //                         createdAt: new Date().toISOString(),
-  //                         updatedAt: new Date().toISOString()
-  //                       } as Product
-  //                       handleProductSelect(product)
-  //                     }
-  //                   }}
-  //                 >
-  //                   <div className="flex items-start justify-between">
-  //                     <div className="flex items-center gap-3 flex-1">
-  //                       <div className="flex items-center gap-2">
-  //                         {selectedProduct?.name === productData.productName ? (
-  //                           <ChevronDown className="h-4 w-4 text-blue-500" />
-  //                         ) : (
-  //                           <ChevronRight className="h-4 w-4 text-gray-400" />
-  //                         )}
-  //                         <Package className="h-5 w-5 text-blue-500" />
-  //                       </div>
-  //                       <div className="flex-1">
-  //                         <div className="flex items-center gap-2">
-  //                           <span className="font-semibold text-gray-800 dark:text-gray-200">
-  //                             {productData.metadata?.product?.displayName || productData.productName}
-  //                           </span>
-  //                           <span className="text-xs text-gray-500 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded-full">
-  //                             v{productData.metadata?.product?.version || '1.0.0'}
-  //                           </span>
-  //                         </div>
-  //                         {productData.metadata?.product?.description && (
-  //                           <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-  //                             {productData.metadata.product.description}
-  //                           </p>
-  //                         )}
-  //                       </div>
-  //                     </div>
-  //                     <div className="flex items-center gap-2 ml-2">
-  //                       {productData.success ? (
-  //                         <div className="flex items-center gap-1 text-xs text-green-700 bg-green-100 dark:bg-green-900/30 dark:text-green-400 px-2 py-1 rounded-full">
-  //                           <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-  //                           Synced
-  //                         </div>
-  //                       ) : (
-  //                         <div className="flex items-center gap-1 text-xs text-red-700 bg-red-100 dark:bg-red-900/30 dark:text-red-400 px-2 py-1 rounded-full">
-  //                           <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-  //                           Error
-  //                         </div>
-  //                       )}
-  //                       {productData.components && (
-  //                         <span className="text-xs text-gray-500 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded-full">
-  //                           {productData.components.length} components
-  //                         </span>
-  //                       )}
-  //                     </div>
-  //                   </div>
-  //                 </div>
-
-  //                   {/* Enhanced Component Nodes */}
-  //                   {selectedProduct?.name === productData.productName && productData.components && (
-  //                     <div className="ml-6 mt-1 space-y-1">
-  //                       {productData.components.map((comp, compIndex) => (
-  //                         <div
-  //                           key={compIndex}
-  //                           className={`group flex items-center gap-2 px-3 py-1.5 mx-2 rounded-md cursor-pointer transition-colors ${selectedComponent?.name === comp.name
-  //                               ? 'bg-gray-600 text-white'
-  //                               : 'hover:bg-gray-800 text-gray-400'
-  //                             }`}
-  //                           onClick={() => {
-  //                             const component: ProductComponent = {
-  //                               id: `${productData.productName}-${comp.name}`,
-  //                               name: comp.name,
-  //                               displayName: comp.metadata?.displayName || comp.name,
-  //                               description: comp.metadata?.description || '',
-  //                               parentProduct: productData.productName,
-  //                               metadata: comp.metadata,
-  //                               isActive: comp.metadata?.isActive ?? true,
-  //                               createdAt: new Date().toISOString(),
-  //                               updatedAt: new Date().toISOString()
-  //                             } as ProductComponent
-  //                             handleComponentSelect(component)
-  //                           }}
-  //                         >
-  //                           <div className="w-3 h-3 flex items-center justify-center flex-shrink-0">
-  //                             <div className="w-1.5 h-1.5 bg-green-500 rounded-full" />
-  //                           </div>
-  //                           <Folder className="h-3 w-3 text-blue-500 flex-shrink-0" />
-  //                           <div className="flex-1 min-w-0">
-  //                             <span className="text-sm font-medium truncate">
-  //                               {comp.metadata?.displayName || comp.name}
-  //                             </span>
-  //                           </div>
-  //                           <div className="flex items-center gap-2 flex-shrink-0">
-  //                             <span className="text-xs text-gray-400 bg-gray-200 dark:bg-gray-600 px-1.5 py-0.5 rounded">
-  //                               {comp.metadata?.category || 'service'}
-  //                             </span>
-  //                             <Button
-  //                               variant="ghost"
-  //                               size="sm"
-  //                               className="h-5 w-5 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-  //                               onClick={(e) => {
-  //                                 e.stopPropagation()
-  //                                 handleComponentAction('menu', productData, comp)
-  //                               }}
-  //                               title="Component options"
-  //                             >
-  //                               <MoreVertical className="h-2.5 w-2.5" />
-  //                             </Button>
-  //                           </div>
-  //                         </div>
-  //                       ))}
-  //                     </div>
-  //                   )}
-  //                 </div>
-  //               ))
-  //           )}
-  //         </div>
-  //       )}
-
-  //       {/* Enhanced Back Button */}
-  //       {onNavigateBack && (
-  //         <div className="p-3 border-t bg-white dark:bg-gray-800">
-  //           <Button
-  //             variant="ghost"
-  //             onClick={onNavigateBack}
-  //             className="w-full justify-start text-sm text-gray-600 hover:text-gray-800"
-  //           >
-  //             ← Back to Product Management
-  //           </Button>
-  //         </div>
-  //       )}
-  //     </div>
-  //   )
-  // }
-
-  /**
-   * Render the navigator panel using the existing ProductComponentNavigator
-   */
   const renderNavigatorPanel = () => {
     // Create a custom navigator that uses GitOps data
-    const gitOpsProducts = getProductsFromGitOps()
-    
+    //const gitOpsProducts = getProductsFromGitOps()
+
     return (
       <div className="h-full flex flex-col bg-background">
         {/* Enhanced Header */}
@@ -879,7 +706,7 @@ appVersion: "1.0.0"`
                 <ArrowLeft className="h-3.5 w-3.5" />
               </Button>
             )}
-            <h2 className={cn("text-lg font-bold", typography.tile.title)}>GitOps Designer</h2>
+            <h2 className={typography.tile.title}>Products & Components</h2>
             <div className="flex-1" />
             <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
               <MoreVertical className="h-4 w-4" />
@@ -1251,58 +1078,28 @@ appVersion: "1.0.0"`
   /**
    * Render the console output panel with proper typography
    */
-  /**
-   * Render the console output panel with clear button in header
-   */
   const renderConsoleOutput = () => {
-    return (
-      <div className="h-full flex flex-col">
-        {/* Console content - now takes full height */}
-        <div className={cn(
-          "flex-1 overflow-auto p-4 bg-gray-900 text-green-400"
-        )}>
-          {consoleOutput.length === 0 ? (
-            <div className={cn(typography.body.xs, "text-gray-500")}>
-              Console output will appear here...
-            </div>
-          ) : (
-            consoleOutput.map((line, index) => (
-              <div
-                key={index}
-                className={cn(
-                  "mb-1",
-                  "font-mono text-xs leading-relaxed tracking-normal"
-                )}
-              >
-                {line}
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-    )
-  }
-
-  const renderConsoleOutput2 = () => {
     return (
       <div className="h-full flex flex-col relative">
         {/* Floating Clear Button */}
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setConsoleOutput([])}
-          className="absolute top-2 right-2 z-10 h-6 w-6 p-0 bg-gray-800/80 hover:bg-gray-700 border border-gray-600"
-          title="Clear console"
-        >
-          <X className="h-3 w-3 text-gray-400" />
-        </Button>
+        {consoleOutput.length > 0 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setConsoleOutput([])}
+            className="absolute top-2 right-2 z-10 h-8 w-8 p-0 bg-muted/60 hover:bg-muted/80 border border-border"
+            title="Clear console"
+          >
+            <X className="h-4 w-4 text-muted-foreground zoom-exclude" />
+          </Button>
+        )}
 
         {/* Console content */}
         <div className={cn(
-          "flex-1 overflow-auto p-4 bg-gray-900 text-green-400"
+          "flex-1 overflow-auto p-4 bg-background text-foreground dark:text-green-400"
         )}>
           {consoleOutput.length === 0 ? (
-            <div className={cn(typography.body.xs, "text-gray-500")}>
+            <div className={cn(typography.body.xs, "text-muted-foreground")}>
               Console output will appear here...
             </div>
           ) : (
@@ -1322,14 +1119,13 @@ appVersion: "1.0.0"`
       </div>
     )
   }
-
   return (
     <div className="h-full">
       <ProductWorkspace4Panel
-        navigator={renderNavigatorPanel()}
+        navigator={renderProductNavigatorPanel()}
         fileExplorer={renderFileExplorer()}
         editor={renderEditor()}
-        consoleOutput={renderConsoleOutput2()}
+        consoleOutput={renderConsoleOutput()}
         persistenceKey="product-deployment-designer-poc"
       />
     </div>
