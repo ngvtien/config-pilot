@@ -1981,4 +1981,51 @@ export function registerCustomerHandlers() {
     }
   });
 
+  /**
+   * Join path segments - utility for cross-platform path handling
+   */
+  ipcMain.handle('joinPath', async (_, ...segments: string[]) => {
+    return path.join(...segments)
+  })
+
+  /**
+   * Read file content
+   */
+  ipcMain.handle('readFile', async (_, filePath: string) => {
+    try {
+      return await fs.readFile(filePath, 'utf-8')
+    } catch (error: any) {
+      throw new Error(`Failed to read file ${filePath}: ${error.message}`)
+    }
+  })
+
+  /**
+   * Create directory recursively
+   */
+  ipcMain.handle('createDirectory', async (_, dirPath: string) => {
+    try {
+      await fs.mkdir(dirPath, { recursive: true })
+      return { success: true }
+    } catch (error: any) {
+      throw new Error(`Failed to create directory ${dirPath}: ${error.message}`)
+    }
+  })
+
+  /**
+   * Write file with content
+   */
+  ipcMain.handle('writeFile', async (_, filePath: string, content: string) => {
+    try {
+      // Ensure parent directory exists
+      const parentDir = path.dirname(filePath)
+      await fs.mkdir(parentDir, { recursive: true })
+      
+      // Write the file
+      await fs.writeFile(filePath, content, 'utf-8')
+      return { success: true }
+    } catch (error: any) {
+      throw new Error(`Failed to write file ${filePath}: ${error.message}`)
+    }
+  })
+
 }

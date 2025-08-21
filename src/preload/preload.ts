@@ -222,6 +222,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
       'logger:setLogLevel',
       'logger:toggleFileLogging',
       'logger:updateFileConfig',
+
+      // File system operations for SmartFileTree
+      'joinPath',
+      'readFile',
+      'createDirectory',
+      'writeFile',
     ]
 
     if (validChannels.includes(channel)) {
@@ -247,23 +253,23 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // File operations
   openFile: (options?: any) => ipcRenderer.invoke("dialog:openFile", options),
   saveFile: (data: string) => ipcRenderer.invoke("dialog:saveFile", data),
-  readFile: (filePath: string) => ipcRenderer.invoke("file:read", filePath),
+  readFile: (filePath: string) => ipcRenderer.invoke('readFile', filePath),
   showOpenDialog: (options?: any) => ipcRenderer.invoke("dialog:showOpenDialog", options),
   showSaveDialog: (options?: any) => ipcRenderer.invoke("dialog:showSaveDialog", options),
   deleteFile: (path: string) => ipcRenderer.invoke("fs:deleteFile", { path }),
-  writeFile: (filePath: string, content: string) => ipcRenderer.invoke('fs:writeFile', filePath, content),
+  writeFile: (filePath: string, content: string) => ipcRenderer.invoke('writeFile', filePath, content),
   fileExists: (path: string) => ipcRenderer.invoke("file:exists", { path }),
   getFileInfo: (path: string) => ipcRenderer.invoke("file:info", { path }),
 
   // Directory operations
   selectDirectory: (options?: any) => ipcRenderer.invoke("dialog:selectDirectory", options),
-  createDirectory: (path: string) => ipcRenderer.invoke("directory:create", { path }),
+  createDirectory: (dirPath: string) => ipcRenderer.invoke('createDirectory', dirPath),
   directoryExists: (path: string) => ipcRenderer.invoke("directory:exists", { path }),
   getDirectoryInfo: (path: string) => ipcRenderer.invoke("directory:info", { path }),
   ensureDirectory: (dirPath: string) => ipcRenderer.invoke('fs:ensureDirectory', dirPath),
   listDirectories: (dirPath: string) => ipcRenderer.invoke('fs:listDirectories', dirPath),
   listFiles: (dirPath: string) => ipcRenderer.invoke('fs:listFiles', dirPath),
-  joinPath: (...paths: string[]) => ipcRenderer.invoke('path:join', ...paths),
+  joinPath: (...paths: string[]) => ipcRenderer.invoke('joinPath', ...paths),
 
   // k8s related operations
   setKubeConfigPath: (path: string) => ipcRenderer.invoke('k8s:setConfigPath', path),

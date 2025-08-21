@@ -672,7 +672,6 @@ export function SmartFileTree({
                                 New
                             </Badge>
                         )}
-
                     </span>
 
                     {/* Enhanced resource badges with softer colors */}
@@ -767,6 +766,11 @@ export function SmartFileTree({
                             <span className="text-yellow-600 dark:text-yellow-400 font-medium">Configure</span> →
                             <span className="text-blue-600 dark:text-blue-400 font-medium">Package</span>
                         </p>
+                        {rootPath && (
+                            <p className={cn(typography.body.xs, "text-muted-foreground mt-1 font-mono")}>
+                                {rootPath}
+                            </p>
+                        )}
                     </div>
 
                     <Dialog open={showResourceWizard} onOpenChange={setShowResourceWizard}>
@@ -801,19 +805,33 @@ export function SmartFileTree({
                 </div>
             </div>
 
-            {/* File tree with enhanced styling */}
+            {/* File tree with dark theme styling */}
             <ScrollArea className="flex-1">
                 <div className="p-3 space-y-2">
-                    {fileTree.map((node, index) => (
-                        <div key={node.id}>
-                            {renderNode(node)}
-                            {index < fileTree.length - 1 && (
-                                <div className="my-4 px-2">
-                                    <Separator className="bg-border" />
-                                </div>
+                    {fileTree.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-8 text-center">
+                            <Folder className="h-12 w-12 text-gray-600 mb-3" />
+                            <p className="text-gray-400 text-sm">
+                                {rootPath ? 'No files found in component folder' : 'Select a component to view files'}
+                            </p>
+                            {rootPath && (
+                                <p className="text-gray-500 text-xs mt-1 font-mono">
+                                    {rootPath}
+                                </p>
                             )}
                         </div>
-                    ))}
+                    ) : (
+                        fileTree.map((node, index) => (
+                            <div key={node.id}>
+                                {renderNode(node)}
+                                {index < fileTree.length - 1 && (
+                                    <div className="my-4 px-2">
+                                        <Separator className="bg-border" />
+                                    </div>
+                                )}
+                            </div>
+                        ))
+                    )}
                 </div>
             </ScrollArea>
 

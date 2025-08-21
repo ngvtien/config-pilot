@@ -1,16 +1,22 @@
 "use client"
 import React, { useState, useEffect } from 'react'
 import { ProductWorkspace4Panel } from '@/renderer/components/products/product-workspace-4panel'
+import { NavigatorPanel } from '@/renderer/components/products/product-navigator-panel'
 import { SmartFileTree, FileTreeNode } from '@/renderer/components/ide/smart-file-tree'
 import { ContextAwareEditor } from '@/renderer/components/ide/context-aware-editor'
 import { Product } from '@/shared/types/product'
 import { ProductComponent } from '@/shared/types/product-component'
+import { ProductComponentNavigator } from '@/renderer/components/products/product-component-navigator'
 import { ProductComponentTiles } from '@/renderer/components/products/product-component-tiles'
 import { typography } from '@/renderer/lib/typography'
 import { cn } from "@/lib/utils"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs'
-import { FolderOpen, X, Package, GitBranch, FileText, Settings, ChevronDown, ChevronRight, Folder, Plus, ExternalLink } from 'lucide-react'
+import { FolderOpen, Settings, X } from 'lucide-react'
 import { Button } from '@/renderer/components/ui/button'
+import { Input } from '@/renderer/components/ui/input'
+import { Label } from '@/renderer/components/ui/label'
+import { Card, CardContent, CardHeader, CardTitle } from '@/renderer/components/ui/card'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/renderer/components/ui/dialog'
 
 interface ProductDeploymentDesignerPoCProps {
   onNavigateBack?: () => void
@@ -27,16 +33,6 @@ export function ProductDeploymentDesignerPoC({ onNavigateBack }: ProductDeployme
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const [selectedComponent, setSelectedComponent] = useState<ProductComponent | null>(null)
 
-  // GitOps integration state
-  const [gitOpsData, setGitOpsData] = useState<Array<{
-    productName: string
-    success: boolean
-    metadata?: any
-    components?: Array<{ name: string, metadata: any }>
-    error?: string
-  }>>([])
-  const [isLoadingGitOps, setIsLoadingGitOps] = useState(false)
-
   // Multi-file editor state
   const [selectedFile, setSelectedFile] = useState<FileTreeNode | null>(null)
   const [openFiles, setOpenFiles] = useState<FileTreeNode[]>([])
@@ -51,7 +47,11 @@ export function ProductDeploymentDesignerPoC({ onNavigateBack }: ProductDeployme
   const [error, setError] = useState<string | null>(null)
   const [maxConsoleLines] = useState(100) // Limit console output
 
-  // Remove folder management state - using GitOps data instead
+  // Folder management state
+  const [showProductFolderDialog, setShowProductFolderDialog] = useState(false)
+  const [showComponentFolderDialog, setShowComponentFolderDialog] = useState(false)
+  const [tempProductFolderPath, setTempProductFolderPath] = useState('')
+  const [tempComponentFolderPath, setTempComponentFolderPath] = useState('')
 
   /**
  * Open a file in a new tab or switch to existing tab
@@ -151,7 +151,102 @@ export function ProductDeploymentDesignerPoC({ onNavigateBack }: ProductDeployme
     })
   }
 
-  // Removed folder management functions - using GitOps data instead
+  /**
+   * Handle folder selection for product git repo
+   */
+  const handleProductFolderSelect = async () => {
+    try {
+      //const result = await window.electronAPI.selectFolder()
+      const result = await window.electronAPI.selectDirectory({
+        title: 'Select Repository Folder',
+        buttonLabel: 'Select Folder'
+      })
+
+      if (result && !result.canceled && result.filePaths.length > 0) {
+        setTempProductFolderPath(result.filePaths[0])
+      }
+    } catch (error) {
+      addToConsole('Failed to select folder', 'error')
+    }
+  }
+
+  /**
+   * Handle component folder selection with error handling
+   */
+  const handleComponentFolderSelect = async () => {
+    try {
+      addToConsole('Opening folder selection dialog...', 'info')
+      const result = await window.electronAPI.selectDirectory()
+      addToConsole(`Folder selection result: ${JSON.stringify(result)}`, 'info')
+
+      // Handle both string and object formats
+      let selectedPath: string | null = null
+
+      if (typeof result === 'string' && result.trim() !== '') {
+        // Direct string path
+        selectedPath = result
+      } else if (result && !result.canceled && result.filePaths && result.filePaths.length > 0) {
+        // Object with filePaths array
+        selectedPath = result.filePaths[0]
+      }
+
+      if (selectedPath) {
+        addToConsole(`Selected folder path: ${selectedPath}`, 'info')
+        setTempComponentFolderPath(selectedPath)
+      } else {
+        addToConsole('Folder selection was canceled or failed', 'warning')
+      }
+    } catch (error) {
+      addToConsole(`Error selecting folder: ${error}`, 'error')
+      console.error('Folder selection error:', error)
+    }
+  }
+
+  /**
+   * Save product folder path
+   */
+  const saveProductFolderPath = () => {
+    if (selectedProduct && tempProductFolderPath) {
+      const updatedProduct = {
+        ...selectedProduct,
+        repoFolderPath: tempProductFolderPath
+      }
+      setSelectedProduct(updatedProduct)
+      addToConsole(`Product repo folder set: ${tempProductFolderPath}`, 'info')
+      setShowProductFolderDialog(false)
+      setTempProductFolderPath('')
+    }
+  }
+
+  /**
+   * Save component folder path
+   */
+  const saveComponentFolderPath = () => {
+    if (selectedComponent && tempComponentFolderPath) {
+      const updatedComponent = {
+        ...selectedComponent,
+        componentFolderPath: tempComponentFolderPath
+      }
+      setSelectedComponent(updatedComponent)
+      addToConsole(`Component folder set: ${tempComponentFolderPath}`, 'info')
+      setShowComponentFolderDialog(false)
+      setTempComponentFolderPath('')
+    }
+  }
+
+  /**
+   * Create resources folder for component if it doesn't exist
+   */
+  const ensureResourcesFolder = async (componentPath: string) => {
+    try {
+      // ✅ FIXED: Use proper path joining
+      const resourcesPath = await window.electronAPI.joinPath(componentPath, 'resources')
+      await window.electronAPI.createDirectory(resourcesPath)
+      addToConsole(`Resources folder created: ${resourcesPath}`, 'info')
+    } catch (error) {
+      addToConsole('Failed to create resources folder', 'error')
+    }
+  }
 
   /**
    * Enhanced mock content generation with validation
@@ -220,143 +315,6 @@ appVersion: "1.0.0"`
   }
 
   /**
-   * Fetch GitOps data for all products
-   */
-  const fetchGitOpsData = async () => {
-    setIsLoadingGitOps(true)
-    addToConsole('Fetching products from product management system...', 'info')
-
-    try {
-      // First, try to get all products from the product management system
-      let products: any[] = []
-      
-      try {
-        const result = await window.electronAPI?.product?.getAllProducts?.()
-        addToConsole(`Raw products result: ${JSON.stringify(result)}`, 'info')
-        
-        if (Array.isArray(result)) {
-          products = result
-        } else if (result && typeof result === 'object') {
-          // Handle case where result might be wrapped in an object
-          products = result.products || result.data || []
-        }
-      } catch (productError: any) {
-        addToConsole(`Error calling getAllProducts: ${productError.message}`, 'error')
-      }
-
-      if (!products || !Array.isArray(products) || products.length === 0) {
-        addToConsole('No products found in product management system, using fallback approach', 'warning')
-        
-        // Fallback: Use known GitOps repositories from settings or configuration
-        // This is a temporary solution until the product service is working
-        const fallbackRepositories = [
-          {
-            productName: 'cai',
-            repositoryUrl: 'http://localhost:9080/da/gitops-products-cai.git',
-            localPath: 'C:\\tmp/repositories/gitops-products-cai'
-          },
-          {
-            productName: 'esb',
-            repositoryUrl: 'http://localhost:9080/da/gitops-products-esb.git',
-            localPath: 'C:\\tmp/repositories/gitops-products-esb'
-          }
-        ]
-        
-        addToConsole('Using fallback repositories for GitOps data', 'info')
-        
-        // Fetch GitOps metadata for fallback repositories
-        const result = await window.electronAPI?.git?.batchFetchGitOpsMetadata?.({
-          repositories: fallbackRepositories
-        })
-
-        if (result?.success) {
-          setGitOpsData(result.results)
-          const successCount = result.results.filter((r: any) => r.success).length
-          addToConsole(`Successfully fetched GitOps data: ${successCount}/${result.results.length} repositories`, 'info')
-          
-          // Auto-select first successful product if available
-          const firstSuccessfulProduct = result.results.find((r: any) => r.success)
-          if (firstSuccessfulProduct && firstSuccessfulProduct.metadata) {
-            const productData: Product = {
-              id: firstSuccessfulProduct.productName,
-              name: firstSuccessfulProduct.productName,
-              displayName: firstSuccessfulProduct.metadata?.product?.displayName || firstSuccessfulProduct.productName,
-              description: firstSuccessfulProduct.metadata?.product?.description || '',
-              metadata: firstSuccessfulProduct.metadata,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString()
-            } as Product
-
-            handleProductSelect(productData)
-          }
-        } else {
-          throw new Error(result?.error || 'Failed to fetch GitOps data from fallback repositories')
-        }
-        return
-      }
-
-      addToConsole(`Found ${products.length} products, checking GitOps configuration...`, 'info')
-
-      // Filter products that have GitOps configuration
-      const gitOpsProducts = products.filter((product: any) =>
-        product.metadata?.gitOps?.repositoryUrl && product.metadata?.gitOps?.localPath
-      )
-
-      if (gitOpsProducts.length === 0) {
-        addToConsole('No products have GitOps repositories configured', 'warning')
-        setGitOpsData([])
-        return
-      }
-
-      addToConsole(`Found ${gitOpsProducts.length} products with GitOps configuration`, 'info')
-
-      // Build repository list from products with GitOps configuration
-      const repositories = gitOpsProducts.map((product: any) => ({
-        productName: product.name,
-        repositoryUrl: product.metadata.gitOps.repositoryUrl,
-        localPath: product.metadata.gitOps.localPath
-      }))
-
-      addToConsole('Fetching GitOps metadata from repositories...', 'info')
-
-      // Fetch GitOps metadata for all repositories
-      const result = await window.electronAPI?.git?.batchFetchGitOpsMetadata?.({
-        repositories
-      })
-
-      if (result?.success) {
-        setGitOpsData(result.results)
-        const successCount = result.results.filter((r: any) => r.success).length
-        addToConsole(`Successfully fetched GitOps data: ${successCount}/${result.results.length} repositories`, 'info')
-
-        // Auto-select first successful product if available
-        const firstSuccessfulProduct = result.results.find((r: any) => r.success)
-        if (firstSuccessfulProduct && firstSuccessfulProduct.metadata) {
-          const productData: Product = {
-            id: firstSuccessfulProduct.productName,
-            name: firstSuccessfulProduct.productName,
-            displayName: firstSuccessfulProduct.metadata?.product?.displayName || firstSuccessfulProduct.productName,
-            description: firstSuccessfulProduct.metadata?.product?.description || '',
-            metadata: firstSuccessfulProduct.metadata,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          } as Product
-
-          handleProductSelect(productData)
-        }
-      } else {
-        throw new Error(result?.error || 'Failed to fetch GitOps data')
-      }
-    } catch (error: any) {
-      addToConsole(`Error fetching GitOps data: ${error.message}`, 'error')
-      setError(error.message)
-      setGitOpsData([])
-    } finally {
-      setIsLoadingGitOps(false)
-    }
-  }
-
-  /**
    * Enhanced product selection with validation
    */
   const handleProductSelect = (product: Product) => {
@@ -374,7 +332,7 @@ appVersion: "1.0.0"`
   }
 
   /**
-   * Enhanced component selection with GitOps integration
+   * Enhanced component selection with validation
    */
   const handleComponentSelect = (component: ProductComponent) => {
     if (!component || !component.id) {
@@ -387,40 +345,6 @@ appVersion: "1.0.0"`
     setFileContents({})
     setError(null)
     addToConsole(`Selected component: ${component.displayName || component.name}`)
-
-    // Load component resources from GitOps data
-    if (selectedProduct) {
-      const productGitOps = gitOpsData.find(p => p.productName === selectedProduct.name)
-      if (productGitOps && productGitOps.components) {
-        const componentGitOps = productGitOps.components.find(c => c.name === component.name)
-        if (componentGitOps) {
-          addToConsole(`Found GitOps data for component: ${component.name}`, 'info')
-          // TODO: Load existing K8s resources from the component folder
-        }
-      }
-    }
-  }
-
-  /**
-   * Get available components for the selected product from GitOps data
-   */
-  const getAvailableComponents = (): ProductComponent[] => {
-    if (!selectedProduct) return []
-
-    const productGitOps = gitOpsData.find(p => p.productName === selectedProduct.name)
-    if (!productGitOps || !productGitOps.components) return []
-
-    return productGitOps.components.map(comp => ({
-      id: `${selectedProduct.name}-${comp.name}`,
-      name: comp.name,
-      displayName: comp.metadata?.displayName || comp.name,
-      description: comp.metadata?.description || '',
-      parentProduct: selectedProduct.name,
-      metadata: comp.metadata,
-      isActive: comp.metadata?.isActive ?? true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    } as ProductComponent))
   }
 
   /**
@@ -438,73 +362,12 @@ appVersion: "1.0.0"`
   }
 
   /**
-   * Save K8s resource to GitOps repository
+   * Enhanced editor action handler
    */
-  const saveResourceToGitOps = async (file: FileTreeNode, content: string) => {
-    if (!selectedProduct || !selectedComponent) {
-      addToConsole('No product or component selected', 'error')
-      return
-    }
-
-    try {
-      addToConsole(`Saving ${file.name} to GitOps repository...`, 'info')
-
-      // Find the GitOps data for the current product
-      const productGitOps = gitOpsData.find(p => p.productName === selectedProduct.name)
-      if (!productGitOps || !productGitOps.success) {
-        throw new Error('GitOps data not available for this product')
-      }
-
-      // Create the resource file in the component folder
-      const resourcePath = `${selectedComponent.name}/${file.name}`
-
-      // This would be a new IPC call to save individual files to GitOps
-      // For now, we'll simulate the save operation
-      addToConsole(`Resource saved: ${resourcePath}`, 'info')
-      addToConsole(`Content length: ${content.length} characters`, 'info')
-
-      // TODO: Implement actual GitOps file save operation
-      // await window.electronAPI?.git?.saveResourceToGitOps?.({
-      //   productName: selectedProduct.name,
-      //   componentName: selectedComponent.name,
-      //   resourcePath: file.name,
-      //   content: content,
-      //   commitMessage: `Update ${file.name} for ${selectedComponent.name}`
-      // })
-
-    } catch (error: any) {
-      addToConsole(`Error saving resource: ${error.message}`, 'error')
-    }
-  }
-
-  /**
-   * Enhanced editor action handler with GitOps integration
-   */
-  const handleEditorAction = async (action: string, file: FileTreeNode) => {
+  const handleEditorAction = (action: string, file: FileTreeNode) => {
     addToConsole(`Editor action: ${action} on ${file.path}`)
-
-    switch (action) {
-      case 'save':
-        const content = fileContents[file.id] || ''
-        await saveResourceToGitOps(file, content)
-        break
-      case 'deploy':
-        addToConsole(`Deploying ${file.name} to cluster...`, 'info')
-        // TODO: Implement deployment logic
-        break
-      case 'validate':
-        addToConsole(`Validating ${file.name}...`, 'info')
-        // TODO: Implement YAML validation
-        break
-      default:
-        addToConsole(`Unknown action: ${action}`, 'warning')
-    }
+    // Handle editor actions like save, deploy, etc.
   }
-
-  // Auto-load GitOps data on component mount
-  useEffect(() => {
-    fetchGitOpsData()
-  }, [])
 
   /**
    * Render the product navigator panel
@@ -521,442 +384,32 @@ appVersion: "1.0.0"`
   //   )
   // }
 
-  /**
-   * Get local folder structure for a component
-   */
-  const getComponentFolderStructure = (productName: string, componentName: string) => {
-    // Define the expected folder structure for each component
-    return {
-      basePath: `${productName}/${componentName}`,
-      folders: [
-        { name: 'k8s', icon: Settings, description: 'Kubernetes manifests', color: 'text-blue-500' },
-        { name: 'helm', icon: Package, description: 'Helm charts', color: 'text-purple-500' },
-        { name: 'templates', icon: FileText, description: 'YAML templates', color: 'text-green-500' },
-        { name: 'environments', icon: Folder, description: 'Environment configs', color: 'text-orange-500' }
-      ]
-    }
-  }
-
-  /**
-   * Create folder structure for a component
-   */
-  const createComponentFolderStructure = async (productName: string, componentName: string, folderType: string) => {
-    try {
-      addToConsole(`Creating ${folderType} folder structure for ${componentName}...`, 'info')
-      
-      // Get the GitOps repository local path for this product
-      const productGitOps = gitOpsData.find(p => p.productName === productName)
-      if (!productGitOps) {
-        throw new Error('GitOps data not found for product')
-      }
-
-      // TODO: Get the actual local path from GitOps metadata
-      // For now, we'll use a standard structure
-      const basePath = `C:\\tmp/repositories/gitops-products-${productName}/${componentName}/${folderType}`
-      
-      // Create the folder structure
-      await window.electronAPI?.createDirectory?.(basePath)
-      
-      // Create initial files based on folder type
-      switch (folderType) {
-        case 'k8s':
-          // Create sample Kubernetes manifests
-          const deploymentYaml = `apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: ${componentName}
-  labels:
-    app: ${componentName}
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: ${componentName}
-  template:
-    metadata:
-      labels:
-        app: ${componentName}
-    spec:
-      containers:
-      - name: ${componentName}
-        image: nginx:latest
-        ports:
-        - containerPort: 80`
-          
-          await window.electronAPI?.writeFile?.(
-            await window.electronAPI?.joinPath?.(basePath, 'deployment.yaml'),
-            deploymentYaml
-          )
-          
-          const serviceYaml = `apiVersion: v1
-kind: Service
-metadata:
-  name: ${componentName}-service
-spec:
-  selector:
-    app: ${componentName}
-  ports:
-  - port: 80
-    targetPort: 80
-  type: ClusterIP`
-          
-          await window.electronAPI?.writeFile?.(
-            await window.electronAPI?.joinPath?.(basePath, 'service.yaml'),
-            serviceYaml
-          )
-          break
-          
-        case 'helm':
-          // Create Helm chart structure
-          const chartYaml = `apiVersion: v2
-name: ${componentName}
-description: A Helm chart for ${componentName}
-type: application
-version: 0.1.0
-appVersion: "1.0.0"`
-          
-          await window.electronAPI?.writeFile?.(
-            await window.electronAPI?.joinPath?.(basePath, 'Chart.yaml'),
-            chartYaml
-          )
-          
-          const valuesYaml = `# Default values for ${componentName}
-replicaCount: 1
-
-image:
-  repository: nginx
-  pullPolicy: IfNotPresent
-  tag: "latest"
-
-service:
-  type: ClusterIP
-  port: 80
-
-ingress:
-  enabled: false
-
-resources: {}
-
-nodeSelector: {}
-
-tolerations: []
-
-affinity: {}`
-          
-          await window.electronAPI?.writeFile?.(
-            await window.electronAPI?.joinPath?.(basePath, 'values.yaml'),
-            valuesYaml
-          )
-          break
-          
-        case 'templates':
-          // Create template files
-          const configMapTemplate = `apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: ${componentName}-config
-data:
-  config.yaml: |
-    # Configuration for ${componentName}
-    app:
-      name: ${componentName}
-      version: "1.0.0"`
-          
-          await window.electronAPI?.writeFile?.(
-            await window.electronAPI?.joinPath?.(basePath, 'configmap-template.yaml'),
-            configMapTemplate
-          )
-          break
-          
-        case 'environments':
-          // Create environment-specific configs
-          const environments = ['dev', 'staging', 'prod']
-          for (const env of environments) {
-            const envConfig = `# ${env.toUpperCase()} environment configuration for ${componentName}
-environment: ${env}
-replicas: ${env === 'prod' ? 3 : 1}
-resources:
-  requests:
-    memory: "${env === 'prod' ? '512Mi' : '256Mi'}"
-    cpu: "${env === 'prod' ? '500m' : '250m'}"`
-            
-            await window.electronAPI?.writeFile?.(
-              await window.electronAPI?.joinPath?.(basePath, `${env}.yaml`),
-              envConfig
-            )
-          }
-          break
-      }
-      
-      addToConsole(`Successfully created ${folderType} folder structure at ${basePath}`, 'info')
-      
-      // TODO: Commit and push changes to GitOps repository
-      // This would use the saveResourceToGitOps function we created earlier
-      
-    } catch (error: any) {
-      addToConsole(`Error creating ${folderType} folder: ${error.message}`, 'error')
-    }
-  }
-
-  /**
-   * Render enhanced GitOps-powered navigator panel
-   */
   const renderNavigatorPanel = () => {
     return (
-      <div className="h-full flex flex-col bg-gradient-to-b from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
-        {/* Enhanced Header */}
-        <div className="p-4 bg-white dark:bg-gray-800 border-b shadow-sm">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <GitBranch className="h-5 w-5 text-blue-500" />
-              <h2 className="text-lg font-bold text-gray-800 dark:text-gray-200">GitOps Designer</h2>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={fetchGitOpsData}
-              disabled={isLoadingGitOps}
-              className="h-8"
-            >
-              {isLoadingGitOps ? 'Syncing...' : 'Sync'}
-            </Button>
-          </div>
-          <p className="text-xs text-gray-600 dark:text-gray-400">
-            Manage K8s resources, Helm charts & templates
-          </p>
-        </div>
-
-        {/* Loading State */}
-        {isLoadingGitOps && (
-          <div className="flex items-center justify-center py-12">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
-              <div className="text-sm text-gray-500">Syncing GitOps repositories...</div>
-            </div>
-          </div>
-        )}
-
-        {/* Enhanced GitOps Products Tree */}
-        {!isLoadingGitOps && (
-          <div className="flex-1 overflow-auto p-4 space-y-3">
-            {gitOpsData.length === 0 ? (
-              <div className="text-center py-12 text-gray-500">
-                <Package className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                <p className="font-medium mb-2">No GitOps repositories found</p>
-                <p className="text-sm mb-4">Configure products with GitOps repositories to get started</p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={fetchGitOpsData}
-                  className="gap-2"
-                >
-                  <GitBranch className="h-4 w-4" />
-                  Load GitOps Data
-                </Button>
-              </div>
-            ) : (
-              gitOpsData.map((productData, index) => (
-                <div key={index} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-                  {/* Enhanced Product Header */}
-                  <div
-                    className={`p-4 cursor-pointer transition-all duration-200 ${
-                      selectedProduct?.name === productData.productName
-                        ? 'bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-l-4 border-blue-500'
-                        : 'hover:bg-gray-50 dark:hover:bg-gray-700'
-                    }`}
-                    onClick={() => {
-                      if (productData.success && productData.metadata) {
-                        const product: Product = {
-                          id: productData.productName,
-                          name: productData.productName,
-                          displayName: productData.metadata?.product?.displayName || productData.productName,
-                          description: productData.metadata?.product?.description || '',
-                          metadata: productData.metadata,
-                          createdAt: new Date().toISOString(),
-                          updatedAt: new Date().toISOString()
-                        } as Product
-                        handleProductSelect(product)
-                      }
-                    }}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-3 flex-1">
-                        <div className="flex items-center gap-2">
-                          {selectedProduct?.name === productData.productName ? (
-                            <ChevronDown className="h-4 w-4 text-blue-500" />
-                          ) : (
-                            <ChevronRight className="h-4 w-4 text-gray-400" />
-                          )}
-                          <Package className="h-5 w-5 text-blue-500" />
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-gray-800 dark:text-gray-200">
-                              {productData.metadata?.product?.displayName || productData.productName}
-                            </span>
-                            <span className="text-xs text-gray-500 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded-full">
-                              v{productData.metadata?.product?.version || '1.0.0'}
-                            </span>
-                          </div>
-                          {productData.metadata?.product?.description && (
-                            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                              {productData.metadata.product.description}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 ml-2">
-                        {productData.success ? (
-                          <div className="flex items-center gap-1 text-xs text-green-700 bg-green-100 dark:bg-green-900/30 dark:text-green-400 px-2 py-1 rounded-full">
-                            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                            Synced
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-1 text-xs text-red-700 bg-red-100 dark:bg-red-900/30 dark:text-red-400 px-2 py-1 rounded-full">
-                            <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                            Error
-                          </div>
-                        )}
-                        {productData.components && (
-                          <span className="text-xs text-gray-500 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded-full">
-                            {productData.components.length} components
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Enhanced Components List */}
-                  {selectedProduct?.name === productData.productName && productData.components && (
-                    <div className="border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
-                      {productData.components.map((comp, compIndex) => {
-                        const folderStructure = getComponentFolderStructure(productData.productName, comp.name)
-                        const isSelected = selectedComponent?.name === comp.name
-                        
-                        return (
-                          <div key={compIndex} className="border-b border-gray-100 dark:border-gray-700 last:border-b-0">
-                            {/* Component Header */}
-                            <div
-                              className={`p-3 pl-6 cursor-pointer transition-all duration-200 ${
-                                isSelected
-                                  ? 'bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 border-l-4 border-indigo-500'
-                                  : 'hover:bg-white dark:hover:bg-gray-700'
-                              }`}
-                              onClick={() => {
-                                const component: ProductComponent = {
-                                  id: `${productData.productName}-${comp.name}`,
-                                  name: comp.name,
-                                  displayName: comp.metadata?.displayName || comp.name,
-                                  description: comp.metadata?.description || '',
-                                  parentProduct: productData.productName,
-                                  metadata: comp.metadata,
-                                  isActive: comp.metadata?.isActive ?? true,
-                                  createdAt: new Date().toISOString(),
-                                  updatedAt: new Date().toISOString()
-                                } as ProductComponent
-                                handleComponentSelect(component)
-                              }}
-                            >
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                  <div className="flex items-center gap-2">
-                                    {isSelected ? (
-                                      <ChevronDown className="h-3 w-3 text-indigo-500" />
-                                    ) : (
-                                      <ChevronRight className="h-3 w-3 text-gray-400" />
-                                    )}
-                                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                                  </div>
-                                  <div>
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-sm font-medium text-gray-800 dark:text-gray-200">
-                                        {comp.metadata?.displayName || comp.name}
-                                      </span>
-                                      <span className="text-xs text-gray-500 bg-gray-200 dark:bg-gray-600 px-1.5 py-0.5 rounded">
-                                        {comp.metadata?.category || 'service'}
-                                      </span>
-                                    </div>
-                                    {comp.metadata?.description && (
-                                      <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
-                                        {comp.metadata.description}
-                                      </p>
-                                    )}
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-1">
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      addToConsole(`Opening ${comp.name} folder structure`, 'info')
-                                    }}
-                                  >
-                                    <ExternalLink className="h-3 w-3" />
-                                  </Button>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Component Folder Structure */}
-                            {isSelected && (
-                              <div className="pl-12 pr-4 pb-3 bg-white dark:bg-gray-800">
-                                <div className="text-xs text-gray-500 mb-2 font-medium">Local Folder Structure:</div>
-                                <div className="space-y-1">
-                                  <div className="text-xs text-gray-600 dark:text-gray-400 font-mono bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
-                                    📁 {folderStructure.basePath}/
-                                  </div>
-                                  {folderStructure.folders.map((folder, folderIndex) => (
-                                    <div key={folderIndex} className="flex items-center gap-2 pl-4">
-                                      <folder.icon className={`h-3 w-3 ${folder.color}`} />
-                                      <span className="text-xs font-mono text-gray-600 dark:text-gray-400">
-                                        {folder.name}/
-                                      </span>
-                                      <span className="text-xs text-gray-500">
-                                        {folder.description}
-                                      </span>
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="h-4 w-4 p-0 ml-auto opacity-60 hover:opacity-100"
-                                        onClick={(e) => {
-                                          e.stopPropagation()
-                                          createComponentFolderStructure(productData.productName, comp.name, folder.name)
-                                        }}
-                                        title={`Create ${folder.name} folder structure`}
-                                      >
-                                        <Plus className="h-3 w-3" />
-                                      </Button>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
-        )}
-
-        {/* Enhanced Back Button */}
-        {onNavigateBack && (
-          <div className="p-4 bg-white dark:bg-gray-800 border-t">
-            <Button 
-              variant="outline" 
-              onClick={onNavigateBack} 
-              className="w-full gap-2 text-gray-600 hover:text-gray-800"
-            >
-              ← Back to Product Management
-            </Button>
-          </div>
-        )}
-      </div>
+      <ProductComponentNavigator
+        selectedProduct={selectedProduct}
+        selectedComponent={selectedComponent}
+        onProductSelect={handleProductSelect}
+        onComponentSelect={handleComponentSelect}
+        onNavigateBack={onNavigateBack}
+        // Add the hover action handlers
+        onEditProduct={(product) => {
+          console.log('Edit product:', product)
+          // Add your edit logic here
+        }}
+        onDeleteProduct={(product) => {
+          console.log('Delete product:', product)
+          // Add your delete logic here
+        }}
+        onAddComponent={(product) => {
+          console.log('Add component to:', product)
+          // Add your add component logic here
+        }}
+        onAddProduct={() => {
+          console.log('Add new product')
+          // Add your add product logic here
+        }}
+      />
     )
   }
 
@@ -1034,7 +487,7 @@ resources:
             onEditComponent={handleEditComponent}
             onDeleteComponent={handleDeleteComponent}
           />
-        )}
+        )}        
 
         {/* File Tree */}
         <div className="flex-1">
