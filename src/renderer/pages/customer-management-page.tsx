@@ -1086,8 +1086,8 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
 
                     <div className="space-y-4">
                         {errors.length > 0 && (
-                            <div className="bg-red-50 border border-red-200 rounded-md p-3">
-                                <ul className="text-sm text-red-600 space-y-1">
+                            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md p-3">
+                                <ul className="text-sm text-red-600 dark:text-red-400 space-y-1">
                                     {errors.map((error, index) => (
                                         <li key={index}>• {error}</li>
                                     ))}
@@ -1213,7 +1213,7 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
                             </div>
 
                             {gitOpsFormData.repositoryUrl && (
-                                <div className="space-y-4 pl-6 border-l-2 border-blue-200">
+                                <div className="space-y-4 pl-6 border-l-2 border-blue-200 dark:border-blue-700">
                                     {/* Repository URL Input */}
                                     <div className="space-y-2">
                                         <Label htmlFor="repositoryUrl">Repository URL *</Label>
@@ -1256,7 +1256,7 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
                                             })}
                                             placeholder="git-server-id"
                                         />
-                                        <p className="text-xs text-gray-500">
+                                        <p className="text-xs text-gray-500 dark:text-gray-400">
                                             Server ID from Git server configuration (auto-generated from base URL)
                                         </p>
                                     </div>
@@ -1275,12 +1275,13 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
 
                                     {/* Connection Test Results */}
                                     {connectionTestResult.status !== 'idle' && (
-                                        <div className={`p-3 rounded-md text-sm ${connectionTestResult.status === 'success'
-                                            ? 'bg-green-50 border border-green-200 text-green-800'
-                                            : connectionTestResult.status === 'error'
-                                                ? 'bg-red-50 border border-red-200 text-red-800'
-                                                : 'bg-blue-50 border border-blue-200 text-blue-800'
-                                            }`}>
+                                        <div className={`p-3 rounded-md text-sm ${
+                                            connectionTestResult.status === 'success'
+                                                ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-800 dark:text-green-400'
+                                                : connectionTestResult.status === 'error'
+                                                    ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-400'
+                                                    : 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-400'
+                                        }`}>
                                             <div className="flex items-center gap-2">
                                                 {connectionTestResult.status === 'testing' && (
                                                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -1305,7 +1306,7 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
                                             {connectionTestResult.suggestedUrl && (
                                                 <div className="mt-2 flex items-center gap-2">
                                                     <span className="text-xs">Suggested URL:</span>
-                                                    <code className="text-xs bg-white px-2 py-1 rounded border">
+                                                    <code className="text-xs bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2 py-1 rounded border border-gray-200 dark:border-gray-600">
                                                         {connectionTestResult.suggestedUrl}
                                                     </code>
                                                     <Button
@@ -1323,10 +1324,10 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
                                     )}
 
                                     {/* Current Git Server Info */}
-                                    <div className="text-sm text-gray-600 bg-gray-50 p-3 rounded">
+                                    <div className="text-sm text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-800 p-3 rounded border border-gray-200 dark:border-gray-700">
                                         <p><strong>Current Git Server:</strong> {context?.baseHostUrl || 'Not configured'}</p>
                                         {!context?.baseHostUrl && (
-                                            <p className="text-red-600 mt-1">
+                                            <p className="text-red-600 dark:text-red-400 mt-1">
                                                 ⚠️ No Git server configured in Settings. Please configure it first.
                                             </p>
                                         )}
@@ -1363,12 +1364,12 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
                         </DialogDescription>
                     </DialogHeader>
 
-                    <div className="space-y-4 p-4 border rounded-lg bg-gray-50">
+                    <div className="space-y-4 p-4 border rounded-lg bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700">
                         <div className="flex items-center space-x-2">
                             <Switch
                                 id="createGitOpsRepo"
                                 checked={gitOpsConfig.createGitOpsRepo}
-                                onCheckedChange={(checked) => setGitOpsConfig({
+                                onCheckedChange={(checked: boolean) => setGitOpsConfig({
                                     ...gitOpsConfig,
                                     createGitOpsRepo: checked,
                                     gitBaseUrl: context?.baseHostUrl || ''
@@ -1380,7 +1381,7 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
                         {gitOpsConfig.createGitOpsRepo && (
                             <div className="space-y-2">
                                 <Label>Git Server (from Settings)</Label>
-                                <div className="p-2 bg-gray-50 dark:bg-gray-800 border rounded text-sm text-gray-900 dark:text-gray-100">
+                                <div className="p-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded text-sm text-gray-900 dark:text-gray-100">
                                     {context?.baseHostUrl || 'No Git server configured in Settings'}
                                 </div>
                                 {context?.baseHostUrl && (
