@@ -362,18 +362,18 @@ export default function AppLayoutPage({
           />
         )
       }
-      case "file-explorer":
-        return (
-          <FileExplorerPage
-            context={{
-              baseDirectory: settings.baseDirectory,
-              customer: context.customer,
-              product: context.product,
-              environment: context.environment,
-              instance: context.instance,
-            }}
-          />
-        )
+      // case "file-explorer":
+      //   return (
+      //     <FileExplorerPage
+      //       context={{
+      //         baseDirectory: settings.baseDirectory,
+      //         customer: context.customer,
+      //         product: context.product,
+      //         environment: context.environment,
+      //         instance: context.instance,
+      //       }}
+      //     />
+      //   )
       case "settings":
         return (
           <SettingsPage

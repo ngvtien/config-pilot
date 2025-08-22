@@ -19,7 +19,7 @@ export type ViewType =
   | "k8s-dashboard"
   | "argocd"
   | "git-repos"
-  | "file-explorer"
+  //| "file-explorer"
   | "settings"
   | "project-composer"
   | "customer-management"

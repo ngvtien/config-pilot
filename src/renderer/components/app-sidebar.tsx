@@ -19,7 +19,8 @@ import {
   Library,
   FolderPlus,
   Package,
-  Sun, Moon
+  Sun, Moon,
+  Building2
 } from "lucide-react"
 
 // New imports for theme toggle
@@ -115,10 +116,16 @@ const developerTools = [
     icon: Package,
     view: "product-workspace" as ViewType,
   },
+  // {
+  //   title: "OCI Registry",
+  //   icon: Archive,
+  //   view: "oci-registry" as ViewType,
+  // },
   {
-    title: "OCI Registry",
-    icon: Archive,
-    view: "oci-registry" as ViewType,
+    title: "Customer Management",
+    icon: Building2,
+    view: "customer-management" as ViewType,
+
   },
   {
     title: "Workspace Demo",
@@ -314,7 +321,7 @@ export function AppSidebar({
         </SidebarGroup>
 
         {/* File Explorer */}
-        <SidebarGroup className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:mb-4">
+        {/* <SidebarGroup className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:mb-4">
           <SidebarGroupLabel>FILE EXPLORER</SidebarGroupLabel>
           <SidebarGroupContent className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:w-full">
             <SidebarMenu className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:w-full group-data-[collapsible=icon]:gap-3">
@@ -331,7 +338,7 @@ export function AppSidebar({
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
-        </SidebarGroup>
+        </SidebarGroup> */}
 
         {/* Settings */}
         <SidebarGroup className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:mb-4">
