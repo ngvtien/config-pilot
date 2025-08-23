@@ -253,7 +253,8 @@ export class GiteaProvider implements GiteaProviderInterface {
           name: repoInfo.name || config.name,
           description: config.description || '',
           private: config.isPrivate || false,
-          auto_init: false
+          auto_init: config.autoInit || false,
+          default_branch: config.defaultBranch || 'main'  // Add this line
         }),
       });
 

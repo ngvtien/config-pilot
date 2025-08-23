@@ -23,7 +23,7 @@ import { templateService } from "./services/template-service";
 import { CustomerService } from './services/customer-service'
 import { ProductService } from './services/product-service'
 import { gitService } from './services/git-service';
-import { GitRepository, GitValidationResult } from '../shared/types/git-repository';
+import { GitCredentials, GitRepository, GitValidationResult } from '../shared/types/git-repository';
 import { GitAdapterFactory } from './services/adapters/git-adapter-factory';
 import { ProductComponentService } from './services/product-component-service'
 import { Environment } from "@/shared/types/context-data";
@@ -31,6 +31,8 @@ import Logger, { updateLoggerConfig } from './logger';
 import { LoggingSettings } from '../shared/types/settings-data';
 import log from 'electron-log';
 import Store from 'electron-store';
+import { Customer } from "@/shared/types/customer";
+import { gitOpsBatchService, BatchRepository } from './services/gitops-batch-service';
 
 const execPromise = util.promisify(exec)
 
@@ -420,10 +422,10 @@ export function registerGitHandlers() {
     }
   })
 
-  // Validate repository access - minimal implementation to stop the errors
-  ipcMain.handle('git:validateRepositoryAccess', async (_, repositoryUrl: string): Promise<GitValidationResult> => {
+  // ... existing code ...
+  ipcMain.handle('git:validateRepositoryAccess', async (_, repositoryUrl: string, serverId?: string): Promise<GitValidationResult> => {
     try {
-      return await gitService.validateRepository(repositoryUrl)
+      return await gitService.validateRepositoryAccess(repositoryUrl, serverId)
     } catch (error: any) {
       return {
         isValid: false,
@@ -462,30 +464,30 @@ export function registerGitHandlers() {
     try {
       console.log('[IPC] git:updateProductMetadata called with params:', JSON.stringify(params, null, 2))
       const { repositoryUrl, localPath, productName, metadata, commitMessage, branch } = params
-      
+
       console.log(`[GitOps] Starting update for ${productName}`)
       console.log(`[GitOps] Repository: ${repositoryUrl}`)
       console.log(`[GitOps] Local path: ${localPath}`)
-      
+
       // Ensure the local repository directory exists
       await fs.mkdir(localPath, { recursive: true })
-      
+
       // Get git adapter from factory
       const gitAdapter = GitAdapterFactory.getAdapter('isomorphic-git')
-      
+
       // Get credentials for the repository
       let credentials: any = undefined
       try {
         // Try to get server credentials for this repository URL
         const servers = gitService.getServers()
         console.log(`[GitOps] Found ${servers.length} configured servers`)
-        
+
         const matchingServer = servers.find(server => {
           const serverHost = new URL(server.baseUrl).hostname
           const repoHost = new URL(repositoryUrl).hostname
           return serverHost === repoHost
         })
-        
+
         if (matchingServer) {
           console.log(`[GitOps] Found matching server: ${matchingServer.name}`)
           // Use the git service's method to get credentials
@@ -508,7 +510,7 @@ export function registerGitHandlers() {
       } catch (error) {
         console.log(`[GitOps] Could not get credentials, trying without auth:`, error)
       }
-      
+
       // Check if this is already a git repository
       let isExistingRepo = false
       try {
@@ -518,7 +520,7 @@ export function registerGitHandlers() {
       } catch {
         console.log(`[GitOps] No existing repository, will clone from ${repositoryUrl}`)
       }
-      
+
       if (!isExistingRepo) {
         // Clone the repository for the first time
         console.log(`[GitOps] Cloning repository...`)
@@ -538,12 +540,12 @@ export function registerGitHandlers() {
           console.log(`[GitOps] Latest changes pulled successfully`)
         }
       }
-      
+
       // Create metadata.json file
       const metadataPath = path.join(localPath, 'metadata.json')
       await fs.writeFile(metadataPath, metadata, 'utf-8')
       console.log(`[GitOps] Created metadata.json`)
-      
+
       // Create a basic README if it doesn't exist
       const readmePath = path.join(localPath, 'README.md')
       try {
@@ -572,19 +574,19 @@ You can make changes locally and they will be automatically committed and pushed
         await fs.writeFile(readmePath, readmeContent, 'utf-8')
         console.log(`[GitOps] Created README.md`)
       }
-      
+
       // Create component folders and metadata
       const { components } = params
       if (components && components.length > 0) {
         console.log(`[GitOps] Creating ${components.length} component folders...`)
-        
+
         for (const component of components) {
           const componentFolderPath = path.join(localPath, component.name)
-          
+
           // Create component folder
           await fs.mkdir(componentFolderPath, { recursive: true })
           console.log(`[GitOps] Created component folder: ${component.name}/`)
-          
+
           // Create component metadata.json
           const componentMetadataPath = path.join(componentFolderPath, 'metadata.json')
           const componentMetadataContent = JSON.stringify({
@@ -596,10 +598,10 @@ You can make changes locally and they will be automatically committed and pushed
               generator: 'ConfigPilot Product Management'
             }
           }, null, 2)
-          
+
           await fs.writeFile(componentMetadataPath, componentMetadataContent, 'utf-8')
           console.log(`[GitOps] Created component metadata: ${component.name}/metadata.json`)
-          
+
           // Create component README
           const componentReadmePath = path.join(componentFolderPath, 'README.md')
           const componentReadmeContent = `# ${component.name}
@@ -616,15 +618,15 @@ This folder contains the GitOps configuration and metadata for the ${component.n
 
 This component is part of the ${productName} product and is managed by ConfigPilot.
 `
-          
+
           await fs.writeFile(componentReadmePath, componentReadmeContent, 'utf-8')
           console.log(`[GitOps] Created component README: ${component.name}/README.md`)
         }
       }
-      
+
       // Add files to git
       const filesToAdd = ['metadata.json']
-      
+
       // Only add README if it was created (new repository)
       try {
         const readmeStats = await fs.stat(readmePath)
@@ -634,7 +636,7 @@ This component is part of the ${productName} product and is managed by ConfigPil
       } catch {
         // README doesn't exist, skip it
       }
-      
+
       // Add component files
       if (components && components.length > 0) {
         for (const component of components) {
@@ -642,39 +644,48 @@ This component is part of the ${productName} product and is managed by ConfigPil
           filesToAdd.push(`${component.name}/README.md`)
         }
       }
-      
+
       console.log(`[GitOps] Adding files to git: ${filesToAdd.join(', ')}`)
       const addResult = await gitAdapter.add(filesToAdd, localPath)
       if (!addResult.success) {
         throw new Error(`Failed to add files: ${addResult.error}`)
       }
-      
+
       // Commit changes
       console.log(`[GitOps] Committing changes: ${commitMessage}`)
       const commitResult = await gitAdapter.commit(commitMessage, localPath)
       if (!commitResult.success) {
         throw new Error(`Failed to commit changes: ${commitResult.error}`)
       }
-      
+
       // Push changes
       console.log(`[GitOps] Pushing changes to remote...`)
       const pushResult = await gitAdapter.push(localPath, credentials)
       if (!pushResult.success) {
         throw new Error(`Failed to push changes: ${pushResult.error}`)
       }
-      
+
       console.log(`[GitOps] Successfully updated GitOps repository for ${productName}`)
-      return { 
-        success: true, 
+      return {
+        success: true,
         message: 'Product metadata updated and pushed to GitOps repository',
         localPath: localPath
       }
-      
+
     } catch (error: any) {
       console.error(`[GitOps] Operation failed:`, error)
       return { success: false, error: error.message }
     }
   })
+
+  // ipcMain.handle('git:batchFetchGitOpsMetadata', async (event, repositories: BatchRepository[]) => {
+  //   try {
+  //     return await gitOpsBatchService.batchFetchMetadata(repositories, 'product');
+  //   } catch (error) {
+  //     console.error('[IPC] Error in git:batchFetchGitOpsMetadata:', error);
+  //     return { success: false, results: [], errors: [String(error)] };
+  //   }
+  // });
 
   // Batch fetch GitOps metadata from multiple repositories
   ipcMain.handle('git:batchFetchGitOpsMetadata', async (_, params: {
@@ -686,7 +697,7 @@ This component is part of the ${productName} product and is managed by ConfigPil
   }) => {
     try {
       console.log(`[GitOps] Starting batch fetch for ${params.repositories.length} repositories`)
-      
+
       const results: Array<{
         productName: string
         success: boolean
@@ -704,10 +715,10 @@ This component is part of the ${productName} product and is managed by ConfigPil
       for (const repo of params.repositories) {
         try {
           console.log(`[GitOps] Fetching metadata for ${repo.productName}`)
-          
+
           // Ensure local directory exists
           await fs.mkdir(repo.localPath, { recursive: true })
-          
+
           // Get credentials for this repository
           let credentials: any = undefined
           try {
@@ -717,7 +728,7 @@ This component is part of the ${productName} product and is managed by ConfigPil
               const repoHost = new URL(repo.repositoryUrl).hostname
               return serverHost === repoHost
             })
-            
+
             if (matchingServer) {
               const serverCredentials = (gitService as any).getServerAndCredentials(repo.repositoryUrl)
               if (serverCredentials && serverCredentials.credentials) {
@@ -770,14 +781,14 @@ This component is part of the ${productName} product and is managed by ConfigPil
           const components: Array<{ name: string, metadata: any }> = []
           try {
             const entries = await fs.readdir(repo.localPath, { withFileTypes: true })
-            
+
             for (const entry of entries) {
               if (entry.isDirectory() && !entry.name.startsWith('.')) {
                 try {
                   const componentMetadataPath = path.join(repo.localPath, entry.name, 'metadata.json')
                   const componentMetadataContent = await fs.readFile(componentMetadataPath, 'utf-8')
                   const componentMetadata = JSON.parse(componentMetadataContent)
-                  
+
                   components.push({
                     name: entry.name,
                     metadata: componentMetadata
@@ -811,7 +822,7 @@ This component is part of the ${productName} product and is managed by ConfigPil
       }
 
       console.log(`[GitOps] Batch fetch completed: ${results.filter(r => r.success).length}/${results.length} successful`)
-      
+
       return {
         success: true,
         results: results
@@ -822,6 +833,7 @@ This component is part of the ${productName} product and is managed by ConfigPil
       return { success: false, error: error.message }
     }
   })
+
 }
 
 export function registerProductComponentHandlers() {
@@ -1878,7 +1890,133 @@ export function registerCustomerHandlers() {
   // Update customer
   ipcMain.handle('customer:updateCustomer', async (_, id: string, updates) => {
     try {
-      return await CustomerService.updateCustomer(id, updates)
+      const updatedCustomer = await CustomerService.updateCustomer(id, updates)
+
+      // Auto-push metadata to GitOps repository if customer has GitOps configured
+      if (updatedCustomer.metadata?.gitOps?.repositoryUrl) {
+        try {
+          console.log(`🚀 Auto-pushing metadata for updated customer: ${updatedCustomer.name}`)
+
+          // Generate metadata for the customer
+          const metadata = CustomerService.generateCustomerMetadata(updatedCustomer)
+          console.log(`🔍 DEBUG: Generated metadata:`, JSON.stringify(metadata, null, 2));
+
+          // Get GitOps configuration
+          const gitOpsConfig = updatedCustomer.metadata.gitOps
+          const repositoryUrl = gitOpsConfig.repositoryUrl
+          const serverId = gitOpsConfig.serverId
+
+          console.log(`🔍 DEBUG: Repository URL: ${repositoryUrl}, Server ID: ${serverId}`);
+
+          try {
+            const { server, credentials } = (gitService as any).getServerAndCredentials(repositoryUrl!, serverId);
+            const { instance: provider } = (gitService as any).getProviderForUrl(repositoryUrl!);
+            
+            // Create repository if it doesn't exist
+            await provider.createRepository(server, credentials, {
+              url: repositoryUrl,
+              name: `gitops-customers-${updatedCustomer.name}`,
+              isPrivate: true,
+              autoInit: true, // Disable auto-init to prevent main branch
+              defaultBranch: 'dev'
+            });
+            
+            console.log(`✅ Repository created: ${repositoryUrl}`);
+          } catch (createError: any) {
+
+            console.error(`❌ Failed to create repository: ${createError.message}`);
+            throw createError;
+          }
+
+          // Construct local path for the repository
+          const localPath = path.join(
+            app.getPath('userData'),
+            'gitops-repos',
+            updatedCustomer.name
+          )
+
+          // Ensure directory exists
+          await fs.mkdir(localPath, { recursive: true })
+
+          // Get git adapter
+          const gitAdapter = GitAdapterFactory.getAdapter('isomorphic-git')
+
+          // Clone or pull latest changes
+          try {
+            let gitCredentials: GitCredentials | undefined;
+            if (serverId) {
+              // Get server configuration and credentials using serverId
+              const { server, credentials: serverCreds } = (gitService as any).getServerAndCredentials(repositoryUrl!, serverId);
+              // Convert GitServerCredentials to GitCredentials format
+              gitCredentials = {
+                username: serverCreds.username,
+                password: serverCreds.token || serverCreds.password || '',
+                token: serverCreds.token,
+                method: serverCreds.method,
+                url: repositoryUrl!,
+                repoId: serverId
+              };
+            }
+
+            await gitAdapter.clone(repositoryUrl!, localPath, gitCredentials);
+          } catch (cloneError) {
+            // If clone fails, try to pull (repo might already exist)
+            try {
+              let gitCredentials: GitCredentials | undefined;
+              if (serverId) {
+                const { server, credentials: serverCreds } = (gitService as any).getServerAndCredentials(repositoryUrl!, serverId);
+                gitCredentials = {
+                  username: serverCreds.username,
+                  password: serverCreds.token || serverCreds.password || '',
+                  token: serverCreds.token,
+                  method: serverCreds.method,
+                  url: repositoryUrl!,
+                  repoId: serverId
+                };
+              }
+              await gitAdapter.pull(localPath, gitCredentials);
+            } catch (pullError) {
+              console.warn(`⚠️ Could not clone or pull repository, proceeding with local changes`)
+            }
+          }
+
+          // Write metadata.json
+          const metadataPath = path.join(localPath, 'metadata.json')
+          await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2), 'utf-8')
+
+          // Stage, commit and push changes
+          await gitAdapter.add('metadata.json', localPath)
+          await gitAdapter.commit(`Update metadata for customer: ${updatedCustomer.name}`, localPath)
+
+          // Push with proper credentials
+          let gitCredentials: GitCredentials | undefined;
+          if (serverId) {
+            const { server, credentials: serverCreds } = (gitService as any).getServerAndCredentials(repositoryUrl!, serverId);
+            gitCredentials = {
+              username: serverCreds.username,
+              password: serverCreds.token || serverCreds.password || '',
+              token: serverCreds.token,
+              method: serverCreds.method,
+              url: repositoryUrl!,
+              repoId: serverId,
+            };
+          }
+
+          const pushResult = await gitAdapter.push(localPath, gitCredentials)
+          if (!pushResult.success) {
+            throw new Error(`Failed to push metadata: ${pushResult.error}`)
+          }
+
+          console.log(`✅ Successfully pushed metadata for customer: ${updatedCustomer.name}`)
+        } catch (gitError: any) {
+          console.error(`❌ Failed to push metadata for customer ${updatedCustomer.name}:`, gitError)
+          // Don't fail the customer update if GitOps push fails, just log the error
+        }
+      } else {
+        console.log(`ℹ️ DEBUG: No GitOps configuration found for customer: ${updatedCustomer.name}`);
+      }
+
+      return updatedCustomer
     } catch (error: any) {
       throw new Error(error.message)
     }
@@ -1950,9 +2088,10 @@ export function registerCustomerHandlers() {
   })
 
   // Setup GitOps for existing customer
-  ipcMain.handle('customer:setupGitOps', async (_, customerId: string, gitOpsConfig) => {
+  ipcMain.handle('customer:setupGitOps', async (_, customerId: string, hostingOrg: string, gitOpsConfig) => {
+
     try {
-      return await CustomerService.setupCustomerGitOps(customerId, gitOpsConfig)
+      return await CustomerService.setupCustomerGitOps(customerId, gitOpsConfig, hostingOrg)
     } catch (error: any) {
       throw new Error(error.message)
     }
@@ -1964,6 +2103,341 @@ export function registerCustomerHandlers() {
       return await gitService.getServers()
     } catch (error: any) {
       throw new Error(error.message)
+    }
+  })
+
+  ipcMain.handle('customer:batchFetchGitOpsMetadata', async (_, repositories: BatchRepository[]) => {
+    try {
+      return await gitOpsBatchService.batchFetchMetadata(repositories, 'customer');
+    } catch (error) {
+      console.error('[IPC] Error in customer:batchFetchGitOpsMetadata:', error);
+      return { success: false, results: [], errors: [String(error)] };
+    }
+  });
+
+  // ipcMain.handle('customer:batchFetchGitOpsMetadata', async (_, serverId?: string) => {
+  //   try {
+  //     console.log('[Customer GitOps] Starting batch fetch of customer metadata from GitOps repositories');
+
+  //     // Get available Git servers
+  //     const servers = gitService.getServers();
+  //     if (servers.length === 0) {
+  //       throw new Error('No Git servers configured. Please configure a Git server first.');
+  //     }
+
+  //     // Use specified serverId or first available server
+  //     let gitServer;
+  //     if (serverId) {
+  //       gitServer = servers.find(s => s.id === serverId) || servers[0];
+  //     } else {
+  //       gitServer = servers[0];
+  //     }
+
+  //     const baseUrl = gitServer.baseUrl.replace(/\/$/, '');
+
+  //     // Discover all customer GitOps repositories using naming convention
+  //     // We'll look for repositories with pattern: {baseUrl}/*/gitops.git
+  //     const repositories: Array<{
+  //       repositoryUrl: string;
+  //       customerId: string;
+  //     }> = [];
+
+      
+  //     const results: Array<{
+  //       customerId: string;
+  //       customerName: string;
+  //       repositoryUrl: string;
+  //       metadata: any;
+  //       success: boolean;
+  //       error?: string;
+  //     }> = [];
+
+  //     const errors: string[] = [];
+
+  //     // Since we can't list all repositories from the Git server API easily,
+  //     // we'll use a different approach: try to clone/fetch from repositories
+  //     // with common customer ID patterns, or use a predefined list
+      
+  //     // For now, let's implement a basic discovery mechanism
+  //     // This would need to be enhanced based on your Git server capabilities
+      
+  //     // Alternative approach: Try to access repositories for known customer patterns
+  //     // This is a placeholder - you'd implement actual repository discovery here
+      
+  //     // For demonstration, we'll implement a method to try accessing repositories
+  //     // and only include those that exist
+      
+  //     // Get git adapter and credentials
+  //     const gitAdapter = GitAdapterFactory.getAdapter('isomorphic-git');
+  //     let credentials: any = undefined;
+
+  //     try {
+  //       const serverCredentials = (gitService as any).getServerAndCredentials(baseUrl);
+  //       if (serverCredentials && serverCredentials.credentials) {
+  //         credentials = {
+  //           method: 'credentials',
+  //           username: serverCredentials.credentials.username,
+  //           password: serverCredentials.credentials.token || serverCredentials.credentials.password || ''
+  //         };
+  //       }
+  //     } catch (credError) {
+  //       console.log('[Customer GitOps] Could not get credentials:', credError);
+  //     }
+  //     // Implement repository discovery by trying common patterns
+  //     // This is a simplified approach - you'd enhance this based on your Git server
+      
+  //     // For now, let's create a more robust discovery mechanism
+  //     // We'll scan for repositories that match the gitops.git pattern
+      
+  //     const discoveredCustomers: Array<{id: string, name: string}> = [];
+      
+  //     // Since we can't easily list repositories, we'll implement a method
+  //     // that tries to clone repositories and reads customer info from metadata
+      
+  //     // This would be replaced with actual Git server API calls to list repositories
+  //     // For now, we'll implement a basic approach
+
+  //     // Let's implement a more practical approach:
+  //     // 1. Try to access repositories using the naming convention
+  //     // 2. Only process repositories that exist and have metadata.json
+      
+  //     // For this implementation, we'll use a discovery approach
+  //     // where we try to access repositories and extract customer info from metadata
+      
+  //     // This is a placeholder for actual repository discovery
+  //     // In practice, you'd use your Git server's API to list repositories
+      
+  //     console.log('[Customer GitOps] Repository discovery not fully implemented - would need Git server API integration');
+      
+  //     // Return empty results for now, indicating the discovery mechanism needs enhancement
+  //     return {
+  //       success: true,
+  //       results: [],
+  //       errors: ['Repository discovery requires Git server API integration']
+  //     };
+
+  //   } catch (error) {
+  //     console.error('[IPC] Error in customer:batchFetchGitOpsMetadata:', error);
+  //     return { success: false, results: [], errors: [String(error)] };
+  //   }
+  // });  
+
+  ipcMain.handle('customer:pushMetadataToRepo', async (_, customerId: string) => {
+    try {
+      console.log(`[Customer GitOps] Pushing metadata for customer ${customerId}`)
+
+      // Get customer data
+      const customer = await CustomerService.getCustomerById(customerId)
+      if (!customer) {
+        throw new Error(`Customer with ID ${customerId} not found`)
+      }
+
+      // Check if customer has GitOps configuration
+      if (!customer.metadata?.gitOps?.repositoryUrl) {
+        throw new Error(`Customer ${customer.name} does not have GitOps repository configured`)
+      }
+
+      const repositoryUrl = customer.metadata.gitOps.repositoryUrl
+      const localPath = path.join(app.getPath('userData'), 'gitops', 'customers', customer.name)
+
+      // Generate customer metadata
+      const customerMetadata = {
+        id: customer.id,
+        name: customer.name,
+        description: customer.description,
+        metadata: {
+          ...customer.metadata,
+          lastUpdated: new Date().toISOString(),
+          version: '1.0.0'
+        },
+        gitOps: {
+          repositoryUrl: repositoryUrl,
+          lastSync: new Date().toISOString()
+        }
+      }
+
+      // Ensure local directory exists
+      await fs.mkdir(localPath, { recursive: true })
+
+      // Get git adapter and credentials
+      const gitAdapter = GitAdapterFactory.getAdapter('isomorphic-git')
+      let credentials: any = undefined
+
+      try {
+        const servers = gitService.getServers()
+        const matchingServer = servers.find(server => {
+          const serverHost = new URL(server.baseUrl).hostname
+          const repoHost = new URL(repositoryUrl).hostname
+          return serverHost === repoHost
+        })
+
+        if (matchingServer) {
+          const serverCredentials = (gitService as any).getServerAndCredentials(repositoryUrl)
+          if (serverCredentials && serverCredentials.credentials) {
+            credentials = {
+              method: 'credentials',
+              username: serverCredentials.credentials.username,
+              password: serverCredentials.credentials.token || serverCredentials.credentials.password || ''
+            }
+          }
+        }
+      } catch (credError) {
+        console.log(`[Customer GitOps] Could not get credentials for ${customer.name}:`, credError)
+      }
+
+      // Check if repository exists locally
+      let isExistingRepo = false
+      try {
+        await fs.access(path.join(localPath, '.git'))
+        isExistingRepo = true
+      } catch {
+        // Not a git repository yet
+      }
+
+      if (!isExistingRepo) {
+        // Clone the repository
+        const cloneResult = await gitAdapter.clone(repositoryUrl, localPath, credentials)
+        if (!cloneResult.success) {
+          throw new Error(`Failed to clone repository: ${cloneResult.error}`)
+        }
+      } else {
+        // Pull latest changes
+        const pullResult = await gitAdapter.pull(localPath, credentials)
+        if (!pullResult.success) {
+          console.warn(`[Customer GitOps] Failed to pull latest changes: ${pullResult.error}`)
+        }
+      }
+
+      // Write metadata.json
+      const metadataPath = path.join(localPath, 'metadata.json')
+      await fs.writeFile(metadataPath, JSON.stringify(customerMetadata, null, 2), 'utf-8')
+
+      // Add files to git staging area
+      const addResult = await gitAdapter.add('metadata.json', localPath)
+      if (!addResult.success) {
+        throw new Error(`Failed to add files to git: ${addResult.error}`)
+      }
+
+      // Commit and push changes
+      const commitResult = await gitAdapter.commit(
+        `Update customer metadata for ${customer.name}`,
+        localPath
+      )
+
+      if (!commitResult.success) {
+        throw new Error(`Failed to commit changes: ${commitResult.error}`)
+      }
+
+      const pushResult = await gitAdapter.push(localPath, credentials)
+      if (!pushResult.success) {
+        throw new Error(`Failed to push changes: ${pushResult.error}`)
+      }
+
+      console.log(`[Customer GitOps] Successfully pushed metadata for ${customer.name}`)
+
+      return {
+        success: true,
+        message: `Metadata pushed successfully for customer ${customer.name}`
+      }
+
+    } catch (error: any) {
+      console.error(`[Customer GitOps] Failed to push metadata:`, error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('customer:generateGitOpsRepositories', async (_, customers: Customer[]) => {
+    try {
+      console.log(`[Customer GitOps] Generating GitOps repositories for ${customers.length} customers`)
+
+      const results: Array<{
+        customerName: string
+        success: boolean
+        repositoryUrl?: string
+        error?: string
+      }> = []
+
+      // Get available Git servers
+      const servers = gitService.getServers()
+      if (servers.length === 0) {
+        throw new Error('No Git servers configured. Please configure a Git server first.')
+      }
+
+      // Use the first available server (or implement server selection logic)
+      const gitServer = servers[0]
+      const baseUrl = gitServer.baseUrl.replace(/\/$/, '') // Remove trailing slash
+
+      for (const customer of customers) {
+        try {
+          // Generate repository URL following naming convention
+          const repositoryName = `${customer.name.toLowerCase().replace(/[^a-z0-9-]/g, '-')}-gitops`
+          const repositoryUrl = `${baseUrl}/${repositoryName}.git`
+
+          // Create repository using git service
+          const createResult = await gitService.createRepository({
+            name: repositoryName,
+            description: `GitOps repository for customer ${customer.name}`,
+            isPrivate: true,
+            autoInit: true,
+            provider: gitServer.provider || 'gitea' // Add missing provider property
+          }, gitServer.id)
+
+          // if (!createResult.success) {
+          //   throw new Error(`Failed to create repository: ${createResult.error}`)
+          // }
+
+          // Update customer with GitOps metadata
+          const updatedCustomer = {
+            ...customer,
+            metadata: {
+              ...customer.metadata,
+              gitOps: {
+                repositoryUrl: repositoryUrl,
+                serverId: gitServer.id,
+                createdAt: new Date().toISOString()
+              }
+            }
+          }
+
+          // Save updated customer
+          await CustomerService.updateCustomer(customer.id, updatedCustomer)
+
+          // Push initial metadata to the repository
+          try {
+            await CustomerService.pushCustomerMetadataToRepo(customer)
+            console.log(`[Customer GitOps] Successfully pushed initial metadata for ${customer.name}`)
+          } catch (pushError: any) {
+            console.warn(`[Customer GitOps] Failed to push initial metadata for ${customer.name}: ${pushError.message}`)
+          }
+
+          results.push({
+            customerName: customer.name,
+            success: true,
+            repositoryUrl: repositoryUrl
+          })
+
+          console.log(`[Customer GitOps] Successfully created GitOps repository for ${customer.name}: ${repositoryUrl}`)
+
+        } catch (error: any) {
+          console.error(`[Customer GitOps] Failed to create GitOps repository for ${customer.name}:`, error)
+          results.push({
+            customerName: customer.name,
+            success: false,
+            error: error.message
+          })
+        }
+      }
+
+      console.log(`[Customer GitOps] Repository generation completed: ${results.filter(r => r.success).length}/${results.length} successful`)
+
+      return {
+        success: true,
+        results: results
+      }
+
+    } catch (error: any) {
+      console.error(`[Customer GitOps] Failed to generate GitOps repositories:`, error)
+      return { success: false, error: error.message }
     }
   })
 
@@ -2019,7 +2493,7 @@ export function registerCustomerHandlers() {
       // Ensure parent directory exists
       const parentDir = path.dirname(filePath)
       await fs.mkdir(parentDir, { recursive: true })
-      
+
       // Write the file
       await fs.writeFile(filePath, content, 'utf-8')
       return { success: true }

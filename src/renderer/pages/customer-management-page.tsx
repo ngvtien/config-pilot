@@ -67,6 +67,16 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
     const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([])
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
 
+    // Add new state variables for GitOps batch operations
+    const [gitOpsMetadata, setGitOpsMetadata] = useState<Array<{
+        customerName: string
+        success: boolean
+        metadata?: any
+        error?: string
+    }>>([]);
+    const [isLoadingGitOpsMetadata, setIsLoadingGitOpsMetadata] = useState(false);
+    const [showGitOpsViewer, setShowGitOpsViewer] = useState(false);
+
     /**
      * Filter customers based on search query (simplified to name, displayName, description only)
      */
@@ -174,6 +184,123 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
     }
 
     /**
+     * Generate customer metadata for GitOps repository
+     */
+    const generateCustomerMetadata = (customer: Partial<Customer>) => {
+        return {
+            name: customer.name,
+            displayName: customer.displayName,
+            description: customer.description,
+            isActive: customer.isActive,
+            metadata: {
+                //contactEmail: customer.metadata?.contactEmail,
+                //region: customer.metadata?.region,
+                //tier: customer.metadata?.tier,
+                tags: customer.metadata?.tags || [],
+                gitOps: customer.metadata?.gitOps
+            },
+            createdAt: customer.createdAt,
+            updatedAt: new Date().toISOString()
+        };
+    };
+
+    /**
+     * Fetch GitOps metadata from all customer repositories
+     */
+    const fetchGitOpsMetadata = async () => {
+        if (!context?.baseHostUrl) {
+            showAlert({
+                title: 'Configuration Missing',
+                message: 'Please configure base host URL in settings.',
+                variant: 'warning'
+            });
+            return;
+        }
+
+        setIsLoadingGitOpsMetadata(true);
+
+        try {
+            // Build repository list from customers with GitOps configured
+            const repositories = customers
+                .filter(customer => customer.metadata?.gitOps?.repositoryUrl)
+                .map(customer => ({
+                    customerName: customer.name,
+                    repositoryUrl: customer.metadata!.gitOps!.repositoryUrl!,
+                    serverId: customer.metadata?.gitOps?.serverId || generateServerId(context.baseHostUrl!)
+                }));
+
+            if (repositories.length === 0) {
+                showAlert({
+                    title: 'No GitOps Repositories',
+                    message: 'No customers have GitOps repositories configured.',
+                    variant: 'info'
+                });
+                return;
+            }
+
+            console.log(`Fetching GitOps metadata for ${repositories.length} customer repositories...`);
+
+            const result = await window.electronAPI?.customer?.batchFetchGitOpsMetadata?.({ repositories });
+
+            if (result?.success) {
+                setGitOpsMetadata(result.results);
+                setShowGitOpsViewer(true);
+                showAlert({
+                    title: 'GitOps Metadata Loaded',
+                    message: `Successfully loaded metadata from ${result.results.filter((r: any) => r.success).length} of ${repositories.length} repositories.`,
+                    variant: 'success'
+                });
+            } else {
+                throw new Error(result?.error || 'Failed to fetch GitOps metadata');
+            }
+        } catch (error: any) {
+            console.error('Failed to fetch GitOps metadata:', error);
+            showAlert({
+                title: 'GitOps Fetch Failed',
+                message: error.message,
+                variant: 'error'
+            });
+        } finally {
+            setIsLoadingGitOpsMetadata(false);
+        }
+    };
+
+    /**
+     * Push customer metadata to GitOps repository
+     */
+    const pushCustomerMetadata = async (customer: Customer) => {
+        if (!customer.metadata?.gitOps?.repositoryUrl) {
+            showAlert({
+                title: 'No GitOps Repository',
+                message: 'This customer does not have a GitOps repository configured.',
+                variant: 'warning'
+            });
+            return;
+        }
+
+        try {
+            const metadata = generateCustomerMetadata(customer);
+            const result = await window.electronAPI?.customer?.pushMetadataToRepo?.(customer.id)
+            if (result?.success) {
+                showAlert({
+                    title: 'Metadata Pushed',
+                    message: `Successfully pushed metadata for ${customer.displayName || customer.name} to GitOps repository.`,
+                    variant: 'success'
+                });
+            } else {
+                throw new Error(result?.error || 'Failed to push metadata');
+            }
+        } catch (error: any) {
+            console.error('Failed to push customer metadata:', error);
+            showAlert({
+                title: 'Push Failed',
+                message: error.message,
+                variant: 'error'
+            });
+        }
+    };
+
+    /**
      * Handle saving customer with GitOps setup
      */
     const handleSaveCustomerWithGitOps = async () => {
@@ -195,7 +322,8 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
 
                 // Setup GitOps if requested
                 if (gitOpsConfig.createGitOpsRepo && gitOpsConfig.serverId) {
-                    await window.electronAPI?.customer?.setupGitOps(editingCustomer.id, gitOpsConfig)
+                    await window.electronAPI?.customer?.setupGitOps(editingCustomer.id, context?.hostingOrg || 'da', gitOpsConfig)
+
                 }
             } else {
                 // Create new customer with GitOps
@@ -457,7 +585,7 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
             };
 
             console.log(`🏗️ Setting up GitOps with config:`, gitServerConfig);
-            const result = await window.electronAPI?.customer?.setupGitOps(customer.id, gitServerConfig);
+            const result = await window.electronAPI?.customer?.setupGitOps(customer.id, context?.hostingOrg || 'da', gitServerConfig);
             console.log(`✅ GitOps setup completed:`, result);
 
             // 🔧 UPDATE: Use the returned updatedCustomer to refresh local state
@@ -714,7 +842,7 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
                 </div>
 
                 {/* Action Buttons */}
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2">                    
                     {/* View Toggle */}
                     <Button
                         onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
@@ -724,6 +852,27 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
                     >
                         {viewMode === 'grid' ? <List className="h-4 w-4" /> : <Grid className="h-4 w-4" />}
                     </Button>
+
+                    {/* GitOps View Button */}
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <Button
+                                variant="outline"
+                                onClick={fetchGitOpsMetadata}
+                                disabled={isLoadingGitOpsMetadata}
+                            >
+                                {isLoadingGitOpsMetadata ? (
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                ) : (
+                                    <GitBranch className="h-4 w-4 mr-2" />
+                                )}
+                                GitOps View
+                            </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                            <p>Fetch and view GitOps metadata from all customer repositories</p>
+                        </TooltipContent>
+                    </Tooltip>
 
                     <Button variant="outline" onClick={handleImportCustomers}>
                         <Download className="h-4 w-4 mr-2" />
@@ -758,6 +907,26 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
                                             >
                                                 <Edit className="h-4 w-4" />
                                             </Button>
+
+                                            {/* Push Metadata Button */}
+                                            {customer.metadata?.gitOps?.repositoryUrl && (
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            onClick={() => pushCustomerMetadata(customer)}
+                                                            title="Push metadata to GitOps repository"
+                                                        >
+                                                            📤
+                                                        </Button>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent>
+                                                        <p>Push customer metadata to GitOps repository</p>
+                                                    </TooltipContent>
+                                                </Tooltip>
+                                            )}
+
                                             {customer.metadata?.gitOps?.repositoryUrl ? (
                                                 <Tooltip>
                                                     <TooltipTrigger asChild>
@@ -1275,13 +1444,12 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
 
                                     {/* Connection Test Results */}
                                     {connectionTestResult.status !== 'idle' && (
-                                        <div className={`p-3 rounded-md text-sm ${
-                                            connectionTestResult.status === 'success'
-                                                ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-800 dark:text-green-400'
-                                                : connectionTestResult.status === 'error'
-                                                    ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-400'
-                                                    : 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-400'
-                                        }`}>
+                                        <div className={`p-3 rounded-md text-sm ${connectionTestResult.status === 'success'
+                                            ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-800 dark:text-green-400'
+                                            : connectionTestResult.status === 'error'
+                                                ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-400'
+                                                : 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-400'
+                                            }`}>
                                             <div className="flex items-center gap-2">
                                                 {connectionTestResult.status === 'testing' && (
                                                     <Loader2 className="h-4 w-4 animate-spin" />

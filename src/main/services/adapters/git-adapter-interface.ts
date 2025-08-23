@@ -65,4 +65,19 @@ export interface GitAdapterInterface {
    * Pull changes
    */
   pull(workingDir: string, credentials?: GitCredentials): Promise<GitOperationResult>;
+
+  /**
+   * Initialize a new git repository
+   */
+  init(workingDir: string): Promise<GitOperationResult>;
+
+  /**
+   * Add a remote to the repository
+   */
+  addRemote(name: string, url: string, workingDir: string): Promise<GitOperationResult>;
+
+  /**
+   * Push changes to specific remote and branch
+   */
+  push(workingDir: string, credentials?: GitCredentials, remote?: string, branch?: string): Promise<GitOperationResult>;
 }

@@ -358,7 +358,8 @@ export class CustomerService {
     gitServerConfig: {
       serverId: string;
       gitBaseUrl: string;
-    }
+    },
+    hostingOrg: string = 'da'
   ): Promise<any> {
     console.log(`🚀 [DEBUG] === Starting GitOps Repository Creation ===`);
     console.log(`🔍 [DEBUG] Customer:`, JSON.stringify({
@@ -366,61 +367,76 @@ export class CustomerService {
       name: customer.name,
       displayName: customer.displayName
     }, null, 2));
+    console.log(`🔍 [DEBUG] Hosting Organization: ${hostingOrg}`);
 
     // Sanitize configuration with fuzzy logic
     const sanitizedConfig = this.sanitizeGitServerConfig(gitServerConfig);
 
     const { gitService } = await import('./git-service');
 
-    // Construct GitOps repository URL with sanitized base URL
-    const gitOpsRepoName = `${customer.name}-gitops`;
-    const cleanBaseUrl = sanitizedConfig.gitBaseUrl.replace(/\/$/, '');
-    const gitOpsRepoUrl = `${cleanBaseUrl}/${customer.name}/gitops.git`;
+    // Use generateGitOpsRepositoryUrl to construct the repository URL
+    const gitOpsRepoUrl = this.generateGitOpsRepositoryUrl(
+      customer,
+      sanitizedConfig.gitBaseUrl,
+      hostingOrg
+    );
 
     console.log(`🔍 [DEBUG] Repository URL construction:`);
-    console.log(`  - gitOpsRepoName: ${gitOpsRepoName}`);
-    console.log(`  - cleanBaseUrl: ${cleanBaseUrl}`);
     console.log(`  - gitOpsRepoUrl: ${gitOpsRepoUrl}`);
 
     try {
-      // First, create the organization for the customer
-      const orgConfig = {
-        name: customer.name,
-        displayName: customer.displayName || customer.name,
-        description: `Organization for customer: ${customer.displayName || customer.name}`,
-        visibility: 'private' as const
-      };
-
-      console.log(`🏢 [DEBUG] Creating organization with config:`, JSON.stringify(orgConfig, null, 2));
-
+      // Check if repository already exists before attempting creation
+      console.log(`🔍 [DEBUG] Checking if repository already exists...`);
       try {
-        await gitService.createOrganisation(sanitizedConfig.gitBaseUrl, orgConfig);
-        console.log(`✅ [DEBUG] Created organization '${customer.name}' for customer`);
-      } catch (orgError: any) {
-        console.log(`🔍 [DEBUG] Organization creation error:`, orgError.message);
-        // If organization already exists, that's fine, continue
-        if (orgError.message?.includes('already exists') || orgError.message?.includes('409')) {
-          console.log(`ℹ️ [DEBUG] Organization '${customer.name}' already exists, continuing...`);
-        } else {
-          console.warn(`⚠️ [DEBUG] Failed to create organization '${customer.name}':`, orgError.message);
-          // Continue anyway - maybe the organization exists but we can't detect it
+        const validationResult = await gitService.validateRepositoryAccess(gitOpsRepoUrl, sanitizedConfig.serverId);
+        if (validationResult.isValid && validationResult.repositoryInfo) {
+          console.log(`ℹ️ [DEBUG] Repository already exists at ${gitOpsRepoUrl}, skipping creation`);
+          
+          // Update customer metadata with existing repository URL
+          const updatedCustomer = await this.updateCustomer(customer.id, {
+            metadata: {
+              ...customer.metadata,
+              gitOps: {
+                repositoryUrl: gitOpsRepoUrl,
+                serverId: sanitizedConfig.serverId,
+                environments: ['dev', 'sit', 'uat', 'prod'],
+                setupDate: new Date().toISOString()
+              }
+            }
+          });
+
+          return {
+            repository: validationResult.repositoryInfo,
+            branches: [],
+            updatedCustomer,
+            errors: [],
+            skipped: true,
+            message: 'Repository already exists, skipped creation'
+          };
         }
+      } catch (validationError: any) {
+        console.log(`🔍 [DEBUG] Repository validation failed:`, validationError.message);
+        // Continue with creation if validation fails (repository likely doesn't exist)
       }
 
-      // Create the repository using git service
+      // Create GitOps repository configuration
       const repoConfig = {
-        name: gitOpsRepoName,
-        description: `GitOps repository for customer: ${customer.displayName || customer.name}`,
+        name: `gitops-customers-${customer.name}`,
+        description: `GitOps repository for customer ${customer.displayName || customer.name}`,
         isPrivate: true,
         autoInit: true,
+        gitignore: 'Kubernetes',
+        license: 'MIT',
         provider: 'gitea' as const,
-        baseUrl: sanitizedConfig.gitBaseUrl,
-        url: gitOpsRepoUrl
+        url: gitOpsRepoUrl,
+        defaultBranch: 'dev',
       };
 
       console.log(`📦 [DEBUG] Creating repository with config:`, JSON.stringify(repoConfig, null, 2));
 
       const repository = await gitService.createRepository(repoConfig, sanitizedConfig.serverId);
+
+      await gitService.setDefaultBranch(repository.url, 'dev');
 
       console.log(`✅ [DEBUG] Repository created:`, JSON.stringify({
         url: repository.url,
@@ -477,100 +493,12 @@ export class CustomerService {
         error: error.message,
         stack: error.stack,
         customer: customer.name,
-        gitServerConfig: sanitizedConfig
+        gitServerConfig: sanitizedConfig,
+        hostingOrg
       });
       throw error;
     }
   }
-
-  // static async createCustomerGitOpsRepository(
-  //   customer: Customer,
-  //   gitServerConfig: {
-  //     serverId: string;
-  //     gitBaseUrl: string;
-  //   }
-  // ): Promise<any> {
-  //   const { gitService } = await import('./git-service');
-
-  //     // Construct GitOps repository URL: {gitBaseUrl}/{customerId}/gitops.git
-  //     const gitOpsRepoName = `${customer.name}-gitops`;
-  //     const cleanBaseUrl = gitServerConfig.gitBaseUrl.replace(/\/$/, '');
-  //     const gitOpsRepoUrl = `${cleanBaseUrl}/${customer.name}/gitops.git`;
-
-  //     try {
-  //       // First, create the organization for the customer
-  //       const orgConfig = {
-  //         name: customer.name,
-  //         displayName: customer.displayName || customer.name,
-  //         description: `Organization for customer: ${customer.displayName || customer.name}`,
-  //         visibility: 'private' as const
-  //       };
-
-  //       try {
-  //         await gitService.createOrganisation(gitServerConfig.gitBaseUrl, orgConfig);
-  //         console.log(`✅ Created organization '${customer.name}' for customer`);
-  //       } catch (orgError: any) {
-  //         // If organization already exists, that's fine, continue
-  //         if (orgError.message?.includes('already exists') || orgError.message?.includes('409')) {
-  //           console.log(`ℹ️ Organization '${customer.name}' already exists, continuing...`);
-  //         } else {
-  //           console.warn(`⚠️ Failed to create organization '${customer.name}':`, orgError.message);
-  //           // Continue anyway - maybe the organization exists but we can't detect it
-  //         }
-  //       }
-
-  //       // Create the repository using git service
-  //       const repoConfig = {
-  //         name: gitOpsRepoName,
-  //         description: `GitOps repository for customer: ${customer.displayName || customer.name}`,
-  //         isPrivate: true,
-  //         autoInit: true,
-  //         provider: 'gitea' as const, // Assuming Gitea based on existing code
-  //         baseUrl: gitServerConfig.gitBaseUrl,
-  //         url: gitOpsRepoUrl
-  //       };
-
-  //       const repository = await gitService.createRepository(repoConfig, gitServerConfig.serverId);
-
-  //       // Create 4 environment branches: dev, sit, uat, prod
-  //       const environments = ['dev', 'sit', 'uat', 'prod'];
-  //       const branchResult = await gitService.createCustomerEnvironmentBranches(
-  //         gitOpsRepoUrl, // Use the correct clone URL
-  //         environments,
-  //         customer.name,
-  //         gitServerConfig.serverId
-  //       );
-
-  //       console.log(`✅ Created GitOps repository for customer ${customer.name}:`, {
-  //         repository: repository.url,
-  //         branches: branchResult.createdBranches
-  //       });
-
-  //       const updatedCustomer = await this.updateCustomer(customer.id, {
-  //         metadata: {
-  //           ...customer.metadata,
-  //           gitOps: {
-  //             repositoryUrl: repository.url || gitOpsRepoUrl,
-  //             serverId: gitServerConfig.serverId,
-  //             environments: ['dev', 'sit', 'uat', 'prod']
-  //           }
-  //         }
-  //       });
-
-  //       console.log(`✅ Updated customer ${customer.name} with GitOps metadata:`, updatedCustomer.metadata?.gitOps);
-
-  //       return {
-  //         repository,
-  //         branches: branchResult.createdBranches,
-  //         errors: branchResult.errors,
-  //         updatedCustomer
-  //       };
-
-  //     } catch (error: any) {
-  //       console.error(`❌ Failed to create GitOps repository for customer ${customer.name}:`, error);
-  //       throw new Error(`Failed to create GitOps repository: ${error.message}`);
-  //     }
-  //   }
 
 
   /**
@@ -581,14 +509,54 @@ export class CustomerService {
     gitServerConfig: {
       serverId: string;
       gitBaseUrl: string;
-    }
+    },
+    hostingOrg: string
   ): Promise<any> {
     const customer = await this.getCustomerById(customerId);
     if (!customer) {
       throw new Error(`Customer with ID '${customerId}' not found`);
     }
 
-    return await this.createCustomerGitOpsRepository(customer, gitServerConfig);
+    return await this.createCustomerGitOpsRepository(customer, gitServerConfig, hostingOrg);
   }
 
+  /**
+   * Generate customer metadata.json content
+   */
+  static generateCustomerMetadata(customer: Customer) {
+    return {
+      customer: {
+        id: customer.id,
+        name: customer.name,
+        displayName: customer.displayName,
+        description: customer.description,
+        isActive: customer.isActive,
+        createdAt: customer.createdAt,
+        updatedAt: customer.updatedAt,
+        metadata: customer.metadata
+      },
+      generated: {
+        timestamp: new Date().toISOString(),
+        version: '1.0.0',
+        generator: 'ConfigPilot Customer Management'
+      }
+    }
+  }
+
+  /**
+   * Push customer metadata to GitOps repository
+   */
+  static async pushCustomerMetadataToRepo(customer: Customer): Promise<void> {
+    // Implementation similar to product metadata push
+  }
+
+  /**
+   * Generate GitOps repository URL following naming convention
+   */
+  static generateGitOpsRepositoryUrl(customer: Customer, gitBaseUrl: string, hostingOrg?: string): string {
+    if (hostingOrg) {
+      return `${gitBaseUrl}/${hostingOrg}/gitops-customers-${customer.name}.git`
+    }
+    return `${gitBaseUrl}/${customer.name}/gitops.git`
+  }
 }

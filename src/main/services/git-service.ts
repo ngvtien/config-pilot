@@ -184,26 +184,26 @@ export class GitService {
             : `${parsed.protocol}://${parsed.resource}`;
 
         // 🔍 DEBUG: Log what we're looking for
-        console.log('🔍 Looking for server with baseUrl:', baseUrl);
+        //console.log('🔍 Looking for server with baseUrl:', baseUrl);
 
         const allServers = this.getServers();
-        console.log('📋 All stored servers:', allServers.map(s => ({
-            name: s.name,
-            baseUrl: s.baseUrl,
-            provider: s.provider,
-            id: s.id
-        })));
+        // console.log('📋 All stored servers:', allServers.map(s => ({
+        //     name: s.name,
+        //     baseUrl: s.baseUrl,
+        //     provider: s.provider,
+        //     id: s.id
+        // })));
 
         const server = allServers.find(s => s.baseUrl === baseUrl);
         if (!server) throw new Error(`No server configured for ${baseUrl}`);
 
         // 🔍 DEBUG: Log what we found
-        console.log('✅ Found server:', {
-            name: server.name,
-            baseUrl: server.baseUrl,
-            provider: server.provider,
-            id: server.id
-        });
+        // console.log('✅ Found server:', {
+        //     name: server.name,
+        //     baseUrl: server.baseUrl,
+        //     provider: server.provider,
+        //     id: server.id
+        // });
 
         switch (server.provider) {
             case 'gitea':
@@ -872,9 +872,9 @@ The ApplicationSet uses GitDirectoryGenerator to automatically discover applicat
         try {
             // isomorphic-git doesn't have a direct status equivalent
             // This would need custom implementation using git.walk
-            return { 
-                success: false, 
-                error: "Status functionality not implemented with isomorphic-git adapter" 
+            return {
+                success: false,
+                error: "Status functionality not implemented with isomorphic-git adapter"
             };
         } catch (error: any) {
             return { success: false, error: error.message };
@@ -990,21 +990,13 @@ The ApplicationSet uses GitDirectoryGenerator to automatically discover applicat
             let gitCredentials: GitCredentials | undefined;
             if (serverId) {
                 const { server, credentials: serverCreds } = this.getServerAndCredentials(repositoryUrl, serverId);
-                // Convert GitServerCredentials to GitCredentials format
-                gitCredentials = {
-                    username: serverCreds.username,
-                    password: serverCreds.token || serverCreds.password || '',
-                    token: serverCreds.token,
-                    method: serverCreds.method,
-                    url: repositoryUrl,
-                    repoId: serverId
-                };
+                gitCredentials = this.convertServerCredentialsToGitCredentials(serverCreds, repositoryUrl, serverId);
             }
 
             // Clone repository to temporary location with credentials
             const tempDir = path.join(os.tmpdir(), `gitops-setup-${Date.now()}`);
             const cloneResult = await this.gitAdapter.clone(repositoryUrl, tempDir, gitCredentials);
-            
+
             if (!cloneResult.success) {
                 throw new Error(cloneResult.error || 'Failed to clone repository');
             }
@@ -1093,21 +1085,13 @@ The ApplicationSet uses GitDirectoryGenerator to automatically discover applicat
             let gitCredentials: GitCredentials | undefined;
             if (serverId) {
                 const { server, credentials: serverCreds } = this.getServerAndCredentials(repositoryUrl, serverId);
-                // Convert GitServerCredentials to GitCredentials format
-                gitCredentials = {
-                    username: serverCreds.username,
-                    password: serverCreds.token || serverCreds.password || '',
-                    token: serverCreds.token,
-                    method: serverCreds.method,
-                    url: repositoryUrl,
-                    repoId: serverId
-                };
+                gitCredentials = this.convertServerCredentialsToGitCredentials(serverCreds, repositoryUrl, serverId);
             }
 
             // Clone repository to temporary location with credentials
             const tempDir = path.join(os.tmpdir(), `customer-gitops-setup-${Date.now()}`);
             const cloneResult = await this.gitAdapter.clone(repositoryUrl, tempDir, gitCredentials);
-            
+
             if (!cloneResult.success) {
                 throw new Error(cloneResult.error || 'Failed to clone repository');
             }
@@ -1115,17 +1099,67 @@ The ApplicationSet uses GitDirectoryGenerator to automatically discover applicat
             // Create a new adapter instance for the temp directory
             const tempAdapter = GitAdapterFactory.getAdapter('isomorphic-git');
 
+            // Create customer metadata.json file
+            const customerMetadata = {
+                customer: {
+                    name: customerName,
+                    displayName: customerName.toUpperCase(),
+                    id: `customer-${Date.now()}`,
+                    createdAt: new Date().toISOString()
+                },
+                environments: environments,
+                gitOps: {
+                    repositoryUrl: repositoryUrl,
+                    defaultBranch: 'dev',
+                    branches: environments
+                },
+                version: '1.0.0'
+            };
+
+            // Get existing branches to avoid conflicts
+            const existingBranches = await tempAdapter.getBranches(tempDir);
+            console.log(`🔍 [DEBUG] Existing branches in repository:`, existingBranches);
+
+            // Add metadata.json to the current branch (likely dev since it's the default)
+            await fs.writeFile(path.join(tempDir, 'metadata.json'), JSON.stringify(customerMetadata, null, 2));
+
+            // Stage and commit metadata.json to current branch
+            const addMetadataResult = await tempAdapter.add('metadata.json', tempDir);
+            if (addMetadataResult.success) {
+                const commitMetadataResult = await tempAdapter.commit(`Add customer metadata for ${customerName}`, tempDir);
+                if (commitMetadataResult.success) {
+                    await tempAdapter.push(tempDir, gitCredentials);
+                }
+            }
+
+            // Create environment branches
             for (const env of environments) {
                 try {
-                    // Create and checkout new branch from main
-                    const branchResult = await tempAdapter.checkoutNewBranch(env, tempDir);
-                    if (!branchResult.success) {
-                        throw new Error(branchResult.error || 'Failed to create branch');
+                    // Check if branch already exists
+                    if (existingBranches.includes(env)) {
+                        console.log(`ℹ️ [DEBUG] Branch ${env} already exists, updating it instead of creating`);
+
+                        // Checkout existing branch
+                        const checkoutResult = await tempAdapter.checkout(env, tempDir);
+                        if (!checkoutResult.success) {
+                            throw new Error(checkoutResult.error || 'Failed to checkout existing branch');
+                        }
+
+                        // Add metadata.json if it doesn't exist in this branch
+                        await fs.writeFile(path.join(tempDir, 'metadata.json'), JSON.stringify(customerMetadata, null, 2));
+
+                        createdBranches.push(env);
+                    } else {
+                        // Create new branch
+                        const branchResult = await tempAdapter.checkoutNewBranch(env, tempDir);
+                        if (!branchResult.success) {
+                            throw new Error(branchResult.error || 'Failed to create branch');
+                        }
+                        createdBranches.push(env);
                     }
 
-                    // Create simple README.md for customer environment
-                    const readmeContent = `# ${customerName} - ${env.toUpperCase()} Environment\n\nThis branch contains configurations for the ${env} environment of ${customerName}.\n\n## Usage\n\nThis branch is used for GitOps deployments to the ${env} environment.\n`;
-
+                    // Create environment-specific README.md
+                    const readmeContent = `# ${customerName} - ${env.toUpperCase()} Environment\n\nThis branch contains configurations for the ${env} environment of ${customerName}.\n\n## Usage\n\nThis branch is used for GitOps deployments to the ${env} environment.\n\n## Metadata\n\nSee \`metadata.json\` for customer configuration details.\n`;
                     await fs.writeFile(path.join(tempDir, 'README.md'), readmeContent);
 
                     // Stage and commit changes
@@ -1140,12 +1174,11 @@ The ApplicationSet uses GitDirectoryGenerator to automatically discover applicat
                     }
 
                     // Push branch
-                    const pushResult = await tempAdapter.push(tempDir, gitCredentials);
+                    const pushResult = await tempAdapter.push(tempDir, gitCredentials, 'origin', env);
                     if (!pushResult.success) {
                         throw new Error(pushResult.error || 'Failed to push branch');
                     }
 
-                    createdBranches.push(env);
                 } catch (error: any) {
                     console.error(`Failed to create ${env} branch:`, error);
                     errors.push({ environment: env, error: error.message });
@@ -1214,6 +1247,28 @@ The ApplicationSet uses GitDirectoryGenerator to automatically discover applicat
                 canConnect: false
             };
         }
+    }
+
+    /**
+     * Convert GitServerCredentials to GitCredentials format
+     * @param serverCreds Server credentials to convert
+     * @param repositoryUrl Repository URL for the credentials
+     * @param serverId Server ID to use as repoId
+     * @returns Converted GitCredentials object
+     */
+    private convertServerCredentialsToGitCredentials(
+        serverCreds: GitServerCredentials,
+        repositoryUrl: string,
+        serverId: string
+    ): GitCredentials {
+        return {
+            username: serverCreds.username,
+            password: serverCreds.token || serverCreds.password || '',
+            token: serverCreds.token,
+            method: serverCreds.method,
+            url: repositoryUrl,
+            repoId: serverId
+        };
     }
 
     /**

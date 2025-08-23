@@ -295,14 +295,21 @@ export class IsomorphicGitAdapter implements GitAdapterInterface {
   /**
    * Push changes
    */
-  async push(workingDir: string, credentials?: GitCredentials): Promise<GitOperationResult> {
+  async push(workingDir: string, credentials?: GitCredentials, remote: string = 'origin', branch?: string): Promise<GitOperationResult> {
     try {
-      await git.push({
+      const pushOptions: any = {
         fs,
         http: require('isomorphic-git/http/node'),
         dir: workingDir,
+        remote: remote,
         onAuth: () => this.buildAuth(credentials)
-      });
+      };
+
+      if (branch) {
+        pushOptions.ref = branch;
+      }
+
+      await git.push(pushOptions);
 
       return {
         success: true,
@@ -347,6 +354,35 @@ export class IsomorphicGitAdapter implements GitAdapterInterface {
   }
 
   /**
+   * List all branches (local and remote)
+   */
+  async listBranches(workingDir: string): Promise<string[]> {
+    try {
+      const localBranches = await git.listBranches({
+        fs,
+        dir: workingDir
+      });
+
+      const remoteBranches = await git.listBranches({
+        fs,
+        dir: workingDir,
+        remote: 'origin'
+      });
+
+      return [...new Set([...localBranches, ...remoteBranches])];
+    } catch (error) {
+      return [];
+    }
+  }
+
+  /**
+   * Checkout existing branch
+   */
+  async checkoutBranch(branchName: string, workingDir: string): Promise<GitOperationResult> {
+    return this.checkout(branchName, workingDir);
+  }  
+
+  /**
    * Parse Git error messages into user-friendly text
    */
   private parseGitError(errorMessage: string): string {
@@ -369,5 +405,58 @@ export class IsomorphicGitAdapter implements GitAdapterInterface {
     }
 
     return errorMessage;
+  }
+
+  /**
+   * Initialize a new git repository
+   */
+  async init(workingDir: string): Promise<GitOperationResult> {
+    try {
+      await git.init({
+        fs,
+        dir: workingDir,
+        defaultBranch: 'dev'
+      });
+
+      return {
+        success: true,
+        message: 'Repository initialized successfully',
+        timestamp: new Date().toISOString()
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        message: 'Failed to initialize repository',
+        error: this.parseGitError(error.message),
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
+   * Add a remote to the repository
+   */
+  async addRemote(name: string, url: string, workingDir: string): Promise<GitOperationResult> {
+    try {
+      await git.addRemote({
+        fs,
+        dir: workingDir,
+        remote: name,
+        url: url
+      });
+
+      return {
+        success: true,
+        message: `Remote ${name} added successfully`,
+        timestamp: new Date().toISOString()
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        message: 'Failed to add remote',
+        error: this.parseGitError(error.message),
+        timestamp: new Date().toISOString()
+      };
+    }
   }
 }

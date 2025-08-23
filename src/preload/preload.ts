@@ -16,7 +16,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       'splash-status',
 
       'settings:save',
-      
+
       // Kubernetes channels
       'k8s:getContexts',
       'k8s:getCurrentContext',
@@ -154,6 +154,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
       'customer:setupGitOps',
       'customer:getAvailableGitServers',
       'git:createCustomerEnvironmentBranches',
+      'customer:batchFetchGitOpsMetadata',
+      'customer:pushMetadataToRepo',
+      'customer:generateGitOpsRepositories',
+
 
       // Produc management      
       'product:initialize',
@@ -448,8 +452,20 @@ contextBridge.exposeInMainWorld("electronAPI", {
     showSaveDialog: () => ipcRenderer.invoke('customer:showSaveDialog'),
     showOpenDialog: () => ipcRenderer.invoke('customer:showOpenDialog'),
     createCustomerWithGitOps: (customer: any, gitOpsConfig: any) => ipcRenderer.invoke('customer:createCustomerWithGitOps', customer, gitOpsConfig),
-    setupGitOps: (customerId: string, gitOpsConfig: any) => ipcRenderer.invoke('customer:setupGitOps', customerId, gitOpsConfig),
-    getAvailableGitServers: () => ipcRenderer.invoke('customer:getAvailableGitServers')
+    setupGitOps: (customerId: string, hostingOrg: string, gitOpsConfig: any) => ipcRenderer.invoke('customer:setupGitOps', customerId, hostingOrg, gitOpsConfig),
+
+    getAvailableGitServers: () => ipcRenderer.invoke('customer:getAvailableGitServers'),
+    // batchFetchGitOpsMetadata: (params: {
+    //   repositories: Array<{
+    //     customerName: string;
+    //     repositoryUrl: string;
+    //     localPath: string;
+    //   }>;
+    // }) => ipcRenderer.invoke('customer:batchFetchGitOpsMetadata', params.repositories),
+    batchFetchGitOpsMetadata: (serverId?: string) => ipcRenderer.invoke('customer:batchFetchGitOpsMetadata', serverId),
+    pushMetadataToRepo: (customerId: string) => ipcRenderer.invoke('customer:pushMetadataToRepo', customerId),
+    generateGitOpsRepositories: (customers: any[]) => ipcRenderer.invoke('customer:generateGitOpsRepositories', customers),
+
   },
 
   product: {
@@ -516,7 +532,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     getDuplicateServers: () => ipcRenderer.invoke('git:getDuplicateServers'),
     updateServer: (serverId: string, updates: any) => ipcRenderer.invoke('git:updateServer', serverId, updates),
     testServerConnection: (serverId: string) => ipcRenderer.invoke('git:testServerConnection', serverId),
-    
+
     // GitOps operations
     updateProductMetadata: (params: {
       repositoryUrl: string
@@ -526,7 +542,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       commitMessage: string
       branch: string
     }) => ipcRenderer.invoke('git:updateProductMetadata', params),
-    
+
     batchFetchGitOpsMetadata: (params: {
       repositories: Array<{
         productName: string
