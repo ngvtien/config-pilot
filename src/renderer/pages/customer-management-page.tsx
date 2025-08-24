@@ -186,26 +186,31 @@ export function CustomerManagementPage({ onNavigateBack, context, settings }: Cu
 
             if (gitOpsResult?.success && gitOpsResult.metadata && gitOpsResult.metadata.length > 0) {
                 // Convert GitOps metadata to Customer objects
-                const gitOpsCustomers: Customer[] = gitOpsResult.metadata.map((item: any) => ({
-                    id: item.customerName, // Use customer name as ID for GitOps-sourced customers
-                    name: item.customerName,
-                    displayName: item.metadata?.displayName || item.customerName,
-                    description: item.metadata?.description || '',
-                    isActive: item.metadata?.isActive ?? true,
-                    createdAt: item.metadata?.createdAt || new Date().toISOString(),
-                    updatedAt: item.metadata?.updatedAt || item.fetchedAt,
-                    metadata: {
-                        tier: item.metadata?.metadata?.tier || 'basic',
-                        tags: item.metadata?.metadata?.tags || [],
-                        ...item.metadata?.metadata,
-                        gitOps: {
-                            repositoryUrl: item.repositoryUrl,
-                            serverId: generateServerId(context.baseHostUrl),
-                            environments: item.metadata?.metadata?.gitOps?.environments || ['dev', 'sit', 'uat', 'prod'],
-                            setupDate: item.metadata?.metadata?.gitOps?.setupDate || item.metadata?.createdAt
+                const gitOpsCustomers: Customer[] = gitOpsResult.metadata.map((item: any) => {
+                    // The metadata structure is: { customer: {...}, generated: {...} }
+                    const customerData = item.metadata?.customer || {};
+                    
+                    return {
+                        id: customerData.id || item.customerName,
+                        name: customerData.name || item.customerName,
+                        displayName: customerData.displayName || item.customerName,
+                        description: customerData.description || '',
+                        isActive: customerData.isActive ?? true,
+                        createdAt: customerData.createdAt || new Date().toISOString(),
+                        updatedAt: customerData.updatedAt || item.fetchedAt,
+                        metadata: {
+                            tier: customerData.metadata?.tier || 'basic',
+                            tags: customerData.metadata?.tags || [],
+                            ...customerData.metadata,
+                            gitOps: {
+                                repositoryUrl: item.repositoryUrl,
+                                serverId: generateServerId(context.baseHostUrl),
+                                environments: customerData.metadata?.gitOps?.environments || ['dev', 'sit', 'uat', 'prod'],
+                                setupDate: customerData.metadata?.gitOps?.setupDate || customerData.createdAt
+                            }
                         }
                     }
-                }))
+                })
 
                 console.log('Loaded customers from GitOps:', gitOpsCustomers.map(c => ({
                     id: c.id,
