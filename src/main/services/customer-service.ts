@@ -391,7 +391,7 @@ export class CustomerService {
         const validationResult = await gitService.validateRepositoryAccess(gitOpsRepoUrl, sanitizedConfig.serverId);
         if (validationResult.isValid && validationResult.repositoryInfo) {
           console.log(`ℹ️ [DEBUG] Repository already exists at ${gitOpsRepoUrl}, skipping creation`);
-          
+
           // Update customer metadata with existing repository URL
           const updatedCustomer = await this.updateCustomer(customer.id, {
             metadata: {
@@ -525,7 +525,7 @@ export class CustomerService {
    */
   private static decodeHtmlEntities(text: string): string {
     if (!text) return text;
-    
+
     const htmlEntities: { [key: string]: string } = {
       '&amp;': '&',
       '&lt;': '<',
@@ -537,7 +537,7 @@ export class CustomerService {
       '&#x60;': '`',
       '&#x3D;': '='
     };
-    
+
     return text.replace(/&[#\w]+;/g, (entity) => {
       return htmlEntities[entity] || entity;
     });
@@ -594,21 +594,21 @@ export class CustomerService {
   }> {
     const { GitService } = await import('./git-service');
     const gitService = new GitService();
-    
+
     const metadata: any[] = [];
     const errors: any[] = [];
 
     try {
       // Get all repositories from the hosting organization
       const repositories = await gitService.listRepositoriesInOrganization(gitBaseUrl, hostingOrg, serverId);
-      
+
       // Debug: Log all repository names and structure to see what's available
       console.log(`📋 All repositories in organization '${hostingOrg}':`, repositories.map(r => r.name));
       console.log(`🔍 Sample repository structure:`, repositories[0] ? JSON.stringify(repositories[0], null, 2) : 'No repositories found');
-      
+
       // Filter repositories that match the GitOps customer naming convention
-      // Note: Gitea API returns repository names without .git suffix
-      const customerRepos = repositories.filter(repo => 
+      // Note: Gitea API returns repository names without .git suffix, but we expect the full URL to have .git
+      const customerRepos = repositories.filter(repo =>
         repo.name.startsWith('gitops-customers-')
       );
 
@@ -617,20 +617,38 @@ export class CustomerService {
       // Fetch metadata.json from each repository
       for (const repo of customerRepos) {
         try {
-          const repoUrl = `${gitBaseUrl}/${hostingOrg}/${repo.name}`;
+          // Construct proper repository URL with .git suffix
+          const repoUrl = `${gitBaseUrl}/${hostingOrg}/${repo.name}.git`;
           const customerName = repo.name.replace('gitops-customers-', '');
-          
-          console.log(`📥 Fetching metadata from: ${repoUrl}`);
-          
-          // Fetch metadata.json from the default branch (usually 'dev')
-          const metadataContent = await gitService.fetchFileFromRepository(
-            repoUrl, 
-            'metadata.json', 
-            'dev', // default branch
-            serverId
-          );
 
-          if (metadataContent.success && metadataContent.content) {
+          console.log(`📥 Fetching metadata.json for customer '${customerName}' from ${repoUrl}`);
+
+          // Try to fetch metadata.json from different branches
+          let metadataContent = null;
+          const branchesToTry = ['dev', 'main', 'master'];
+          
+          for (const branch of branchesToTry) {
+            try {
+              console.log(`📥 Trying to fetch metadata.json from branch '${branch}' for customer '${customerName}'`);
+              metadataContent = await gitService.fetchFileFromRepository(
+                repoUrl,
+                'metadata.json',
+                branch,
+                serverId
+              );
+              
+              if (metadataContent.success && metadataContent.content) {
+                console.log(`✅ Successfully found metadata.json in branch '${branch}' for customer '${customerName}'`);
+                break;
+              }
+            } catch (branchError) {
+              console.log(`⚠️ Branch '${branch}' not found for customer '${customerName}', trying next branch`);
+              continue;
+            }
+          }
+
+          if (metadataContent && metadataContent.success && metadataContent.content) {
+            console.log(`✅ Successfully fetched metadata.json for customer '${customerName}'`);
             const parsedMetadata = JSON.parse(metadataContent.content);
             metadata.push({
               repositoryUrl: repoUrl,
@@ -638,19 +656,19 @@ export class CustomerService {
               metadata: parsedMetadata,
               fetchedAt: new Date().toISOString()
             });
-            console.log(`✅ Successfully fetched metadata for customer: ${customerName}`);
           } else {
+            console.log(`❌ No metadata.json found for customer '${customerName}' in ${repoUrl}`);
             errors.push({
               repositoryUrl: repoUrl,
               customerName: customerName,
-              error: metadataContent.error || 'Failed to fetch metadata.json'
+              error: metadataContent?.error || 'Failed to fetch metadata.json from any branch'
             });
-            console.warn(`⚠️ Failed to fetch metadata for ${customerName}:`, metadataContent.error);
           }
         } catch (error: any) {
           const customerName = repo.name.replace('gitops-customers-', '');
+          const repoUrl = `${gitBaseUrl}/${hostingOrg}/${repo.name}.git`;
           errors.push({
-            repositoryUrl: `${gitBaseUrl}/${hostingOrg}/${repo.name}`,
+            repositoryUrl: repoUrl,
             customerName: customerName,
             error: error.message
           });
@@ -687,7 +705,7 @@ export class CustomerService {
     try {
       // Fetch all GitOps metadata
       const gitOpsResult = await this.fetchAllCustomerMetadataFromGitOps(gitBaseUrl, hostingOrg, serverId);
-      
+
       if (!gitOpsResult.success) {
         throw new Error('Failed to fetch GitOps metadata');
       }
@@ -695,7 +713,7 @@ export class CustomerService {
       // Get local customers
       const localCustomersResponse = await this.getAllCustomers();
       const localCustomers = localCustomersResponse.customers;
-      
+
       const synced: any[] = [];
       const conflicts: any[] = [];
       const missing: any[] = [];
@@ -715,7 +733,7 @@ export class CustomerService {
           });
         } else {
           // Compare local vs GitOps data
-          const hasConflicts = 
+          const hasConflicts =
             localCustomer.displayName !== gitOpsCustomer.displayName ||
             localCustomer.description !== gitOpsCustomer.description ||
             localCustomer.isActive !== gitOpsCustomer.isActive;
