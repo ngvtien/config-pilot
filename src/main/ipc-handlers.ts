@@ -2426,4 +2426,22 @@ export function registerCustomerHandlers() {
     }
   })
 
+  // Fetch all customer metadata from GitOps repositories
+  ipcMain.handle('customer:fetchAllGitOpsMetadata', async (_, gitBaseUrl: string, hostingOrg: string, serverId?: string) => {
+    try {
+      return await CustomerService.fetchAllCustomerMetadataFromGitOps(gitBaseUrl, hostingOrg, serverId)
+    } catch (error: any) {
+      throw new Error(error.message)
+    }
+  })
+
+  // Sync local customer data with GitOps metadata
+  ipcMain.handle('customer:syncWithGitOpsMetadata', async (_, gitBaseUrl: string, hostingOrg: string, serverId?: string) => {
+    try {
+      return await CustomerService.syncWithGitOpsMetadata(gitBaseUrl, hostingOrg, serverId)
+    } catch (error: any) {
+      throw new Error(error.message)
+    }
+  })
+
 }

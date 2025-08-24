@@ -395,6 +395,7 @@ export default function AppLayoutPage({
           <CustomerManagementPage
             onNavigateBack={() => setView("settings")}
             context={context}
+            settings={settings}
           />
         )
 

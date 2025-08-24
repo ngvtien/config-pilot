@@ -582,4 +582,188 @@ export class CustomerService {
     }
     return `${gitBaseUrl}/${customer.name}/gitops.git`
   }
+
+  /**
+   * Fetch all customer metadata from GitOps repositories
+   * Discovers repositories following the naming convention: {gitbaseUrl}/{hostingOrg}/gitops-customers-*.git
+   */
+  static async fetchAllCustomerMetadataFromGitOps(gitBaseUrl: string, hostingOrg: string, serverId?: string): Promise<{
+    success: boolean;
+    metadata: any[];
+    errors: any[];
+  }> {
+    const { GitService } = await import('./git-service');
+    const gitService = new GitService();
+    
+    const metadata: any[] = [];
+    const errors: any[] = [];
+
+    try {
+      // Get all repositories from the hosting organization
+      const repositories = await gitService.listRepositoriesInOrganization(gitBaseUrl, hostingOrg, serverId);
+      
+      // Debug: Log all repository names and structure to see what's available
+      console.log(`📋 All repositories in organization '${hostingOrg}':`, repositories.map(r => r.name));
+      console.log(`🔍 Sample repository structure:`, repositories[0] ? JSON.stringify(repositories[0], null, 2) : 'No repositories found');
+      
+      // Filter repositories that match the GitOps customer naming convention
+      // Note: Gitea API returns repository names without .git suffix
+      const customerRepos = repositories.filter(repo => 
+        repo.name.startsWith('gitops-customers-')
+      );
+
+      console.log(`🔍 Found ${customerRepos.length} customer GitOps repositories matching pattern 'gitops-customers-*'`);
+
+      // Fetch metadata.json from each repository
+      for (const repo of customerRepos) {
+        try {
+          const repoUrl = `${gitBaseUrl}/${hostingOrg}/${repo.name}`;
+          const customerName = repo.name.replace('gitops-customers-', '');
+          
+          console.log(`📥 Fetching metadata from: ${repoUrl}`);
+          
+          // Fetch metadata.json from the default branch (usually 'dev')
+          const metadataContent = await gitService.fetchFileFromRepository(
+            repoUrl, 
+            'metadata.json', 
+            'dev', // default branch
+            serverId
+          );
+
+          if (metadataContent.success && metadataContent.content) {
+            const parsedMetadata = JSON.parse(metadataContent.content);
+            metadata.push({
+              repositoryUrl: repoUrl,
+              customerName: customerName,
+              metadata: parsedMetadata,
+              fetchedAt: new Date().toISOString()
+            });
+            console.log(`✅ Successfully fetched metadata for customer: ${customerName}`);
+          } else {
+            errors.push({
+              repositoryUrl: repoUrl,
+              customerName: customerName,
+              error: metadataContent.error || 'Failed to fetch metadata.json'
+            });
+            console.warn(`⚠️ Failed to fetch metadata for ${customerName}:`, metadataContent.error);
+          }
+        } catch (error: any) {
+          const customerName = repo.name.replace('gitops-customers-', '');
+          errors.push({
+            repositoryUrl: `${gitBaseUrl}/${hostingOrg}/${repo.name}`,
+            customerName: customerName,
+            error: error.message
+          });
+          console.error(`❌ Error fetching metadata for ${customerName}:`, error);
+        }
+      }
+
+      return {
+        success: metadata.length > 0,
+        metadata,
+        errors
+      };
+
+    } catch (error: any) {
+      console.error('❌ Failed to fetch customer metadata from GitOps repositories:', error);
+      return {
+        success: false,
+        metadata: [],
+        errors: [{ error: error.message }]
+      };
+    }
+  }
+
+  /**
+   * Sync local customer data with GitOps metadata
+   * Compares local customers with GitOps metadata and identifies discrepancies
+   */
+  static async syncWithGitOpsMetadata(gitBaseUrl: string, hostingOrg: string, serverId?: string): Promise<{
+    success: boolean;
+    synced: any[];
+    conflicts: any[];
+    missing: any[];
+  }> {
+    try {
+      // Fetch all GitOps metadata
+      const gitOpsResult = await this.fetchAllCustomerMetadataFromGitOps(gitBaseUrl, hostingOrg, serverId);
+      
+      if (!gitOpsResult.success) {
+        throw new Error('Failed to fetch GitOps metadata');
+      }
+
+      // Get local customers
+      const localCustomersResponse = await this.getAllCustomers();
+      const localCustomers = localCustomersResponse.customers;
+      
+      const synced: any[] = [];
+      const conflicts: any[] = [];
+      const missing: any[] = [];
+
+      // Check each GitOps metadata against local customers
+      for (const gitOpsData of gitOpsResult.metadata) {
+        const gitOpsCustomer = gitOpsData.metadata.customer;
+        const localCustomer = localCustomers.find(c => c.name === gitOpsData.customerName);
+
+        if (!localCustomer) {
+          // Customer exists in GitOps but not locally
+          missing.push({
+            type: 'missing_locally',
+            customerName: gitOpsData.customerName,
+            gitOpsMetadata: gitOpsCustomer,
+            repositoryUrl: gitOpsData.repositoryUrl
+          });
+        } else {
+          // Compare local vs GitOps data
+          const hasConflicts = 
+            localCustomer.displayName !== gitOpsCustomer.displayName ||
+            localCustomer.description !== gitOpsCustomer.description ||
+            localCustomer.isActive !== gitOpsCustomer.isActive;
+
+          if (hasConflicts) {
+            conflicts.push({
+              customerName: gitOpsData.customerName,
+              local: localCustomer,
+              gitOps: gitOpsCustomer,
+              repositoryUrl: gitOpsData.repositoryUrl
+            });
+          } else {
+            synced.push({
+              customerName: gitOpsData.customerName,
+              status: 'in_sync',
+              repositoryUrl: gitOpsData.repositoryUrl
+            });
+          }
+        }
+      }
+
+      // Check for customers that exist locally but not in GitOps
+      for (const localCustomer of localCustomers) {
+        const hasGitOps = gitOpsResult.metadata.some(g => g.customerName === localCustomer.name);
+        if (!hasGitOps) {
+          missing.push({
+            type: 'missing_in_gitops',
+            customerName: localCustomer.name,
+            localCustomer: localCustomer
+          });
+        }
+      }
+
+      return {
+        success: true,
+        synced,
+        conflicts,
+        missing
+      };
+
+    } catch (error: any) {
+      console.error('❌ Failed to sync with GitOps metadata:', error);
+      return {
+        success: false,
+        synced: [],
+        conflicts: [],
+        missing: []
+      };
+    }
+  }
 }

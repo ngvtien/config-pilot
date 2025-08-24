@@ -16,18 +16,20 @@ import { validateCustomer } from '@/shared/types/customer'
 import { useDialog } from '@/renderer/hooks/useDialog'
 import { GitRepositoryService } from '@/renderer/services/git-repository.service'
 import type { ContextData } from '@/shared/types/context-data'
+import type { SettingsData } from '@/shared/types/settings-data'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/renderer/components/ui/tooltip'
 import { typography } from '../lib/typography';
 
 interface CustomerManagementPageProps {
     onNavigateBack?: () => void
     context?: ContextData
+    settings?: SettingsData // Add settings prop for hostingOrg
 }
 
 /**
  * Customer management page for CRUD operations
  */
-export function CustomerManagementPage({ onNavigateBack, context }: CustomerManagementPageProps) {
+export function CustomerManagementPage({ onNavigateBack, context, settings }: CustomerManagementPageProps) {
     const { showConfirm, showAlert, AlertDialog, ConfirmDialog } = useDialog()
 
     const [customers, setCustomers] = useState<Customer[]>([])
@@ -160,23 +162,91 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
     }, [])
 
     /**
-     * Load all customers from the service
+     * Load all customers from GitOps repositories
      */
     const loadCustomers = async () => {
         setIsLoading(true)
         try {
-            const response = await window.electronAPI?.customer?.getAllCustomers()
-            if (response?.customers) {
-                console.log('Loaded customers:', response.customers.map(c => ({
+            if (!context?.baseHostUrl || !settings?.hostingOrg) {
+                console.warn('Missing context configuration for GitOps loading - baseHostUrl:', context?.baseHostUrl, 'hostingOrg:', settings?.hostingOrg)
+                // Fallback to localStorage-based loading
+                const response = await window.electronAPI?.customer?.getAllCustomers()
+                if (response?.customers) {
+                    setCustomers(response.customers)
+                }
+                return
+            }
+
+            // Fetch customers from GitOps repositories
+            const gitOpsResult = await window.electronAPI?.customer?.fetchAllGitOpsMetadata(
+                context.baseHostUrl,
+                settings.hostingOrg,
+                generateServerId(context.baseHostUrl)
+            )
+
+            if (gitOpsResult?.success && gitOpsResult.metadata && gitOpsResult.metadata.length > 0) {
+                // Convert GitOps metadata to Customer objects
+                const gitOpsCustomers: Customer[] = gitOpsResult.metadata.map((item: any) => ({
+                    id: item.customerName, // Use customer name as ID for GitOps-sourced customers
+                    name: item.customerName,
+                    displayName: item.metadata?.displayName || item.customerName,
+                    description: item.metadata?.description || '',
+                    isActive: item.metadata?.isActive ?? true,
+                    createdAt: item.metadata?.createdAt || new Date().toISOString(),
+                    updatedAt: item.metadata?.updatedAt || item.fetchedAt,
+                    metadata: {
+                        tier: item.metadata?.metadata?.tier || 'basic',
+                        tags: item.metadata?.metadata?.tags || [],
+                        ...item.metadata?.metadata,
+                        gitOps: {
+                            repositoryUrl: item.repositoryUrl,
+                            serverId: generateServerId(context.baseHostUrl),
+                            environments: item.metadata?.metadata?.gitOps?.environments || ['dev', 'sit', 'uat', 'prod'],
+                            setupDate: item.metadata?.metadata?.gitOps?.setupDate || item.metadata?.createdAt
+                        }
+                    }
+                }))
+
+                console.log('Loaded customers from GitOps:', gitOpsCustomers.map(c => ({
                     id: c.id,
                     name: c.name,
-                    hasGitOps: !!c.metadata?.gitOps?.repositoryUrl,
                     repositoryUrl: c.metadata?.gitOps?.repositoryUrl
                 })))
-                setCustomers(response.customers)
+
+                setCustomers(gitOpsCustomers)
+                
+                // Log any errors from GitOps fetch
+                if (gitOpsResult.errors && gitOpsResult.errors.length > 0) {
+                    console.warn('Some GitOps repositories had errors:', gitOpsResult.errors)
+                }
+                
+                console.log(`✅ Successfully loaded ${gitOpsCustomers.length} customers from GitOps repositories`)
+            } else {
+                console.warn('No customers found in GitOps repositories, falling back to localStorage')
+                // Fallback to localStorage-based loading
+                const response = await window.electronAPI?.customer?.getAllCustomers()
+                if (response?.customers) {
+                    setCustomers(response.customers)
+                }
             }
         } catch (error) {
-            console.error('Failed to load customers:', error)
+            console.error('Failed to load customers from GitOps:', error)
+            // Fallback to localStorage-based loading
+            try {
+                const response = await window.electronAPI?.customer?.getAllCustomers()
+                if (response?.customers) {
+                    setCustomers(response.customers)
+                    console.log(`📁 Loaded ${response.customers.length} customers from localStorage (fallback)`)
+                }
+            } catch (fallbackError) {
+                console.error('Fallback loading also failed:', fallbackError)
+                // Show error to user
+                showAlert({
+                    title: 'Loading Failed',
+                    message: 'Failed to load customers from both GitOps repositories and local storage. Please check your configuration.',
+                    variant: 'error'
+                })
+            }
         } finally {
             setIsLoading(false)
         }
@@ -207,10 +277,10 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
      * Fetch GitOps metadata from all customer repositories
      */
     const fetchGitOpsMetadata = async () => {
-        if (!context?.baseHostUrl) {
+        if (!context?.baseHostUrl || !settings?.hostingOrg) {
             showAlert({
                 title: 'Configuration Missing',
-                message: 'Please configure base host URL in settings.',
+                message: 'Please configure base host URL and hosting organization in settings.',
                 variant: 'warning'
             });
             return;
@@ -223,7 +293,7 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
             const repositories = customers
                 .filter(customer => customer.metadata?.gitOps?.repositoryUrl)
                 .map(customer => ({
-                    customerName: customer.name,
+                    entityName: customer.name, // Use entityName as expected by BatchRepository interface
                     repositoryUrl: customer.metadata!.gitOps!.repositoryUrl!,
                     serverId: customer.metadata?.gitOps?.serverId || generateServerId(context.baseHostUrl!)
                 }));
@@ -239,7 +309,7 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
 
             console.log(`Fetching GitOps metadata for ${repositories.length} customer repositories...`);
 
-            const result = await window.electronAPI?.customer?.batchFetchGitOpsMetadata?.({ repositories });
+            const result = await window.electronAPI?.customer?.batchFetchGitOpsMetadata?.(repositories);
 
             if (result?.success) {
                 setGitOpsMetadata(result.results);
@@ -321,7 +391,7 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
 
                 // Setup GitOps if requested
                 if (gitOpsConfig.createGitOpsRepo && gitOpsConfig.serverId) {
-                    await window.electronAPI?.customer?.setupGitOps(editingCustomer.id, context?.hostingOrg || 'da', gitOpsConfig)
+                    await window.electronAPI?.customer?.setupGitOps(editingCustomer.id, settings?.hostingOrg || 'da', gitOpsConfig)
 
                 }
             } else {
@@ -357,10 +427,12 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
     }
 
     /**
-     * Generate server ID from baseUrl using the same logic as GitService
+     * Generate server ID from baseUrl using the same logic as GitService.normalizeUrl
+     * The serverId should be the normalized URL itself, not a transformed version
      */
     const generateServerId = (baseUrl: string): string => {
-        return baseUrl.replace(/[^a-zA-Z0-9]/g, '-');
+        // Use the exact same logic as GitService.normalizeUrl: remove trailing slashes
+        return baseUrl.replace(/\/+$/, '');
     };
 
     /**
@@ -597,7 +669,7 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
             };
 
             console.log(`🏗️ Setting up GitOps with config:`, gitServerConfig);
-            const result = await window.electronAPI?.customer?.setupGitOps(customer.id, context?.hostingOrg || 'da', gitServerConfig);
+            const result = await window.electronAPI?.customer?.setupGitOps(customer.id, settings?.hostingOrg || 'da', gitServerConfig);
             console.log(`✅ GitOps setup completed:`, result);
 
             // 🔧 UPDATE: Use the returned updatedCustomer to refresh local state
@@ -864,6 +936,27 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
                     >
                         {viewMode === 'grid' ? <List className="h-4 w-4" /> : <Grid className="h-4 w-4" />}
                     </Button>
+
+                    {/* Refresh from GitOps Button */}
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <Button
+                                variant="outline"
+                                onClick={loadCustomers}
+                                disabled={isLoading}
+                            >
+                                {isLoading ? (
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                ) : (
+                                    <GitBranch className="h-4 w-4 mr-2" />
+                                )}
+                                Refresh GitOps
+                            </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                            <p>Reload customers from GitOps repositories</p>
+                        </TooltipContent>
+                    </Tooltip>
 
                     {/* GitOps View Button */}
                     <Tooltip>

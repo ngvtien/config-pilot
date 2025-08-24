@@ -157,6 +157,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
       'customer:batchFetchGitOpsMetadata',
       'customer:pushMetadataToRepo',
       'customer:generateGitOpsRepositories',
+      'customer:fetchAllGitOpsMetadata',
+      'customer:syncWithGitOpsMetadata',
 
 
       // Produc management      
@@ -462,9 +464,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
     //     localPath: string;
     //   }>;
     // }) => ipcRenderer.invoke('customer:batchFetchGitOpsMetadata', params.repositories),
-    batchFetchGitOpsMetadata: (serverId?: string) => ipcRenderer.invoke('customer:batchFetchGitOpsMetadata', serverId),
+    batchFetchGitOpsMetadata: (repositories: any[]) => ipcRenderer.invoke('customer:batchFetchGitOpsMetadata', repositories),
     pushMetadataToRepo: (customerId: string) => ipcRenderer.invoke('customer:pushMetadataToRepo', customerId),
     generateGitOpsRepositories: (customers: any[]) => ipcRenderer.invoke('customer:generateGitOpsRepositories', customers),
+    fetchAllGitOpsMetadata: (gitBaseUrl: string, hostingOrg: string, serverId?: string) => ipcRenderer.invoke('customer:fetchAllGitOpsMetadata', gitBaseUrl, hostingOrg, serverId),
+    syncWithGitOpsMetadata: (gitBaseUrl: string, hostingOrg: string, serverId?: string) => ipcRenderer.invoke('customer:syncWithGitOpsMetadata', gitBaseUrl, hostingOrg, serverId),
 
   },
 

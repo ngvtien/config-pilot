@@ -312,4 +312,48 @@ export class BitbucketProvider implements BitbucketProviderInterface {
     }
   }
 
+  /**
+   * List repositories in a project
+   */
+  async listRepositories(server: GitServerConfig, project: string, credentials?: GitServerCredentials): Promise<any[]> {
+    try {
+      const apiUrl = `${server.baseUrl}/rest/api/1.0/projects/${project}/repos`;
+      const headers: Record<string, string> = {
+        'Accept': 'application/json'
+      };
+
+      // Add authentication header if credentials provided
+      if (credentials) {
+        if (credentials.method === 'token' && credentials.token && credentials.username) {
+          const auth = Buffer.from(`${credentials.username}:${credentials.token}`).toString('base64');
+          headers['Authorization'] = `Basic ${auth}`;
+        } else if (credentials.method === 'credentials' && credentials.username && credentials.password) {
+          const auth = Buffer.from(`${credentials.username}:${credentials.password}`).toString('base64');
+          headers['Authorization'] = `Basic ${auth}`;
+        }
+      }
+
+      console.log(`🔍 Fetching repositories from Bitbucket project: ${apiUrl}`);
+
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to list repositories: ${response.status} ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      const repositories = result.values || [];
+      console.log(`✅ Found ${repositories.length} repositories in project ${project}`);
+      
+      return repositories;
+
+    } catch (error: any) {
+      console.error('Failed to list repositories:', error);
+      throw error;
+    }
+  }
+
 }

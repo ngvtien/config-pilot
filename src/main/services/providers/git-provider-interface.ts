@@ -41,6 +41,11 @@ export interface GitProviderInterface {
    * Set default branch for a repository
    */
   setDefaultBranch(owner: string, repo: string, branchName: string, server: GitServerConfig, credentials: GitServerCredentials): Promise<void>;
+
+  /**
+   * List repositories in an organization/project
+   */
+  listRepositories(server: GitServerConfig, organizationOrProject: string, credentials?: GitServerCredentials): Promise<any[]>;
 }
 
 // Provider-specific interfaces

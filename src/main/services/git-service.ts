@@ -1654,6 +1654,102 @@ The ApplicationSet uses GitDirectoryGenerator to automatically discover applicat
         }
     }
 
+    /**
+     * List all repositories in an organization
+     */
+    async listRepositoriesInOrganization(gitBaseUrl: string, hostingOrg: string, serverId?: string): Promise<any[]> {
+        try {
+            // Get server and credentials
+            let server: GitServerConfig | undefined;
+            let credentials: GitServerCredentials | undefined;
+
+            if (serverId) {
+                const result = this.getServerAndCredentials(gitBaseUrl, serverId);
+                server = result.server;
+                credentials = result.credentials;
+            }
+
+            // Get appropriate provider
+            const providerInfo = this.getProviderForUrl(gitBaseUrl);
+            if (!providerInfo) {
+                throw new Error(`No provider found for URL: ${gitBaseUrl}`);
+            }
+
+            // List repositories in organization
+            if (!server) {
+                throw new Error('Server configuration is required to list repositories');
+            }
+            const repositories = await providerInfo.instance.listRepositories(server, hostingOrg, credentials);
+            return repositories;
+
+        } catch (error: any) {
+            console.error('Failed to list repositories in organization:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Fetch a specific file from a repository
+     */
+    async fetchFileFromRepository(repositoryUrl: string, filePath: string, branch: string = 'dev', serverId?: string): Promise<{
+        success: boolean;
+        content?: string;
+        error?: string;
+    }> {
+        try {
+            // Get credentials for the server
+            let gitCredentials: GitCredentials | undefined;
+            if (serverId) {
+                const { server, credentials: serverCreds } = this.getServerAndCredentials(repositoryUrl, serverId);
+                gitCredentials = this.convertServerCredentialsToGitCredentials(serverCreds, repositoryUrl, serverId);
+            }
+
+            // Clone repository to temporary location
+            const tempDir = path.join(os.tmpdir(), `fetch-file-${Date.now()}`);
+            const cloneResult = await this.gitAdapter.clone(repositoryUrl, tempDir, gitCredentials);
+
+            if (!cloneResult.success) {
+                throw new Error(cloneResult.error || 'Failed to clone repository');
+            }
+
+            // Create a new adapter instance for the temp directory
+            const tempAdapter = GitAdapterFactory.getAdapter('isomorphic-git');
+
+            // Checkout the specified branch
+            const checkoutResult = await tempAdapter.checkout(branch, tempDir);
+            if (!checkoutResult.success) {
+                // If branch doesn't exist, try 'main' as fallback
+                if (branch !== 'main') {
+                    const mainCheckoutResult = await tempAdapter.checkout('main', tempDir);
+                    if (!mainCheckoutResult.success) {
+                        throw new Error(`Failed to checkout branch ${branch} or main`);
+                    }
+                } else {
+                    throw new Error(checkoutResult.error || `Failed to checkout branch ${branch}`);
+                }
+            }
+
+            // Read the file
+            const fullFilePath = path.join(tempDir, filePath);
+            const fileContent = await fs.readFile(fullFilePath, 'utf8');
+
+            // Cleanup temp directory
+            await fs.rm(tempDir, { recursive: true, force: true });
+
+            return {
+                success: true,
+                content: fileContent
+            };
+
+        } catch (error: any) {
+            console.error(`Failed to fetch file ${filePath} from ${repositoryUrl}:`, error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
 }
 
 // Export singleton instance

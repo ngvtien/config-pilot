@@ -322,4 +322,46 @@ export class GiteaProvider implements GiteaProviderInterface {
       throw new Error(`Failed to set default branch: ${response.status}`);
     }
   }
+
+  /**
+   * List repositories in an organization
+   */
+  async listRepositories(server: GitServerConfig, organization: string, credentials?: GitServerCredentials): Promise<any[]> {
+    try {
+      const apiUrl = `${server.baseUrl}/api/v1/orgs/${organization}/repos`;
+      const headers: Record<string, string> = {
+        'Accept': 'application/json'
+      };
+
+      // Add authentication header if credentials provided
+      if (credentials) {
+        if (credentials.method === 'token' && credentials.token) {
+          headers['Authorization'] = `token ${credentials.token}`;
+        } else if (credentials.method === 'credentials' && credentials.username && credentials.password) {
+          const auth = Buffer.from(`${credentials.username}:${credentials.password}`).toString('base64');
+          headers['Authorization'] = `Basic ${auth}`;
+        }
+      }
+
+      console.log(`🔍 Fetching repositories from: ${apiUrl}`);
+
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to list repositories: ${response.status} ${response.statusText}`);
+      }
+
+      const repositories = await response.json();
+      console.log(`✅ Found ${repositories.length} repositories in organization ${organization}`);
+      
+      return repositories;
+
+    } catch (error: any) {
+      console.error('Failed to list repositories:', error);
+      throw error;
+    }
+  }
 }

@@ -9,7 +9,7 @@ import { GitCredentials, GitOperationResult, GitDiffResult, RepositoryInfo } fro
  * Provides cross-platform Git operations using isomorphic-git
  */
 export class IsomorphicGitAdapter implements GitAdapterInterface {
-  
+
   /**
    * Build authentication object for isomorphic-git
    */
@@ -238,7 +238,7 @@ export class IsomorphicGitAdapter implements GitAdapterInterface {
   async add(filePaths: string | string[], workingDir: string): Promise<GitOperationResult> {
     try {
       const paths = Array.isArray(filePaths) ? filePaths : [filePaths];
-      
+
       for (const filePath of paths) {
         await git.add({
           fs,
@@ -388,7 +388,7 @@ export class IsomorphicGitAdapter implements GitAdapterInterface {
    */
   async checkoutBranch(branchName: string, workingDir: string): Promise<GitOperationResult> {
     return this.checkout(branchName, workingDir);
-  }  
+  }
 
   /**
    * Parse Git error messages into user-friendly text

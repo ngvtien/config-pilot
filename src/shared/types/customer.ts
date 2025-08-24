@@ -52,6 +52,74 @@ export interface CustomerListResponse {
   total: number
 }
 
+/**
+ * Result of fetching customer metadata from GitOps repositories
+ */
+export interface CustomerGitOpsMetadataResult {
+  success: boolean
+  metadata: CustomerGitOpsMetadata[]
+  errors: CustomerGitOpsError[]
+}
+
+/**
+ * Customer metadata fetched from GitOps repository
+ */
+export interface CustomerGitOpsMetadata {
+  repositoryUrl: string
+  customerName: string
+  metadata: any
+  fetchedAt: string
+}
+
+/**
+ * Error when fetching customer metadata from GitOps
+ */
+export interface CustomerGitOpsError {
+  repositoryUrl?: string
+  customerName?: string
+  error: string
+}
+
+/**
+ * Result of syncing local customers with GitOps metadata
+ */
+export interface CustomerGitOpsSyncResult {
+  success: boolean
+  synced: CustomerSyncItem[]
+  conflicts: CustomerConflictItem[]
+  missing: CustomerMissingItem[]
+}
+
+/**
+ * Customer that is in sync between local and GitOps
+ */
+export interface CustomerSyncItem {
+  customerName: string
+  status: 'in_sync'
+  repositoryUrl: string
+}
+
+/**
+ * Customer with conflicts between local and GitOps data
+ */
+export interface CustomerConflictItem {
+  customerName: string
+  local: Customer
+  gitOps: any
+  repositoryUrl: string
+}
+
+/**
+ * Customer missing either locally or in GitOps
+ */
+export interface CustomerMissingItem {
+  type: 'missing_locally' | 'missing_in_gitops'
+  customerName: string
+  gitOpsMetadata?: any
+  localCustomer?: Customer
+  repositoryUrl?: string
+}
+
 export interface CustomerValidation {
   isValid: boolean
   errors: string[]
