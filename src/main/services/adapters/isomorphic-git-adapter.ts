@@ -295,7 +295,7 @@ export class IsomorphicGitAdapter implements GitAdapterInterface {
   /**
    * Push changes
    */
-  async push(workingDir: string, credentials?: GitCredentials, remote: string = 'origin', branch?: string): Promise<GitOperationResult> {
+  async push(workingDir: string, credentials?: GitCredentials, remote: string = 'origin', branch?: string, force: boolean = false): Promise<GitOperationResult> {
     try {
       const pushOptions: any = {
         fs,
@@ -307,6 +307,10 @@ export class IsomorphicGitAdapter implements GitAdapterInterface {
 
       if (branch) {
         pushOptions.ref = branch;
+      }
+
+      if (force) {
+        pushOptions.force = true;
       }
 
       await git.push(pushOptions);
@@ -335,7 +339,11 @@ export class IsomorphicGitAdapter implements GitAdapterInterface {
         fs,
         http: require('isomorphic-git/http/node'),
         dir: workingDir,
-        onAuth: () => this.buildAuth(credentials)
+        onAuth: () => this.buildAuth(credentials),
+        author: {
+          name: 'ConfigPilot',
+          email: 'configpilot@example.com'
+        }
       });
 
       return {
@@ -454,6 +462,40 @@ export class IsomorphicGitAdapter implements GitAdapterInterface {
       return {
         success: false,
         message: 'Failed to add remote',
+        error: this.parseGitError(error.message),
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
+   * Get repository status (modified, added, deleted files)
+   */
+  async status(workingDir: string): Promise<GitOperationResult> {
+    try {
+      const statusMatrix = await git.statusMatrix({
+        fs,
+        dir: workingDir
+      });
+
+      // Filter for files that have changes (not just unmodified files)
+      const changedFiles = statusMatrix.filter(([filepath, headStatus, workdirStatus, stageStatus]) => {
+        // headStatus: 0 = absent, 1 = present
+        // workdirStatus: 0 = absent, 1 = present, 2 = modified
+        // stageStatus: 0 = absent, 1 = present, 2 = modified, 3 = added
+        return workdirStatus !== headStatus || stageStatus !== headStatus;
+      });
+
+      return {
+        success: true,
+        message: `Found ${changedFiles.length} changed files`,
+        data: changedFiles.map(([filepath]) => filepath),
+        timestamp: new Date().toISOString()
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        message: 'Failed to get repository status',
         error: this.parseGitError(error.message),
         timestamp: new Date().toISOString()
       };

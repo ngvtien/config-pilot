@@ -10,6 +10,7 @@ import { GitAdapterFactory, GitAdapterType } from './adapters/git-adapter-factor
 import { GitAdapterInterface } from './adapters/git-adapter-interface';
 import { GiteaProvider } from './providers/gitea-provider';
 import { BitbucketProvider } from './providers/bitbucket-provider';
+import { CustomerService } from './customer-service';
 import Store from 'electron-store';
 import gitUrlParse from 'git-url-parse';
 
@@ -1092,7 +1093,7 @@ The ApplicationSet uses GitDirectoryGenerator to automatically discover applicat
      * Create environment branches for customer git integration with simple README.md files
      * Different from createEnvironmentBranches which is for product integration
      */
-    async createCustomerEnvironmentBranches(repositoryUrl: string, environments: string[], customerName: string, serverId?: string): Promise<{ success: boolean; createdBranches: string[]; errors: any[] }> {
+    async createCustomerEnvironmentBranches(repositoryUrl: string, environments: string[], customer: any, serverId?: string): Promise<{ success: boolean; createdBranches: string[]; errors: any[] }> {
         const createdBranches: string[] = [];
         const errors: any[] = [];
 
@@ -1115,22 +1116,8 @@ The ApplicationSet uses GitDirectoryGenerator to automatically discover applicat
             // Create a new adapter instance for the temp directory
             const tempAdapter = GitAdapterFactory.getAdapter('isomorphic-git');
 
-            // Create customer metadata.json file
-            const customerMetadata = {
-                customer: {
-                    name: customerName,
-                    displayName: customerName.toUpperCase(),
-                    id: `customer-${Date.now()}`,
-                    createdAt: new Date().toISOString()
-                },
-                environments: environments,
-                gitOps: {
-                    repositoryUrl: repositoryUrl,
-                    defaultBranch: 'dev',
-                    branches: environments
-                },
-                version: '1.0.0'
-            };
+            // Create customer metadata.json file using CustomerService
+            const customerMetadata = CustomerService.generateCustomerMetadata(customer);
 
             // Get existing branches to avoid conflicts
             const existingBranches = await tempAdapter.getBranches(tempDir);
@@ -1142,7 +1129,7 @@ The ApplicationSet uses GitDirectoryGenerator to automatically discover applicat
             // Stage and commit metadata.json to current branch
             const addMetadataResult = await tempAdapter.add('metadata.json', tempDir);
             if (addMetadataResult.success) {
-                const commitMetadataResult = await tempAdapter.commit(`Add customer metadata for ${customerName}`, tempDir);
+                const commitMetadataResult = await tempAdapter.commit(`Add customer metadata for ${customer.displayName || customer.name}`, tempDir);
                 if (commitMetadataResult.success) {
                     await tempAdapter.push(tempDir, gitCredentials);
                 }
@@ -1161,8 +1148,12 @@ The ApplicationSet uses GitDirectoryGenerator to automatically discover applicat
                             throw new Error(checkoutResult.error || 'Failed to checkout existing branch');
                         }
 
-                        // Add metadata.json if it doesn't exist in this branch
-                        await fs.writeFile(path.join(tempDir, 'metadata.json'), JSON.stringify(customerMetadata, null, 2));
+                        // Pull latest changes from remote to avoid conflicts
+                        const pullResult = await tempAdapter.pull(tempDir, gitCredentials);
+                        if (!pullResult.success) {
+                            console.warn(`Warning: Could not pull latest changes for ${env} branch:`, pullResult.error);
+                            // Continue anyway - this might be the first time the branch is being pushed
+                        }
 
                         createdBranches.push(env);
                     } else {
@@ -1174,25 +1165,36 @@ The ApplicationSet uses GitDirectoryGenerator to automatically discover applicat
                         createdBranches.push(env);
                     }
 
+                    // Add metadata.json to this branch
+                    await fs.writeFile(path.join(tempDir, 'metadata.json'), JSON.stringify(customerMetadata, null, 2));
+
                     // Create environment-specific README.md
-                    const readmeContent = `# ${customerName} - ${env.toUpperCase()} Environment\n\nThis branch contains configurations for the ${env} environment of ${customerName}.\n\n## Usage\n\nThis branch is used for GitOps deployments to the ${env} environment.\n\n## Metadata\n\nSee \`metadata.json\` for customer configuration details.\n`;
+                    const customerDisplayName = customer.displayName || customer.name;
+                    const readmeContent = `# ${customerDisplayName} - ${env.toUpperCase()} Environment\n\nThis branch contains configurations for the ${env} environment of ${customerDisplayName}.\n\n## Usage\n\nThis branch is used for GitOps deployments to the ${env} environment.\n\n## Metadata\n\nSee \`metadata.json\` for customer configuration details.\n`;
                     await fs.writeFile(path.join(tempDir, 'README.md'), readmeContent);
 
-                    // Stage and commit changes
-                    const addResult = await tempAdapter.add('.', tempDir);
-                    if (!addResult.success) {
-                        throw new Error(addResult.error || 'Failed to stage files');
-                    }
+                    // Check if there are any changes to commit
+                    const statusResult = await tempAdapter.status(tempDir);
+                    if (statusResult.success && statusResult.data && statusResult.data.length > 0) {
+                        // Stage and commit changes
+                        const addResult = await tempAdapter.add('.', tempDir);
+                        if (!addResult.success) {
+                            throw new Error(addResult.error || 'Failed to stage files');
+                        }
 
-                    const commitResult = await tempAdapter.commit(`Initialize ${env} environment for ${customerName}`, tempDir);
-                    if (!commitResult.success) {
-                        throw new Error(commitResult.error || 'Failed to commit changes');
-                    }
+                        const commitResult = await tempAdapter.commit(`Update ${env} environment for ${customer.displayName || customer.name}`, tempDir);
+                        if (!commitResult.success) {
+                            throw new Error(commitResult.error || 'Failed to commit changes');
+                        }
 
-                    // Push branch
-                    const pushResult = await tempAdapter.push(tempDir, gitCredentials, 'origin', env);
-                    if (!pushResult.success) {
-                        throw new Error(pushResult.error || 'Failed to push branch');
+                        // Push branch - use force for new branches to avoid conflicts
+                        const isNewBranch = !existingBranches.includes(env);
+                        const pushResult = await tempAdapter.push(tempDir, gitCredentials, 'origin', env, isNewBranch);
+                        if (!pushResult.success) {
+                            throw new Error(pushResult.error || 'Failed to push branch');
+                        }
+                    } else {
+                        console.log(`ℹ️ No changes to commit for ${env} branch`);
                     }
 
                 } catch (error: any) {

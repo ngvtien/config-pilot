@@ -57,11 +57,6 @@ export interface GitAdapterInterface {
   commit(message: string, workingDir: string): Promise<GitOperationResult>;
 
   /**
-   * Push changes
-   */
-  push(workingDir: string, credentials?: GitCredentials): Promise<GitOperationResult>;
-
-  /**
    * Pull changes
    */
   pull(workingDir: string, credentials?: GitCredentials): Promise<GitOperationResult>;
@@ -79,5 +74,10 @@ export interface GitAdapterInterface {
   /**
    * Push changes to specific remote and branch
    */
-  push(workingDir: string, credentials?: GitCredentials, remote?: string, branch?: string): Promise<GitOperationResult>;
+  push(workingDir: string, credentials?: GitCredentials, remote?: string, branch?: string, force?: boolean): Promise<GitOperationResult>;
+
+  /**
+   * Get repository status (modified, added, deleted files)
+   */
+  status(workingDir: string): Promise<GitOperationResult>;
 }

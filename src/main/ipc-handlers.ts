@@ -1929,7 +1929,7 @@ export function registerCustomerHandlers() {
             const branchResult = await gitService.createCustomerEnvironmentBranches(
               repositoryUrl!,
               environments,
-              updatedCustomer.name,
+              updatedCustomer,
               serverId
             );
 
@@ -2177,21 +2177,8 @@ export function registerCustomerHandlers() {
       const repositoryUrl = customer.metadata.gitOps.repositoryUrl
       const localPath = path.join(app.getPath('userData'), 'gitops', 'customers', customer.name)
 
-      // Generate customer metadata
-      const customerMetadata = {
-        id: customer.id,
-        name: customer.name,
-        description: customer.description,
-        metadata: {
-          ...customer.metadata,
-          lastUpdated: new Date().toISOString(),
-          version: '1.0.0'
-        },
-        gitOps: {
-          repositoryUrl: repositoryUrl,
-          lastSync: new Date().toISOString()
-        }
-      }
+      // Generate customer metadata using the service method to ensure proper HTML decoding
+      const customerMetadata = CustomerService.generateCustomerMetadata(customer)
 
       // Ensure local directory exists
       await fs.mkdir(localPath, { recursive: true })

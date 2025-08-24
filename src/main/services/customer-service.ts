@@ -521,6 +521,29 @@ export class CustomerService {
   }
 
   /**
+   * Decode HTML entities in a string
+   */
+  private static decodeHtmlEntities(text: string): string {
+    if (!text) return text;
+    
+    const htmlEntities: { [key: string]: string } = {
+      '&amp;': '&',
+      '&lt;': '<',
+      '&gt;': '>',
+      '&quot;': '"',
+      '&#39;': "'",
+      '&#x27;': "'",
+      '&#x2F;': '/',
+      '&#x60;': '`',
+      '&#x3D;': '='
+    };
+    
+    return text.replace(/&[#\w]+;/g, (entity) => {
+      return htmlEntities[entity] || entity;
+    });
+  }
+
+  /**
    * Generate customer metadata.json content
    */
   static generateCustomerMetadata(customer: Customer) {
@@ -528,8 +551,8 @@ export class CustomerService {
       customer: {
         id: customer.id,
         name: customer.name,
-        displayName: customer.displayName,
-        description: customer.description,
+        displayName: this.decodeHtmlEntities(customer.displayName || customer.name),
+        description: this.decodeHtmlEntities(customer.description || ''),
         isActive: customer.isActive,
         createdAt: customer.createdAt,
         updatedAt: customer.updatedAt,
