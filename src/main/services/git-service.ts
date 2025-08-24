@@ -520,6 +520,22 @@ export class GitService {
     }
 
     /**
+     * List remote references
+     */
+    async listRemote(url: string, serverId?: string): Promise<string[]> {
+        try {
+            let gitCredentials: GitCredentials | undefined;
+            if (serverId) {
+                const { server, credentials: serverCreds } = this.getServerAndCredentials(url, serverId);
+                gitCredentials = this.convertServerCredentialsToGitCredentials(serverCreds, url, serverId);
+            }
+            return await this.gitAdapter.listRemote(url, gitCredentials);
+        } catch (error) {
+            return [];
+        }
+    }
+
+    /**
      * Discover repositories from a base URL
      */
     async discoverRepositories(baseUrl: string, credentials?: GitCredentials): Promise<GitRepository[]> {

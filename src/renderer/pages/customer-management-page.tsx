@@ -1,21 +1,20 @@
 "use client"
 
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from '@/renderer/components/ui/button'
 import { Input } from '@/renderer/components/ui/input'
 import { Label } from '@/renderer/components/ui/label'
 import { Badge } from '@/renderer/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/renderer/components/ui/card'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/renderer/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/renderer/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/renderer/components/ui/select'
 import { Textarea } from '@/renderer/components/ui/textarea'
 import { Switch } from '@/renderer/components/ui/switch'
 import { Trash2, Edit, Plus, Download, Upload, Building2, Loader2, GitBranch, CheckCircle, XCircle, ExternalLink, Search, X, Grid, List } from 'lucide-react'
-import type { Customer, CustomerGitOpsConfig, CustomerGitOpsResult } from '@/shared/types/customer'
-import { createNewCustomer, validateCustomer } from '@/shared/types/customer'
+import type { Customer, CustomerGitOpsConfig } from '@/shared/types/customer'
+import { validateCustomer } from '@/shared/types/customer'
 import { useDialog } from '@/renderer/hooks/useDialog'
 import { GitRepositoryService } from '@/renderer/services/git-repository.service'
-import { GitServerConfig } from '@/shared/types/git-repository'
 import type { ContextData } from '@/shared/types/context-data'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/renderer/components/ui/tooltip'
 import { typography } from '../lib/typography';
@@ -516,12 +515,25 @@ export function CustomerManagementPage({ onNavigateBack, context }: CustomerMana
                 await window.electronAPI?.customer?.updateCustomer(editingCustomer.id, updates)
                 console.log(`✅ Customer updated successfully`)
                 createdCustomer = editingCustomer;
+
+                // Check if GitOps repository URL has changed or is newly added
+                const oldGitOpsUrl = editingCustomer.metadata?.gitOps?.repositoryUrl;
+                const newGitOpsUrl = gitOpsFormData.repositoryUrl;
+                
+                if (newGitOpsUrl && newGitOpsUrl !== oldGitOpsUrl) {
+                    console.log(`🚀 GitOps repository URL changed/added for customer: ${createdCustomer.name}`);
+                    console.log(`  Old URL: ${oldGitOpsUrl || 'none'}`);
+                    console.log(`  New URL: ${newGitOpsUrl}`);
+                    console.log(`ℹ️ GitOps setup will be handled automatically by the backend during customer update`);
+                    // Note: GitOps setup is now handled automatically by the backend in the IPC handler
+                    // No need to call setupCustomerGitOps here to avoid double execution
+                }
             } else {
                 const result = await window.electronAPI?.customer?.createCustomer(customerData)
                 console.log(`✅ Customer created successfully`)
                 createdCustomer = result;
 
-                // 🔧 ADD THIS: Create GitOps repository if URL is provided
+                // Create GitOps repository if URL is provided
                 if (gitOpsFormData.repositoryUrl && createdCustomer) {
                     console.log(`🚀 Creating GitOps repository for new customer: ${createdCustomer.name}`);
                     try {
