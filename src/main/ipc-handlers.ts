@@ -2159,6 +2159,16 @@ export function registerCustomerHandlers() {
   //   }
   // });  
 
+  ipcMain.handle('customer:syncGitOpsCustomersToLocalStorage', async (_, gitOpsCustomers: Customer[]) => {
+    try {
+      await CustomerService.syncGitOpsCustomersToLocalStorage(gitOpsCustomers)
+      return { success: true }
+    } catch (error: any) {
+      //console.error('Failed to sync GitOps customers to localStorage:', error)
+      throw new Error(`Failed to sync GitOps customers: ${error.message}`)
+    }
+  })
+
   ipcMain.handle('customer:pushMetadataToRepo', async (_, customerId: string) => {
     try {
       console.log(`[Customer GitOps] Pushing metadata for customer ${customerId}`)

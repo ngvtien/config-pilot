@@ -191,7 +191,7 @@ export function CustomerManagementPage({ onNavigateBack, context, settings }: Cu
                     const customerData = item.metadata?.customer || {};
                     
                     return {
-                        id: customerData.id || item.customerName,
+                        id: customerData.id || `gitops-${item.customerName}`, // Ensure unique ID for GitOps customers
                         name: customerData.name || item.customerName,
                         displayName: customerData.displayName || item.customerName,
                         description: customerData.description || '',
@@ -220,12 +220,29 @@ export function CustomerManagementPage({ onNavigateBack, context, settings }: Cu
 
                 setCustomers(gitOpsCustomers)
                 
+                // Sync GitOps customers to localStorage for update operations
+                try {
+                    await window.electronAPI?.customer?.syncGitOpsCustomersToLocalStorage(gitOpsCustomers)
+                    console.log('✅ Synchronized GitOps customers to localStorage')
+                    
+                    // Reload customers from localStorage to get the correct IDs for updates
+                    const localStorageResponse = await window.electronAPI?.customer?.getAllCustomers()
+                    if (localStorageResponse?.customers) {
+                        setCustomers(localStorageResponse.customers)
+                        console.log('✅ Reloaded customers from localStorage with correct IDs for updates')
+                    }
+                } catch (syncError) {
+                    console.warn('⚠️ Failed to sync GitOps customers to localStorage:', syncError)
+                    // Still use GitOps customers if sync fails
+                    setCustomers(gitOpsCustomers)
+                }
+                
                 // Log any errors from GitOps fetch
                 if (gitOpsResult.errors && gitOpsResult.errors.length > 0) {
                     console.warn('Some GitOps repositories had errors:', gitOpsResult.errors)
                 }
                 
-                console.log(`✅ Successfully loaded ${gitOpsCustomers.length} customers from GitOps repositories`)
+                console.log(`✅ Successfully loaded customers from GitOps and synced to localStorage`)
             } else {
                 console.warn('No customers found in GitOps repositories, falling back to localStorage')
                 // Fallback to localStorage-based loading

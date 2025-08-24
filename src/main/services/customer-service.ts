@@ -68,9 +68,9 @@ export class CustomerService {
   static async createCustomer(customer: Omit<Customer, 'id' | 'createdAt' | 'updatedAt'>): Promise<Customer> {
     const { customers } = await this.getAllCustomers()
 
-    // Check for duplicate names
-    if (customers.some(c => c.name === customer.name)) {
-      throw new Error(`Customer with name '${customer.name}' already exists`)
+    // Check for duplicate names (case-insensitive)
+    if (customers.some(c => c.name.toLowerCase() === customer.name.toLowerCase())) {
+      throw new Error(`Customer with name '${customer.name}' already exists (case-insensitive check)`)
     }
 
     const newCustomer: Customer = {
@@ -94,12 +94,14 @@ export class CustomerService {
     const index = customers.findIndex(c => c.id === id)
 
     if (index === -1) {
+      console.error(`❌ Customer with ID '${id}' not found`)
+      console.error(`📋 Available customers:`, customers.map(c => ({ id: c.id, name: c.name })))
       throw new Error(`Customer with ID '${id}' not found`)
     }
 
-    // Check for duplicate names (excluding current customer)
-    if (updates.name && customers.some(c => c.id !== id && c.name === updates.name)) {
-      throw new Error(`Customer with name '${updates.name}' already exists`)
+    // Check for duplicate names (excluding current customer, case-insensitive)
+    if (updates.name && customers.some(c => c.id !== id && c.name.toLowerCase() === updates.name!.toLowerCase())) {
+      throw new Error(`Customer with name '${updates.name}' already exists (case-insensitive check)`)
     }
 
     const updatedCustomer: Customer = {
@@ -571,6 +573,56 @@ export class CustomerService {
    */
   static async pushCustomerMetadataToRepo(customer: Customer): Promise<void> {
     // Implementation similar to product metadata push
+  }
+
+  /**
+   * Sync GitOps customers to localStorage for update operations
+   */
+  static async syncGitOpsCustomersToLocalStorage(gitOpsCustomers: Customer[]): Promise<void> {
+    try {
+      // Get existing localStorage customers
+      const { customers: localCustomers } = await this.getAllCustomers()
+      
+      // console.log(`🔄 Syncing GitOps customers to localStorage:`)
+      // console.log(`📁 Local customers (${localCustomers.length}):`, localCustomers.map(c => ({ id: c.id, name: c.name })))
+      // console.log(`🌐 GitOps customers (${gitOpsCustomers.length}):`, gitOpsCustomers.map(c => ({ id: c.id, name: c.name })))
+      
+      // Create a map of existing customers by name for efficient lookup
+      const localCustomerMap = new Map(localCustomers.map(c => [c.name.toLowerCase(), c]))
+      
+      // Update or add GitOps customers to localStorage
+      const updatedCustomers = [...localCustomers]
+      
+      for (const gitOpsCustomer of gitOpsCustomers) {
+        const existingCustomer = localCustomerMap.get(gitOpsCustomer.name.toLowerCase())
+        
+        if (existingCustomer) {
+          // Update existing customer with GitOps data but keep the original ID
+          const updatedCustomer = {
+            ...gitOpsCustomer,
+            id: existingCustomer.id // Keep the original localStorage ID
+          }
+          const index = updatedCustomers.findIndex(c => c.id === existingCustomer.id)
+          if (index !== -1) {
+            updatedCustomers[index] = updatedCustomer
+            console.log(`🔄 Updated existing customer: ${existingCustomer.name} (ID: ${existingCustomer.id})`)
+          }
+        } else {
+          // Add new customer from GitOps
+          updatedCustomers.push(gitOpsCustomer)
+          console.log(`➕ Added new customer from GitOps: ${gitOpsCustomer.name} (ID: ${gitOpsCustomer.id})`)
+        }
+      }
+      
+      // Save updated customers to localStorage
+      await this.saveCustomers(updatedCustomers)
+      // console.log(`✅ Synchronized ${gitOpsCustomers.length} GitOps customers to localStorage`)
+      // console.log(`📊 Final customer count: ${updatedCustomers.length}`)
+      
+    } catch (error: any) {
+      //console.error('❌ Failed to sync GitOps customers to localStorage:', error)
+      throw new Error(`Failed to sync GitOps customers: ${error.message}`)
+    }
   }
 
   /**

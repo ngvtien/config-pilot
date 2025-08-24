@@ -159,6 +159,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       'customer:generateGitOpsRepositories',
       'customer:fetchAllGitOpsMetadata',
       'customer:syncWithGitOpsMetadata',
+      'customer:syncGitOpsCustomersToLocalStorage',
 
 
       // Produc management      
@@ -469,6 +470,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     generateGitOpsRepositories: (customers: any[]) => ipcRenderer.invoke('customer:generateGitOpsRepositories', customers),
     fetchAllGitOpsMetadata: (gitBaseUrl: string, hostingOrg: string, serverId?: string) => ipcRenderer.invoke('customer:fetchAllGitOpsMetadata', gitBaseUrl, hostingOrg, serverId),
     syncWithGitOpsMetadata: (gitBaseUrl: string, hostingOrg: string, serverId?: string) => ipcRenderer.invoke('customer:syncWithGitOpsMetadata', gitBaseUrl, hostingOrg, serverId),
+    syncGitOpsCustomersToLocalStorage: (gitOpsCustomers: any[]) => ipcRenderer.invoke('customer:syncGitOpsCustomersToLocalStorage', gitOpsCustomers),
 
   },
 
